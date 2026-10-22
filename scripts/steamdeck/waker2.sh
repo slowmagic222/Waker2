@@ -51,6 +51,7 @@ fi
 
 # The game's output also goes to waker2.log next to it (the last run), to read after a Game Mode start.
 exec > >(tee "$here/waker2.log") 2>&1
+echo "[waker2] started $(date '+%F %T')${SteamAppId:+ from Steam}"
 echo "[waker2] COS_DISC=$COS_DISC"
 echo "[waker2] COS_RANDO_DISC=${COS_RANDO_DISC:-(none, plain game)}"
 exec "$here/switchwaker" "$@"
