@@ -279,4 +279,9 @@ extern Vec Item_set_pos_data_bshop_6[];
 extern Vec Item_set_pos_data_bshop_7[];
 extern Vec Item_set_pos_data_rshop_0[];
 
+#if TARGET_PC
+// Rando (pc_rando.h): Beedle's shop items as the randomizer's main.dol has them (d_shop.cpp)
+void dShop_randoItemData();
+#endif
+
 #endif /* D_SHOP_H */
