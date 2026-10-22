@@ -15,6 +15,8 @@
 //   converters wrote them as numbers; raw arrays (textures, display lists) stay big-endian, as the
 //   generated headers have them.
 // - a disc whose main.dol or RELs do not match exits with PC_EXIT_DISC, as the disc check does.
+// - readDiscFile and dolBytes (pc_internal.h, in every build) serve the same readers to the game's
+//   disc at run time (pc_rando.cpp).
 // - with COS_RANDO_DISC (docs/RANDO.md) the game's disc is the randomizer's, whose main.dol and RELs
 //   carry its patches: main.dol and the RELs are then read from COS_DISC, the clean disc, by a reader
 //   of the disc image of its own (CleanDisc), and checked the same way.
@@ -38,117 +40,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#if COS_RUNTIME_ASSETS
-
 namespace {
-
-enum CosAssetKind { COS_ASSET_RAW = 0, COS_ASSET_F32 = 1 };
-
-struct Row {
-    const char* name;
-    const char* file;    // disc path ("" = main.dol)
-    const char* arcFile; // path inside that RARC ("" = the file itself)
-    uint32_t section;    // REL section (0: offset is a main.dol address)
-    uint32_t offset;
-    uint32_t size;
-    int kind;
-    const char* sha1; // of the decompressed main.dol or REL
-};
-
-const Row kRows[] = {
-#define COS_ASSET_ROW(name, file, arc, section, offset, size, kind, sha) {name, file, arc, section, offset, size, kind, sha},
-#include "assets/cos_asset_table.inc"
-#undef COS_ASSET_ROW
-};
-constexpr uint32_t kRowCount = sizeof(kRows) / sizeof(kRows[0]);
-
-struct Pending {
-    void* array;
-    uint32_t size;
-    uint32_t id;
-};
-
-// Constructed on first use: cos_asset_fill runs during other units' static initialisation.
-struct State {
-    std::mutex lock;
-    bool loaded = false;
-    cos_sdk::HostVector<cos_sdk::HostVector<uint8_t>> data; // per row, after conversion
-    cos_sdk::HostVector<Pending> pending;
-    uint32_t filled = 0;
-};
-State& state() {
-    static State* s = cos_sdk::HostNew<State>(); // never destroyed
-    return *s;
-}
 
 uint32_t rd32(const uint8_t* p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
 }
 uint16_t rd16(const uint8_t* p) {
     return (uint16_t)((p[0] << 8) | p[1]);
-}
-
-[[noreturn]] void discError(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-void discError(const char* fmt, ...) {
-    char text[512];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(text, sizeof text, fmt, ap);
-    va_end(ap);
-    pc::discMessage("%s (the game's data arrays come from the " COS_GAME_ID_STR " revision 0 disc)", text);
-    pc::exitDisc();
-}
-
-// ---- SHA-1 (FIPS 180-1), to check main.dol and the RELs against the decompilation's hashes
-struct Sha1 {
-    uint32_t h[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
-    uint8_t buf[64];
-    uint64_t len = 0;
-    static uint32_t rol(uint32_t v, int n) { return (v << n) | (v >> (32 - n)); }
-    void block(const uint8_t* p) {
-        uint32_t w[80];
-        for (int i = 0; i < 16; i++) w[i] = rd32(p + 4 * i);
-        for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-        uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
-        for (int i = 0; i < 80; i++) {
-            uint32_t f, k;
-            if (i < 20) f = (b & c) | (~b & d), k = 0x5A827999;
-            else if (i < 40) f = b ^ c ^ d, k = 0x6ED9EBA1;
-            else if (i < 60) f = (b & c) | (b & d) | (c & d), k = 0x8F1BBCDC;
-            else f = b ^ c ^ d, k = 0xCA62C1D6;
-            const uint32_t t = rol(a, 5) + f + e + k + w[i];
-            e = d, d = c, c = rol(b, 30), b = a, a = t;
-        }
-        h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e;
-    }
-    void update(const uint8_t* p, size_t n) {
-        size_t used = len % 64;
-        len += n;
-        while (n > 0) {
-            const size_t take = n < 64 - used ? n : 64 - used;
-            memcpy(buf + used, p, take);
-            used += take, p += take, n -= take;
-            if (used == 64) block(buf), used = 0;
-        }
-    }
-    void hex(char out[41]) {
-        const uint64_t bits = len * 8;
-        const uint8_t pad = 0x80, zero = 0;
-        update(&pad, 1);
-        while (len % 64 != 56) update(&zero, 1);
-        uint8_t l[8];
-        for (int i = 0; i < 8; i++) l[i] = (uint8_t)(bits >> (56 - 8 * i));
-        update(l, 8);
-        for (int i = 0; i < 5; i++) snprintf(out + 8 * i, 9, "%08x", h[i]);
-    }
-};
-
-bool sha1Is(const uint8_t* p, size_t n, const char* want) {
-    Sha1 s;
-    s.update(p, n);
-    char got[41];
-    s.hex(got);
-    return strcmp(got, want) == 0;
 }
 
 // ---- Yaz0 and RARC (the game's JKR code cannot run this early)
@@ -265,6 +163,135 @@ const uint8_t* dolBytes(const uint8_t* dol, size_t dolLen, uint32_t addr, uint32
         return dol + off + (addr - base);
     }
     return nullptr;
+}
+
+} // namespace
+
+namespace pc {
+
+bool readDiscFile(const char* path, const char* arcFile, std::vector<uint8_t>& out) {
+    cos_sdk::HostVector<uint8_t> file, inner;
+    if (!::readDiscFile(path, file)) return false;
+    if (arcFile != nullptr && arcFile[0] != '\0') {
+        if (!rarcFind(file, arcFile, inner)) return false;
+        file = std::move(inner);
+    }
+    out.assign(file.begin(), file.end());
+    return true;
+}
+
+const uint8_t* dolBytes(uint32_t addr, uint32_t size) {
+    s32 dolLen = 0;
+    const uint8_t* dol = DVDGetDOLLocation(&dolLen);
+    return dol != nullptr && dolLen > 0 ? ::dolBytes(dol, (size_t)dolLen, addr, size) : nullptr;
+}
+
+} // namespace pc
+
+#if COS_RUNTIME_ASSETS
+
+namespace {
+
+enum CosAssetKind { COS_ASSET_RAW = 0, COS_ASSET_F32 = 1 };
+
+struct Row {
+    const char* name;
+    const char* file;    // disc path ("" = main.dol)
+    const char* arcFile; // path inside that RARC ("" = the file itself)
+    uint32_t section;    // REL section (0: offset is a main.dol address)
+    uint32_t offset;
+    uint32_t size;
+    int kind;
+    const char* sha1; // of the decompressed main.dol or REL
+};
+
+const Row kRows[] = {
+#define COS_ASSET_ROW(name, file, arc, section, offset, size, kind, sha) {name, file, arc, section, offset, size, kind, sha},
+#include "assets/cos_asset_table.inc"
+#undef COS_ASSET_ROW
+};
+constexpr uint32_t kRowCount = sizeof(kRows) / sizeof(kRows[0]);
+
+struct Pending {
+    void* array;
+    uint32_t size;
+    uint32_t id;
+};
+
+// Constructed on first use: cos_asset_fill runs during other units' static initialisation.
+struct State {
+    std::mutex lock;
+    bool loaded = false;
+    cos_sdk::HostVector<cos_sdk::HostVector<uint8_t>> data; // per row, after conversion
+    cos_sdk::HostVector<Pending> pending;
+    uint32_t filled = 0;
+};
+State& state() {
+    static State* s = cos_sdk::HostNew<State>(); // never destroyed
+    return *s;
+}
+
+[[noreturn]] void discError(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void discError(const char* fmt, ...) {
+    char text[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
+    pc::discMessage("%s (the game's data arrays come from the " COS_GAME_ID_STR " revision 0 disc)", text);
+    pc::exitDisc();
+}
+
+// ---- SHA-1 (FIPS 180-1), to check main.dol and the RELs against the decompilation's hashes
+struct Sha1 {
+    uint32_t h[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
+    uint8_t buf[64];
+    uint64_t len = 0;
+    static uint32_t rol(uint32_t v, int n) { return (v << n) | (v >> (32 - n)); }
+    void block(const uint8_t* p) {
+        uint32_t w[80];
+        for (int i = 0; i < 16; i++) w[i] = rd32(p + 4 * i);
+        for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+        uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+        for (int i = 0; i < 80; i++) {
+            uint32_t f, k;
+            if (i < 20) f = (b & c) | (~b & d), k = 0x5A827999;
+            else if (i < 40) f = b ^ c ^ d, k = 0x6ED9EBA1;
+            else if (i < 60) f = (b & c) | (b & d) | (c & d), k = 0x8F1BBCDC;
+            else f = b ^ c ^ d, k = 0xCA62C1D6;
+            const uint32_t t = rol(a, 5) + f + e + k + w[i];
+            e = d, d = c, c = rol(b, 30), b = a, a = t;
+        }
+        h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e;
+    }
+    void update(const uint8_t* p, size_t n) {
+        size_t used = len % 64;
+        len += n;
+        while (n > 0) {
+            const size_t take = n < 64 - used ? n : 64 - used;
+            memcpy(buf + used, p, take);
+            used += take, p += take, n -= take;
+            if (used == 64) block(buf), used = 0;
+        }
+    }
+    void hex(char out[41]) {
+        const uint64_t bits = len * 8;
+        const uint8_t pad = 0x80, zero = 0;
+        update(&pad, 1);
+        while (len % 64 != 56) update(&zero, 1);
+        uint8_t l[8];
+        for (int i = 0; i < 8; i++) l[i] = (uint8_t)(bits >> (56 - 8 * i));
+        update(l, 8);
+        for (int i = 0; i < 5; i++) snprintf(out + 8 * i, 9, "%08x", h[i]);
+    }
+};
+
+bool sha1Is(const uint8_t* p, size_t n, const char* want) {
+    Sha1 s;
+    s.update(p, n);
+    char got[41];
+    s.hex(got);
+    return strcmp(got, want) == 0;
 }
 
 // a REL: section `section`'s bytes at `offset`
@@ -407,12 +434,12 @@ void loadAssets() {
                 if (!sha1Is(dol, (size_t)dolLen, r.sha1)) discError("main.dol is not " COS_GAME_ID_STR " revision 0's (SHA-1)");
                 dolChecked = true;
             }
-            src = dolBytes(dol, (size_t)dolLen, r.offset, r.size);
+            src = ::dolBytes(dol, (size_t)dolLen, r.offset, r.size);
         } else {
             // the table lists a module's assets together: read each REL once
             if (curFile == nullptr || strcmp(curFile, r.file) != 0 || strcmp(curArc, r.arcFile) != 0) {
                 if (curFile == nullptr || strcmp(curFile, r.file) != 0) {
-                    if (!(fromClean ? clean.file(r.file, container) : readDiscFile(r.file, container)))
+                    if (!(fromClean ? clean.file(r.file, container) : ::readDiscFile(r.file, container)))
                         discError("%s cannot be read", r.file);
                 }
                 if (r.arcFile[0] != '\0') {

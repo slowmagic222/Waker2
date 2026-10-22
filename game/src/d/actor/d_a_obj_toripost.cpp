@@ -17,6 +17,9 @@
 #include "d/d_a_obj.h"
 #include "m_Do/m_Do_ext.h"
 #include "m_Do/m_Do_mtx.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daObjTpost_HIO_c {
 public:
@@ -191,7 +194,14 @@ void daObjTpost_c::cutPresentStart(int staffIdx) {
 
 /* 000003D8-00000474       .text cutPresentProc__12daObjTpost_cFi */
 void daObjTpost_c::cutPresentProc(int staffIdx) {
+#if TARGET_PC
+    // Rando (pc_rando.h): wwrando's "Mailbox - Letter ..." locations, the item byte of each m_letter
+    // entry (rels/d_a_obj_toripost.rel@2564, 12 bytes apart)
+    fpc_ProcID itemPID = fopAcM_createItemForPresentDemo(
+        &current.pos, pc_rando_rel_item("d_a_obj_toripost", 0x2564 + 0xC * mNumReadable, m_letter[mNumReadable].mItemNo));
+#else
     fpc_ProcID itemPID = fopAcM_createItemForPresentDemo(&current.pos, m_letter[mNumReadable].mItemNo);
+#endif
     if(itemPID != fpcM_ERROR_PROCESS_ID_e) {
         dComIfGp_event_setItemPartnerId(itemPID);
         dComIfGp_evmng_cutEnd(staffIdx);

@@ -47,6 +47,32 @@ On the Switch, `COS_RANDO_DISC=sdmc:/switch/switchwaker/<file>.iso` in the `[dev
   expects wwrando's patches (custom actors, item IDs the original code does not handle, custom text commands)
   can misbehave. Expect a seed to be unplayable until the steps below land.
 
+## Items given by code (step 2)
+
+`pc_rando_rel_item("<rel>", offset, vanilla)` and `pc_rando_dol_item(address, vanilla)` (`pc_rando.h`) read the
+byte wwrando wrote at its `logic/item_locations.txt` path from the randomizer's disc (its REL in
+`files/rels/`, else in `RELS.arc`), so the offsets are the randomizer's own and the hunk names them. Without
+`COS_RANDO_DISC` they return the original item. The hunks are pinned to wwrando's paths at `9775811`
+(2026-07-20); another wwrando version with other paths reads the wrong bytes.
+
+Hooked (each hunk names its wwrando location and path):
+
+| Locations | File | Notes |
+|---|---|---|
+| 12 mailbox letters | `d_a_obj_toripost.cpp` | `m_letter`'s 13 entries, 12 bytes apart (Baito's mother twice) |
+| 4 Windfall auctions | `d_a_auction.cpp` | the shop item and the item given |
+| Battlesquid: first, second, under-20 prizes | `d_a_npc_kg1.cpp` | |
+| Barrel Shooting: first, second prizes | `d_a_npc_kg2.cpp` | |
+| Bird-Man Contest first prize | `d_a_npc_bmcon1.cpp` | |
+| Goron trading reward | `d_a_npc_roten.cpp` | |
+| Deku Leaf | `d_a_deku_item.cpp` | |
+| Mrs. Marie: Killer Bees, 1, 21 and 40 Joy Pendants | `d_a_npc_ho.cpp` | |
+| 6 Great Fairies | `d_a_bigelf.cpp` | in rando mode each gives one fixed item, not the next tier (wwrando `flexible_item_locations.asm`) |
+
+Still to do: the locations whose NPC also needs wwrando's tracking fixes (Windfall townspeople, Lenzo, Zunari,
+Maggie, Salvage Corp, Beedle's shops, Tingle, Orca, Ivan; they check "has the item" to know they gave it), the
+boss heart containers (`createItemForBoss`), Medli, the withered trees, and the pearls and the Master Sword.
+
 ## Plan
 
 1. Rando disc (this step).

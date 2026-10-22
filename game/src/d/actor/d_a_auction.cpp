@@ -12,6 +12,9 @@
 #include "res/Object/Pspl.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "d/d_auction_screen.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 #if TARGET_PC
 // Native port step 3.3 (ODR): NpcDatStruct is also defined by other NPC units. All units link into
@@ -681,7 +684,15 @@ void daAuction_c::eventStartInit() {
     dAuction_screen_gaugeHide();
     dAuction_screen_talkEnd();
 
+#if TARGET_PC
+    // Rando (pc_rando.h): wwrando's "Windfall Island - <n> Rupee Auction" locations, the item of each
+    // l_item_dat entry (rels/d_a_auction.rel@4489, 8 bytes apart)
+    mCurrAuctionItemPID = fopAcM_create(
+        fpcNm_ShopItem_e, pc_rando_rel_item("d_a_auction", 0x4489 + 8 * mCurrAuctionItemIndex, l_item_dat[mCurrAuctionItemIndex].mItemID),
+        &current.pos);
+#else
     mCurrAuctionItemPID = fopAcM_create(fpcNm_ShopItem_e, l_item_dat[mCurrAuctionItemIndex].mItemID, &current.pos);
+#endif
     dKy_custom_colset(0, 4, 1.0f);
 
     mLight.mPos.x = 0.0f;
@@ -1217,7 +1228,13 @@ void daAuction_c::eventGetItemInit() {
 
         dComIfGs_onEventBit(l_item_dat2[mCurrAuctionItemIndex].mObtainedEventBit);
     } else {
+#if TARGET_PC
+        // Rando (pc_rando.h): as in the shop item above (rels/d_a_auction.rel@4489, 8 bytes apart)
+        fpc_ProcID itemID = fopAcM_createItemForPresentDemo(
+            &current.pos, pc_rando_rel_item("d_a_auction", 0x4489 + 8 * mCurrAuctionItemIndex, l_item_dat[mCurrAuctionItemIndex].mItemID & 0xFF));
+#else
         fpc_ProcID itemID = fopAcM_createItemForPresentDemo(&current.pos, l_item_dat[mCurrAuctionItemIndex].mItemID & 0xFF);
+#endif
 
         if (itemID != fpcM_ERROR_PROCESS_ID_e) {
             dComIfGp_event_setItemPartnerId(itemID);

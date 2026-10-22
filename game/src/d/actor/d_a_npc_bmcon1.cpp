@@ -15,6 +15,9 @@
 #include "JAZelAudio/JAZelAudio_SE.h"
 #include "res/Object/Bmcon1.h"
 #include <stdlib.h>
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 const char daNpcBmcon_c::m_arcname[] = "Bmcon1";
 static const int l_bmd_ix_tbl[] = {dRes_ID_BMCON1_BDL_BM_e, dRes_ID_BMCON1_BDL_BM_e};
 static const int l_head_bmd_ix_tbl[] = {dRes_ID_BMCON1_BDL_BMHEAD10_e, dRes_ID_BMCON1_BDL_BMHEAD08_e};
@@ -708,7 +711,13 @@ bool daNpcBmcon_c::eventMesSet() {
     if (status == 18) {
         if (mRewardFlags & 1) {
             mRewardFlags &= ~1;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Flight Control Platform - Bird-Man Contest - First Prize"
+            // (rels/d_a_npc_bmcon1.rel@2B7B)
+            mItemNo = pc_rando_rel_item("d_a_npc_bmcon1", 0x2B7B, dItemNo_HEART_PIECE_e);
+#else
             mItemNo = dItemNo_HEART_PIECE_e;
+#endif
             mOrder = 6;
         } else if (mRewardFlags & 2) {
             mRewardFlags &= ~2;

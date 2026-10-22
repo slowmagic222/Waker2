@@ -13,6 +13,9 @@
 #include "d/d_com_lib_game.h"
 #include "d/d_a_obj.h"
 #include "d/d_snap.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static const char* l_arcname_tbl[] = {
     "Ro",
@@ -2379,6 +2382,11 @@ void daNpcRoten_c::eventGetItemInit(int staffIdx) {
     if(pData != NULL) {
         u32 itemNo = *pData; // fakematch?
         itemNo = l_get_item_no[itemNo];
+#if TARGET_PC
+        // Rando (pc_rando.h): wwrando's "The Great Sea - Goron Trading Reward", l_get_item_no[0]
+        // (rels/d_a_npc_roten.rel@533B)
+        itemNo = pc_rando_rel_item("d_a_npc_roten", 0x533B, itemNo);
+#endif
         pcId = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, fopAcM_GetRoomNo(this));
     }
     else {

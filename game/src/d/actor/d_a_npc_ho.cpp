@@ -8,6 +8,9 @@
 #include "res/Object/Ho.h"
 #include "d/d_snap.h"
 #include "m_Do/m_Do_controller_pad.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static fpc_ProcID l_msgId;
 static msg_class* l_msg;
@@ -238,7 +241,13 @@ u16 daNpc_Ho_c::next_msgStatus(u32* pMsgNo) {
             break;
         case 0x271E:
             mNextMessageId = 0x2748;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Windfall Island - Mrs. Marie - Catch Killer Bees"
+            // (rels/d_a_npc_ho.rel@0A07)
+            mItemNum = pc_rando_rel_item("d_a_npc_ho", 0x0A07, dItemNo_PURPLE_RUPEE_e);
+#else
             mItemNum = dItemNo_PURPLE_RUPEE_e;
+#endif
             *pMsgNo = *pMsgNo + 1;
             mState = HO_STATE_TALK_03;
             break;
@@ -304,7 +313,13 @@ u16 daNpc_Ho_c::next_msgStatus(u32* pMsgNo) {
             break;
         case 0x275C:
             mNextMessageId = 0x275D;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Windfall Island - Mrs. Marie - Give 1 Joy Pendant"
+            // (rels/d_a_npc_ho.rel@0B4B)
+            mItemNum = pc_rando_rel_item("d_a_npc_ho", 0x0B4B, dItemNo_RED_RUPEE_e);
+#else
             mItemNum = dItemNo_RED_RUPEE_e;
+#endif
             msgStatus = fopMsgStts_MSG_ENDS_e;
             break;
         case 0x2742:
@@ -313,7 +328,13 @@ u16 daNpc_Ho_c::next_msgStatus(u32* pMsgNo) {
             break;
         case 0x2743:
             mNextMessageId = 0x2744;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Windfall Island - Mrs. Marie - Give 21 Joy Pendants"
+            // (rels/d_a_npc_ho.rel@0B77)
+            mItemNum = pc_rando_rel_item("d_a_npc_ho", 0x0B77, dItemNo_CABANA_DEED_e);
+#else
             mItemNum = dItemNo_CABANA_DEED_e;
+#endif
             msgStatus = fopMsgStts_MSG_ENDS_e;
             dComIfGs_onEventBit(dSv_event_flag_c::UNK_1C08);
             dComIfGs_onTmpBit(dSv_event_tmp_flag_c::UNK_0104);
@@ -348,7 +369,13 @@ u16 daNpc_Ho_c::next_msgStatus(u32* pMsgNo) {
         }
         case 0x2751:
             mNextMessageId = 0x2752;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Windfall Island - Mrs. Marie - Give 40 Joy Pendants"
+            // (rels/d_a_npc_ho.rel@0C87)
+            mItemNum = pc_rando_rel_item("d_a_npc_ho", 0x0C87, dItemNo_HEROS_CHARM_e);
+#else
             mItemNum = dItemNo_HEROS_CHARM_e;
+#endif
             msgStatus = fopMsgStts_MSG_ENDS_e;
             dComIfGs_onEventBit(dSv_event_flag_c::UNK_1C04);
             break;

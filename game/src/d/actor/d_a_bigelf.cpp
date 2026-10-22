@@ -22,6 +22,9 @@
 #include "SSystem/SComponent/c_lib.h"
 #include "SSystem/SComponent/c_math.h"
 #include "res/Object/bigelf.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static fpc_ProcID l_msgId;
 static msg_class* l_msg;
@@ -756,6 +759,20 @@ u16 daBigelf_c::next_msgStatus(unsigned long* pMsgNo) {
     switch (*pMsgNo) {
     case 0x2EE8:
         (*pMsgNo)++;
+#if TARGET_PC
+        // Rando (pc_rando.h): wwrando's Great Fairy locations. Each fairy gives one fixed item, not the
+        // next tier of what the player has (wwrando flexible_item_locations.asm, d_a_bigelf.rel 0x217C):
+        // Northern, Outset, Eastern, Southern, Western and Thorned Fairy Island (getType() 0-5), the
+        // items at rels/d_a_bigelf.rel@21BB, 21C7, 21E7, 21F3, 2213, 221F
+        if (pc_rando_active() && getType() <= 5) {
+            static const u16 offsets[] = {0x21BB, 0x21C7, 0x21E7, 0x21F3, 0x2213, 0x221F};
+            static const u8 items[] = {dItemNo_MAX_RUPEE_UP1_e, dItemNo_MAX_RUPEE_UP2_e, dItemNo_MAX_BOMB_UP1_e,
+                                       dItemNo_MAX_BOMB_UP2_e,  dItemNo_MAX_ARROW_UP1_e, dItemNo_MAX_ARROW_UP2_e};
+            mGivenItem = pc_rando_rel_item("d_a_bigelf", offsets[getType()], items[getType()]);
+            dComIfGp_event_setGtItm(mGivenItem);
+            break;
+        }
+#endif
         switch (getType()) {
         case 0:
         case 1:

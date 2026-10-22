@@ -15,6 +15,9 @@
 #include "d/actor/d_a_mgameboard.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "res/Object/Kg.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static dCcD_SrcCyl l_cyl_src = {
     // dCcD_SrcGObjInf
@@ -405,6 +408,13 @@ void daNpc_Kg1_c::wait_action() {
             m751 = 0;
             u8 items[] = {0x07, 0xCC, 0x05};
             u8 index = g_dComIfG_gameInfo.save.getEvent().getEventReg(0xFE07) - 1;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Windfall Island - Battlesquid - First Prize" and "Second
+            // Prize", items[0] and items[1] (rels/d_a_npc_kg1.rel@2C28, @2C29)
+            if (index < 2) {
+                items[index] = pc_rando_rel_item("d_a_npc_kg1", 0x2C28 + index, items[index]);
+            }
+#endif
             mItemId = fopAcM_createItemForPresentDemo(&current.pos, items[index], 0, -1, fopAcM_GetRoomNo(this), NULL, NULL);
             if (mItemId != fpcM_ERROR_PROCESS_ID_e) dComIfGp_event_setItemPartnerId(mItemId);
             mWaitMode = 7;
@@ -445,6 +455,11 @@ void daNpc_Kg1_c::wait_action() {
             u8 rec_items[] = {dItemNo_COLLECT_MAP_14_e, dItemNo_ORANGE_RUPEE_e};
             u8 index = dComIfGs_getEventReg(0xFF07) - 1;
             if (index > 1) index = 1;
+#if TARGET_PC
+            // Rando (pc_rando.h): wwrando's "Windfall Island - Battlesquid - Under 20 Shots Prize",
+            // rec_items[0] (rels/d_a_npc_kg1.rel@2C2C)
+            rec_items[0] = pc_rando_rel_item("d_a_npc_kg1", 0x2C2C, rec_items[0]);
+#endif
             mItemId = fopAcM_createItemForPresentDemo(&current.pos, rec_items[index], 0, -1, fopAcM_GetRoomNo(this), NULL, NULL);
             if (mItemId != fpcM_ERROR_PROCESS_ID_e) dComIfGp_event_setItemPartnerId(mItemId);
             mWaitMode = 10;
