@@ -21,6 +21,9 @@
 #include "SSystem/SComponent/c_math.h"
 #include "res/Object/Bj.h"
 #include <string.h>
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static daNpc_Bj1_HIO_c l_HIO;
 static fopAc_ac_c* l_check_inf[20];
@@ -163,9 +166,17 @@ void daNpc_Bj1_c::nodePrpControl(J3DNode* node, J3DModel* model) {
     }
 }
 
+#if TARGET_PC
+// Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x784, 0x830, 0x984, 0xA30, 0x2200): the Koroks
+// act as after Farore's Pearl (by the withered trees, and their talk), as the trees are there from the start
+#define COS_RANDO_BJ1_FARORE() (pc_rando_active() || dComIfGs_isSymbol(dSymbol_FARORE_e))
+#else
+#define COS_RANDO_BJ1_FARORE() dComIfGs_isSymbol(dSymbol_FARORE_e)
+#endif
+
 /* 00000664-00000710       .text init_BJ4_0__11daNpc_Bj1_cFv */
 bool daNpc_Bj1_c::init_BJ4_0() {
-    bool result = dComIfGs_isSymbol(dSymbol_FARORE_e) == 0;
+    bool result = COS_RANDO_BJ1_FARORE() == 0;
     if (result) {
         result = dComIfGs_isEventBit(0x1801) != 0;
         if (result) {
@@ -177,7 +188,7 @@ bool daNpc_Bj1_c::init_BJ4_0() {
 
 /* 00000710-000007D4       .text init_BJ6_0__11daNpc_Bj1_cFv */
 bool daNpc_Bj1_c::init_BJ6_0() {
-    bool result = dComIfGs_isSymbol(dSymbol_FARORE_e) == 0;
+    bool result = COS_RANDO_BJ1_FARORE() == 0;
     if (result) {
         result = dComIfGs_isEventBit(0x1801) != 0;
         if (result) {
@@ -201,7 +212,7 @@ bool daNpc_Bj1_c::init_BJ7_0() {
 
 /* 00000864-00000910       .text init_BJX_0__11daNpc_Bj1_cFv */
 bool daNpc_Bj1_c::init_BJX_0() {
-    bool result = dComIfGs_isSymbol(dSymbol_FARORE_e) == 0;
+    bool result = COS_RANDO_BJ1_FARORE() == 0;
     if (result) {
         result = dComIfGs_isEventBit(0x1801) != 0;
         if (result) {
@@ -213,7 +224,7 @@ bool daNpc_Bj1_c::init_BJX_0() {
 
 /* 00000910-00000998       .text init_BJX_1__11daNpc_Bj1_cFv */
 bool daNpc_Bj1_c::init_BJX_1() {
-    bool result = dComIfGs_isSymbol(dSymbol_FARORE_e) != 0;
+    bool result = COS_RANDO_BJ1_FARORE() != 0;
     if (result) {
         set_action(&daNpc_Bj1_c::wait_action1, NULL);
     }
@@ -1048,7 +1059,7 @@ u32 daNpc_Bj1_c::getMsg_BJ7_0() {
     if (mPresentItem != 0xFF) {
         return 0x1421;
     }
-    if (dComIfGs_isSymbol(dSymbol_FARORE_e)) {
+    if (COS_RANDO_BJ1_FARORE()) {
         if (dComIfGs_isEventBit(0xD08) == 0) {
             return 0x1433;
         }

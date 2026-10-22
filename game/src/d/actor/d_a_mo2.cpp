@@ -19,6 +19,9 @@
 #include "res/Object/Mo2.h"
 #include "f_op/f_op_camera.h"
 #include "m_Do/m_Do_controller_pad.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 enum Action {
     ACTION_JYUNKAI = 0,
@@ -3473,7 +3476,13 @@ static BOOL daMo2_Execute(mo2_class* i_this) {
         if (i_this->m05B6 != 0) {
             i_this->m05B6--;
         }
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0xAD70 and 0xBF2C): Moblins act as if the
+        // player had a sword, so without one (swordless) they do not carry the player off to the jail
+        if (pc_rando_active() || dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) || dComIfGs_isCollect(0, 3)) {
+#else
         if (dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) || dComIfGs_isCollect(0, 3)) {
+#endif
             rouya_mode = 0;
         } else {
             rouya_mode = 1;
@@ -4141,6 +4150,8 @@ static cPhs_State daMo2_Create(fopAc_ac_c* a_this) {
     i_this->mDamageReaction.mInvincibleTimer = 5;
 #if VERSION == VERSION_DEMO
     if (dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2))
+#elif TARGET_PC
+    if (pc_rando_active() || dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) || dComIfGs_isCollect(0, 3))
 #else
     if (dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) || dComIfGs_isCollect(0, 3))
 #endif

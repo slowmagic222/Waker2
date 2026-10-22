@@ -363,7 +363,12 @@ BOOL daObjFtree::Act_c::PlayStopColorAnimation() {
 
 /* 0000093C-00000A1C       .text set_first_stat__Q210daObjFtree5Act_cFv */
 void daObjFtree::Act_c::set_first_stat() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0xA4C): the trees are there before Farore's Pearl
+    if (pc_rando_active() || dComIfGs_isSymbol(2)) {
+#else
     if (dComIfGs_isSymbol(2)) {
+#endif
         if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_0102)) {
             process_init(3, 0);
             mScaleMul = 1.0f;

@@ -17,6 +17,9 @@
 #include "d/d_item.h"
 #include "d/d_com_inf_game.h"
 #include "f_op/f_op_actor_mng.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 const char* daSalvage_c::m_arcname = "Yslvg00";
 
@@ -304,7 +307,14 @@ bool daSalvage_c::proc_wait() {
 
             if (uVar6 == 0) {
                 if (dComIfGs_isOpenCollectMap(uVar2) && !dComIfGs_isCompleteCollectMap(uVar2)) {
+#if TARGET_PC
+                    // Rando (pc_rando.h; wwrando flexible_item_locations.asm, REL 0x10C0): whether the light needs
+                    // the chart deciphered depends on the chart (a Triforce Chart, 0x61 + its index taken as a
+                    // Triforce Shard) and not on the item, which a seed changes
+                    u8 iVar3 = pc_rando_active() ? (u8)(uVar2 + 0x61) : getItemNo(i);
+#else
                     u8 iVar3 = getItemNo(i);
+#endif
                     bool bVar7 = true;
 
                     if (isTriforce(iVar3)) {

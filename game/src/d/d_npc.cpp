@@ -12,6 +12,9 @@
 #include "SSystem/SComponent/c_math.h"
 #include "m_Do/m_Do_mtx.h"
 #include "d/d_item_data.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 8021A7B4-8021A858       .text angCalcS__14dNpc_JntCtrl_cFPssss */
 bool dNpc_JntCtrl_c::angCalcS(s16* out, s16 targetY, s16 speed, s16 maxVel) {
@@ -645,6 +648,13 @@ bool dNpc_chkArasoi() {
 
 /* 8021BF30-8021BF98       .text dNpc_chkLetterPassed__Fv */
 bool dNpc_chkLetterPassed() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm, main.dol 0x8021BF80): as if Komali's letter
+    // were delivered, so the first Medli (who gives it) is gone and her item cannot be missed
+    if (pc_rando_active()) {
+        return true;
+    }
+#endif
     bool ret = false;
     if(dComIfGs_isGetItemReserve(0xC)) {
         ret = dComIfGs_checkReserveItem(dItemNo_FATHER_LETTER_e) == 0;

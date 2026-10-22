@@ -24,6 +24,7 @@
 #include <stdio.h>
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/pc_rando.h"
 #endif
 
 dMd_HIO_c g_mdHIO;
@@ -520,6 +521,11 @@ void dMenu_Dmap_c::treasureSet() {
                 (saveTbl == dSv_save_c::STAGE_WT && !dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_WT))
             ) &&
             (dComIfGs_getPlayerPriestFlag() == 1 || dComIfGs_getPlayerPriestFlag() == 2)
+#elif TARGET_PC
+            // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, main.dol 0x801A9A6C and 0x801A9AA8): Medli
+            // and Makar stay on the map after the Master Sword's upgrades, which a seed can give early
+            (saveTbl == dSv_save_c::STAGE_ET && (pc_rando_active() || !dComIfGs_isCollect(0, 2)) && dComIfGs_getPlayerPriestFlag() == 2) ||
+            (saveTbl == dSv_save_c::STAGE_WT && (pc_rando_active() || !dComIfGs_isCollect(0, 3)) && dComIfGs_getPlayerPriestFlag() == 1)
 #else
             (saveTbl == dSv_save_c::STAGE_ET && !dComIfGs_isCollect(0, 2) && dComIfGs_getPlayerPriestFlag() == 2) ||
             (saveTbl == dSv_save_c::STAGE_WT && !dComIfGs_isCollect(0, 3) && dComIfGs_getPlayerPriestFlag() == 1)

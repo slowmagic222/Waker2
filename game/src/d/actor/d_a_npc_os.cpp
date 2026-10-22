@@ -12,6 +12,9 @@
 #include "f_op/f_op_actor_mng.h"
 #include "f_op/f_op_camera.h"
 #include "m_Do/m_Do_controller_pad.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_Os_HIO2_c : public JORReflexible {
 public:
@@ -546,7 +549,14 @@ void daNpc_Os_c::eventOrderCheck() {
     if(field_0x7A5 == -1) {
         s8 roomNo = fopAcM_GetRoomNo(this);
         if(argument == 0) {
+#if TARGET_PC
+            // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x12E8): the east servant starts no event
+            // when returned, so the Command Melody tablet does not go before it is used (it sets 2510 itself,
+            // d_a_obj_hsehi1.cpp)
+            if(!pc_rando_active() && roomNo == 7 && dComIfGs_isSwitch(field_0x794, roomNo) && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_2510)) {
+#else
             if(roomNo == 7 && dComIfGs_isSwitch(field_0x794, roomNo) && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_2510)) {
+#endif
                 field_0x7A5 = 7;
             } 
         }
@@ -826,7 +836,13 @@ BOOL daNpc_Os_c::finish01NpcAction(void* param_1) {
 BOOL daNpc_Os_c::finish02NpcAction(void* param_1) {
     if(field_0x7A9 == 0) {
         if(param_1 == NULL) {
+#if TARGET_PC
+            // Rando (wwrando make_game_nonlinear.asm, REL 0x1F74): a servant on its pedestal keeps its beam
+            // on before the north servant is returned (1B01)
+            if(pc_rando_active() || dComIfGs_isEventBit(dSv_event_flag_c::UNK_1B01)) {
+#else
             if(dComIfGs_isEventBit(dSv_event_flag_c::UNK_1B01)) {
+#endif
                 setAnm_brkAnm(7);
             }
             else {
@@ -2169,6 +2185,14 @@ BOOL daNpc_Os_c::execute() {
     fopAcM_OffStatus(this, fopAcStts_SHOWMAP_e);
     checkPlayerRoom();
     if(!finishCheck()) {
+#if TARGET_PC
+        // Rando (wwrando make_game_nonlinear.asm set_inactive_servant_when_player_leaves_room, REL 0x6000): a
+        // servant out of the player's room stops being the partner, so another can be called without
+        // reloading the stage
+        if(pc_rando_active() && dStage_roomControl_c::getStayNo() != current.roomNo) {
+            home.roomNo = -1;
+        }
+#endif
         if(!check_initialRoom()) {
             if(dComIfGp_getCb1Player() == this) {
                 dComIfGp_setCb1Player(NULL);

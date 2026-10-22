@@ -14,6 +14,9 @@
 #include "f_op/f_op_camera_mng.h"
 #include "m_Do/m_Do_mtx.h"
 #include "m_Do/m_Do_controller_pad.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 s32 daItem_c::m_timer_max = 10000;
 
@@ -32,6 +35,13 @@ cXyz setArrowTrans(s16 yRot, cXyz offset) {
 
 /* 800F4C4C-800F4CD8       .text getYOffset__8daItem_cFv */
 float daItem_c::getYOffset() {
+#if TARGET_PC
+    // Rando (wwrando tweaks.py allow_all_items_to_be_field_items): items without their own offset (and the
+    // Big Key) float at 23 so they are not lodged in the floor
+    if (pc_rando_active() && m_itemNo == dItemNo_BOSS_KEY_e) {
+        return 23.0f;
+    }
+#endif
     switch (m_itemNo) {
     case dItemNo_KNIGHTS_CREST_e:
         return 0.0f;
@@ -68,6 +78,11 @@ float daItem_c::getYOffset() {
     case dItemNo_HEART_e:
         return 0.0f;
     default:
+#if TARGET_PC
+        if (pc_rando_active()) {
+            return 23.0f;
+        }
+#endif
         return 0.0f;
     }
 }
@@ -767,6 +782,15 @@ void daItem_c::itemGetExecute() {
             execItemGet(m_itemNo);
         }
         break;
+#if TARGET_PC
+    default:
+        // Rando (wwrando tweaks.py allow_all_items_to_be_field_items, itemGetExecute switch): any other item
+        // plays the full item get event and is given, instead of popping over Link's head like a rupee
+        if (pc_rando_active()) {
+            mItemStatus = STATUS_INIT_GET_DEMO;
+        }
+        break;
+#endif
     }
     
     fopAcM_onItemForIb(mItemBitNo, m_itemNo, current.roomNo);
@@ -1260,6 +1284,13 @@ void daItem_c::mode_wait() {
         dComIfGp_particle_setSimple(appearEffect, &current.pos);
     }
     
+#if TARGET_PC
+    // Rando (wwrando tweaks.py allow_all_items_to_be_field_items, mode_wait switch): items 0x20-0x44 and 0x4C+
+    // use heart piece physics instead of rupee physics, so they don't fly too far out of Gohdan's nose
+    if (pc_rando_active() && ((m_itemNo >= 0x20 && m_itemNo <= 0x44) || m_itemNo >= 0x4C)) {
+        itemActionForArrow();
+    } else
+#endif
     switch (m_itemNo) {
     case dItemNo_HEART_e:
     case dItemNo_TRIPLE_HEART_e:

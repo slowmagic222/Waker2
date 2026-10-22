@@ -15,6 +15,9 @@
 #include "res/Object/Cloth.h"
 #include "m_Do/m_Do_mtx.h"
 #include "m_Do/m_Do_lib.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 const char daShopItem_c::m_cloth_arcname[] = "Cloth";
 const f32 daShopItem_c::m_cullfar_max = 5000.0f;
@@ -118,6 +121,13 @@ void daShopItem_c::set_mtx() {
     MTXCopy(mDoMtx_stack_c::get(), field_0x64C);
 
     const Vec& temp1 = getData()[m_itemNo].field_0x0C;
+#if TARGET_PC
+    // Rando (wwrando tweaks.py fix_shop_item_y_offsets): an item with no Y offset (other than the arrow refills
+    // 0x10-0x12) is raised by 20 so it isn't sunk into the pedestal
+    if (pc_rando_active() && temp1.y == 0.0f && !(m_itemNo >= 0x10 && m_itemNo <= 0x12)) {
+        mDoMtx_stack_c::transM(temp1.x, 20.0f, temp1.z);
+    } else
+#endif
     mDoMtx_stack_c::transM(temp1.x, temp1.y, temp1.z);
     const SVec& temp2 = getData()[m_itemNo].field_0x18;
     mDoMtx_stack_c::ZXYrotM(temp2.x, temp2.y, temp2.z);

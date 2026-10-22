@@ -22,6 +22,7 @@
 #include "stdio.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/pc_rando.h"
 // QoL "Carta náutica completa" (pc_qol.h; BetterWW reveal_sea_chart.asm, which sets every sector's
 // charted bit in a new game's save): while the option is on, this menu reads every sector as charted.
 // Nothing is written to the save; sectors reached are still recorded (dComIfGs_onSaveArriveGrid).
@@ -903,6 +904,13 @@ void dMenu_Fmap_c::dispEndSalvageMark() {
 
 /* 801B14C4-801B1684       .text checkMarkCheck1__12dMenu_Fmap_cFv */
 void dMenu_Fmap_c::checkMarkCheck1() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, main.dol 0x801B14C4 and 0x801B1684): no blue story
+    // markers on the sea chart, as the story order is the seed's
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     if (
         !dComIfGs_isEventBit(dSv_event_flag_c::PLACED_DINS_PEARL) ||
         !dComIfGs_isEventBit(dSv_event_flag_c::PLACED_FARORES_PEARL) ||
@@ -958,6 +966,11 @@ void dMenu_Fmap_c::checkMarkCheck1() {
 
 /* 801B1684-801B1714       .text checkMarkCheck2__12dMenu_Fmap_cFv */
 void dMenu_Fmap_c::checkMarkCheck2() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_1820)) {
         mCk3xPanes[0].pane->show();
         mCk3xPanes[1].pane->show();

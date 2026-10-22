@@ -29,6 +29,9 @@
 #include "f_op/f_op_actor_mng.h"
 #include "f_op/f_op_camera.h"
 #include "f_op/f_op_kankyo_mng.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace daTsubo {
 
@@ -2209,6 +2212,14 @@ void Act_c::damaged(int arg1, cBgS_PolyInfo* arg2, bool arg3, const cXyz* arg4) 
     s32 itemNo = prm_get_itemNo();
     s32 itemBitNo = prm_get_itemSave();
     csXyz sp08(0, home.angle.y, 0);
+#if TARGET_PC
+    // Rando (wwrando flexible_item_locations.asm, REL 0x3E7C create_pot_item): byte 0xFF00 of the Z rotation
+    // params is a plain item ID that can be any item. 0x00 and 0xFF mean "use the vanilla drop"
+    u8 randoItemNo = (mPrmZ >> 8) & 0xFF;
+    if (pc_rando_active() && randoItemNo != 0x00 && randoItemNo != 0xFF) {
+        fopAcM_createItem(&current.pos, randoItemNo, itemBitNo, fopAcM_GetHomeRoomNo(this), 3, &sp08, 5, NULL);
+    } else
+#endif
     fopAcM_createItemFromTable(&current.pos, itemNo, itemBitNo, fopAcM_GetHomeRoomNo(this), 0, &sp08, arg1, NULL);
     fopAcM_cancelCarryNow(this);
     fopAcM_cancelHookCarryNow(this);

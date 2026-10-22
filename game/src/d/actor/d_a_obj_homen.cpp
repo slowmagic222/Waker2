@@ -9,6 +9,9 @@
 #include "d/d_com_inf_game.h"
 #include "res/Object/Homen.h"
 #include "f_op/f_op_actor_mng.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace daObjHomen {
 
@@ -264,6 +267,13 @@ bool Act_c::create_heap() {
 /* 000002B4-000005B0       .text _create__Q210daObjHomen5Act_cFv */
 cPhs_State Act_c::_create() {
     fopAcM_ct(this, Act_c);
+#if TARGET_PC
+    // Rando (wwrando tweaks.py fix_stone_head_bugs): stone heads keep executing out of view, so one that spawned
+    // an enemy is deleted when that enemy dies even if the camera is not on it ("kill all enemies" rooms)
+    if (pc_rando_active()) {
+        fopAcM_OffStatus(this, fopAcStts_NOCULLEXEC_e);
+    }
+#endif
     
     if (param_get_sw() != 0xFF && is_switch() == true) {
         return cPhs_ERROR_e;
@@ -453,6 +463,16 @@ void Act_c::make_enemy() {
 void Act_c::make_item() {
     csXyz sp08(0, 0, 0);
     cXyz sp10(1.0f, 1.0f, 1.0f);
+#if TARGET_PC
+    // Rando (wwrando flexible_item_locations.asm, REL 0x16DC/0x1728 create_stone_head_item): byte 0x00FF of the
+    // X rotation is a plain item ID that can be any item. 0x00 and 0xFF mean "use the vanilla drop"
+    u8 randoItemNo = home.angle.x & 0xFF;
+    if (pc_rando_active() && randoItemNo != 0x00 && randoItemNo != 0xFF) {
+        fopAcM_createItem(&current.pos, randoItemNo, param_get_itembit(), fopAcM_GetRoomNo(this), 3,
+                          &sp08, 5, &sp10);
+        return;
+    }
+#endif
     if (param_get_item() != 0x3F) {
         fopAcM_createItemFromTable(
             &current.pos,

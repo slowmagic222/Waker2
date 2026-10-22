@@ -11,6 +11,9 @@
 #include "res/Object/Hkyo.h"
 #include "d/actor/d_a_player.h"
 #include "SSystem/SComponent/c_angle.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 8006B39C-8006B3A8       .text getSwbit__12dDoor_info_cFv */
 u8 dDoor_info_c::getSwbit() {
@@ -794,13 +797,24 @@ void dDoor_hkyo_c::proc(dDoor_info_c* door) {
             setAnm(3);
         break;
     case 3:
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, main.dol 0x8006D618 and 0x8006D674): the west and
+        // north doors of the Tower of the Gods hub glow until their servant is returned, without the
+        // original's conditions for opening them (the Command Melody; the west servant returned)
+        if ((!pc_rando_active() && !dComIfGs_isTact(mDoAud_MELODY_COMMAND_MELODY_e)) || dComIfGs_isEventBit(dSv_event_flag_c::UNK_1704))
+#else
         if (!dComIfGs_isTact(mDoAud_MELODY_COMMAND_MELODY_e) || dComIfGs_isEventBit(dSv_event_flag_c::UNK_1704))
+#endif
             setAnm(0);
         else
             setAnm(3);
         break;
     case 2:
+#if TARGET_PC
+        if ((!pc_rando_active() && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_1704)) || dComIfGs_isEventBit(dSv_event_flag_c::UNK_1B01))
+#else
         if (!dComIfGs_isEventBit(dSv_event_flag_c::UNK_1704) || dComIfGs_isEventBit(dSv_event_flag_c::UNK_1B01))
+#endif
             setAnm(0);
         else
             setAnm(3);

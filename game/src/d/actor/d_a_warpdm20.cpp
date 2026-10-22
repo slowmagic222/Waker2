@@ -12,6 +12,9 @@
 #include "d/d_bg_s_func.h"
 #include "d/d_com_inf_game.h"
 #include "f_op/f_op_actor_mng.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 typedef void (daWarpdm20_c::*EventInitFunc)(int);
 typedef BOOL (daWarpdm20_c::*EventActionFunc)(int);
@@ -122,7 +125,13 @@ void daWarpdm20_c::CreateInit() {
 
     mEventIdx = dComIfGp_evmng_getEventIdx("TO_HYRULE_WARP", 0xff);
 
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x68C): the Forsaken Fortress stays as the
+    // second visit's (1820 turns it into the third), so its items stay reachable
+    if (!pc_rando_active() && dComIfGs_isEventBit(dSv_event_flag_c::ZELDA_AWAKENED)) {
+#else
     if (dComIfGs_isEventBit(dSv_event_flag_c::ZELDA_AWAKENED)) {
+#endif
         dComIfGs_onEventBit(dSv_event_flag_c::UNK_1820);
     }
 }

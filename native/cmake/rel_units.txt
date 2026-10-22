@@ -60,6 +60,7 @@ d/actor/d_a_door12.cpp
 d/actor/d_a_dr.cpp
 d/actor/d_a_dr2.cpp
 d/actor/d_a_dummy.cpp
+d/actor/d_a_dungeon_flag_sw.cpp
 d/actor/d_a_ep.cpp
 d/actor/d_a_fallrock.cpp
 d/actor/d_a_fallrock_tag.cpp
@@ -369,6 +370,7 @@ d/actor/d_a_stone2.cpp
 d/actor/d_a_swattack.cpp
 d/actor/d_a_swc00.cpp
 d/actor/d_a_swhit0.cpp
+d/actor/d_a_switch_op.cpp
 d/actor/d_a_switem.cpp
 d/actor/d_a_swpropeller.cpp
 d/actor/d_a_swtact.cpp

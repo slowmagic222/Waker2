@@ -22,6 +22,9 @@ int pc_rando_active(void);
 unsigned char pc_rando_rel_item(const char* rel, unsigned int offset, unsigned char vanilla);
 /* The item at `address` of the randomizer's main.dol; `vanilla` as above. */
 unsigned char pc_rando_dol_item(unsigned int address, unsigned char vanilla);
+/* `size` bytes at `address` of the randomizer's main.dol (data wwrando adds there too, such as its
+ * custom_symbols), or NULL without a randomizer disc or if main.dol has no such bytes. */
+const unsigned char* pc_rando_dol_bytes(unsigned int address, unsigned int size);
 
 #ifdef __cplusplus
 }

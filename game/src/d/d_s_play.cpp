@@ -41,6 +41,7 @@
 #include <stdio.h>
 #if TARGET_PC
 #include "pc/pc_harness.h"
+#include "d/d_item_data.h"
 #endif
 
 static const int PRELOAD_RES_MAX = 0x23;
@@ -1266,6 +1267,9 @@ cPhs_State phase_0(dScnPly_ply_c* i_this) {
 
 /* 802357F4-802359DC       .text phase_1__FP13dScnPly_ply_c */
 cPhs_State phase_1(dScnPly_ply_c* i_this) {
+#if TARGET_PC
+    dItem_data::randoAllowAllFieldItems();
+#endif
     if (l_lkDemoAnmCommand != NULL) {
         if (!l_lkDemoAnmCommand->sync()) {
             return cPhs_INIT_e;

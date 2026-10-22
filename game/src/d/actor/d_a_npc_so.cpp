@@ -17,6 +17,9 @@
 #include "f_op/f_op_kankyo_mng.h"
 #include "f_op/f_op_camera.h"
 #include "res/Object/So.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_So_HIO_c : public mDoHIO_entry_c {
 public:
@@ -1789,6 +1792,11 @@ cPhs_State daNpc_So_c::_create() {
              !dComIfGs_checkGetItem(dItemNo_SAIL_e)) ||
             dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_DRC) == 0)
         {
+            return cPhs_ERROR_e;
+        }
+#elif TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm): the fishmen are there before Gohma is defeated
+        if (!pc_rando_active() && dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_DRC) == 0) {
             return cPhs_ERROR_e;
         }
 #else
