@@ -1307,18 +1307,42 @@ void item_func_triforce8() {
 }
 
 /* 800C43D8-800C4408       .text item_func_pearl1__Fv */
+#if TARGET_PC
+// Rando (wwrando remove_cutscenes.asm give_pearl_and_raise_totg_if_necessary): a pearl is placed in its goddess
+// statue's hands as soon as it is got (event bit), and the third one raises the Tower of the Gods
+static void dItem_randoPlacePearl(u16 placedBit) {
+    if (!pc_rando_active()) {
+        return;
+    }
+    dComIfGs_onEventBit(placedBit);
+    if (dComIfGs_isSymbol(dSymbol_NAYRU_e) && dComIfGs_isSymbol(dSymbol_DIN_e) && dComIfGs_isSymbol(dSymbol_FARORE_e)) {
+        dComIfGs_onEventBit(0x1E40); // TOWER_OF_THE_GODS_RAISED
+        dComIfGs_onEventBit(0x2E80); // PEARL_TOWER_CUTSCENE
+    }
+}
+#endif
+
 void item_func_pearl1() {
     dComIfGs_onSymbol(dSymbol_NAYRU_e);
+#if TARGET_PC
+    dItem_randoPlacePearl(0x1410);
+#endif
 }
 
 /* 800C4408-800C4438       .text item_func_pearl2__Fv */
 void item_func_pearl2() {
     dComIfGs_onSymbol(dSymbol_DIN_e);
+#if TARGET_PC
+    dItem_randoPlacePearl(0x1480);
+#endif
 }
 
 /* 800C4438-800C4468       .text item_func_pearl3__Fv */
 void item_func_pearl3() {
     dComIfGs_onSymbol(dSymbol_FARORE_e);
+#if TARGET_PC
+    dItem_randoPlacePearl(0x1440);
+#endif
 }
 
 /* 800C4468-800C446C       .text item_func_knowledge_tf__Fv */

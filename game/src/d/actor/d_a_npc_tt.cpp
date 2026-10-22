@@ -9,6 +9,9 @@
 #include "res/Object/Tt.h"
 #include "d/d_snap.h"
 #include "d/actor/d_a_player_main.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static fpc_ProcID l_msgId;
 static msg_class* l_msg;
@@ -336,6 +339,12 @@ void daNpc_Tt_c::demoInitPatten() {
     } else {
         field_0xE7A = 2;
     }
+#if TARGET_PC
+    // Rando (wwrando remove_cutscenes.asm, REL 0xC68): Tott dances the Song of Passing once, not twice
+    if (pc_rando_active()) {
+        field_0xE7A = 1;
+    }
+#endif
 }
 
 /* 00000BA0-00000D40       .text demoProcPatten__10daNpc_Tt_cFv */
