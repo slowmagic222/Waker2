@@ -3411,6 +3411,16 @@ static BOOL daMo2_Execute(mo2_class* i_this) {
     }
     if (i_this->m2970 != 0 || (actor->home.pos.y - actor->current.pos.y > 4000.0f)) {
         fopAcM_delete(actor);
+#if TARGET_PC
+        // Rando (wwrando flexible_enemies.asm, REL 0xAB28): a Moblin that fell far (4000 units) counts as dead
+        // too: its actor flag and its death switch are set, as for its other deaths
+        if (pc_rando_active()) {
+            fopAcM_onActor(actor);
+            if (i_this->mDeathSwitch != 0) {
+                dComIfGs_onSwitch(i_this->mDeathSwitch, fopAcM_GetRoomNo(actor));
+            }
+        }
+#endif
         return TRUE;
     }
     if (i_this->m2A4A != 0) {

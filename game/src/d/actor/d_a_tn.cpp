@@ -21,6 +21,9 @@
 #include "d/d_material.h"
 #include "res/Object/Tn.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 enum Action {
     ACTION_JYUNKAI = 0,
@@ -3460,6 +3463,16 @@ static BOOL daTn_Execute(tn_class* i_this) {
     }
     if (actor->home.pos.y - actor->current.pos.y > 4000.0f) {
         fopAcM_delete(actor);
+#if TARGET_PC
+        // Rando (wwrando flexible_enemies.asm, REL 0xB17C): a Darknut that fell far (4000 units) counts as dead
+        // too: its actor flag and its death switch are set, as for its other deaths
+        if (pc_rando_active()) {
+            fopAcM_onActor(actor);
+            if (i_this->mDisableSpawnOnDeathSwitch != 0) {
+                dComIfGs_onSwitch(i_this->mDisableSpawnOnDeathSwitch, fopAcM_GetRoomNo(actor));
+            }
+        }
+#endif
         return TRUE;
     }
     u8 r25 = 0;

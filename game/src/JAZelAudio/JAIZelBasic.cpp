@@ -25,8 +25,13 @@
 #define COS_RANDO_OUTSET_PIRATES()                                                                         \
     (pc_rando_active() ? (g_dComIfG_gameInfo.save.getSavedata().getSave(13).getBit().isTbox(5) ? TRUE : FALSE) \
                        : checkEventBit(0xE20))
+// Rando (wwrando remove_music.asm, 0x802A34A4, 0x802A4EB8, 0x802A47B8, 0x802A33D0): with the option, the
+// functions that start music return at once (background and boss music, battle music, miniboss music and
+// item jingles, the boss defeat fanfare); puzzle jingles are sound effects and stay
+#define COS_RANDO_NO_MUSIC() pc_rando_option(PC_RANDO_REMOVE_MUSIC)
 #else
 #define COS_RANDO_OUTSET_PIRATES() checkEventBit(0xE20)
+#define COS_RANDO_NO_MUSIC() FALSE
 #endif
 
 JAIZelBasic* JAIZelBasic::zel_basic;
@@ -736,6 +741,9 @@ void JAIZelBasic::bgmStreamPrepare(u32 soundID) {
 
 /* 802A33D0-802A34A4       .text bgmStreamPlay__11JAIZelBasicFv */
 void JAIZelBasic::bgmStreamPlay() {
+    if (COS_RANDO_NO_MUSIC()) {
+        return;
+    }
     OSReport("[JAIZelBasic::bgmStreamPlay] \n");
     if (field_0x0063) {
         return;
@@ -766,6 +774,9 @@ void JAIZelBasic::bgmStreamPlay() {
 
 /* 802A34A4-802A4658       .text bgmStart__11JAIZelBasicFUlUll */
 void JAIZelBasic::bgmStart(u32 i_bgmNum, u32 i_fadeTime, s32 param_3) {
+    if (COS_RANDO_NO_MUSIC()) {
+        return;
+    }
     field_0x00be = 0;
     if (field_0x0063 != 0) {
         return;
@@ -1239,6 +1250,9 @@ void JAIZelBasic::mainBgmStopOnly(u32 param_1) {
 
 /* 802A47B8-802A4CDC       .text subBgmStart__11JAIZelBasicFUl */
 void JAIZelBasic::subBgmStart(u32 i_bgmNum) {
+    if (COS_RANDO_NO_MUSIC()) {
+        return;
+    }
     field_0x00be = 0;
     if (field_0x0063 != 0) {
         return;
@@ -1423,6 +1437,9 @@ void JAIZelBasic::subBgmStopInner() {
 #pragma push
 #pragma opt_common_subs off
 void JAIZelBasic::bgmNowBattle(f32 i_dist) {
+    if (COS_RANDO_NO_MUSIC()) {
+        return;
+    }
     if (field_0x0063 != 0) {
         return;
     }

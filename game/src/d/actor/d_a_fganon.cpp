@@ -1477,9 +1477,19 @@ void damage_check(fganon_class* i_this) {
                     pPos = i_this->mCyl.GetTgHitPosP();
                     atInfo.pParticlePos = pPos;
                     atInfo.mpActor = at_power_check(&atInfo);
+#if TARGET_PC
+                    // Rando (wwrando swordless.asm, REL 0x5EE0, 0x5EF0): in swordless, the Skull Hammer hurts Phantom
+                    // Ganon instead of the Master Sword
+                    const BOOL randoSwordless = pc_rando_option(PC_RANDO_SWORDLESS);
+                    if ((atInfo.mpObj != NULL) && (randoSwordless ? atInfo.mpObj->ChkAtType(AT_TYPE_SKULL_HAMMER) :
+                         (atInfo.mpObj->ChkAtType(AT_TYPE_SWORD) && (dComIfGs_getSelectEquip(0) == dItemNo_MASTER_SWORD_1_e ||
+                                                                     dComIfGs_getSelectEquip(0) == dItemNo_MASTER_SWORD_3_e ||
+                                                                     dComIfGs_getSelectEquip(0) == dItemNo_MASTER_SWORD_2_e)))) {
+#else
                     if((atInfo.mpObj != NULL) && (atInfo.mpObj->ChkAtType(AT_TYPE_SWORD)) && (dComIfGs_getSelectEquip(0) == dItemNo_MASTER_SWORD_1_e ||
                                                                                               dComIfGs_getSelectEquip(0) == dItemNo_MASTER_SWORD_3_e ||
                                                                                               dComIfGs_getSelectEquip(0) == dItemNo_MASTER_SWORD_2_e)) {
+#endif
                         atInfo.mpActor = cc_at_check(a_this, &atInfo);
                         if (atInfo.mbDead) {
                             dComIfGp_particle_set(dPa_name::ID_AK_JN_CRITICALHITFLASH, &a_this->eyePos, NULL);
