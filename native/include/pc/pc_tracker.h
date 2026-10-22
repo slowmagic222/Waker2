@@ -8,7 +8,7 @@
  * Wind Waker client (native/tools/gen_tracker_tables.py, pc_tracker_tables.inc).
  *
  * COS_TRACKER_SERVER=1       serves that state as JSON over HTTP (GET /state) on port 6544, for the
- *                            tracker's autotracking (tools/tracker/); a number other than 1 is the port
+ *                            tracker's autotracking (scripts/tracker/); a number other than 1 is the port
  * COS_TRACKER_BIND=<ipv4>    the address it listens on: 127.0.0.1 by default, 0.0.0.0 on the Switch
  *                            (the tracker runs on another machine)
  * COS_TRACKER_WEB=<dir>      also serves the files of <dir> (the patched tracker's build,
