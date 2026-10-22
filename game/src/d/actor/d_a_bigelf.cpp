@@ -214,7 +214,13 @@ BOOL daBigelf_c::demoProcFlDelete() {
             dComIfGp_evmng_cutEnd(mStaffId);
             if (chkFlag(0x1)) {
                 clrFlag(0x1);
+#if TARGET_PC
+                // Rando (wwrando flexible_item_locations.asm): the Big Octo fairy's item is the seed's
+                // (stage event data), so she no longer doubles the magic meter herself
+                if (getType() == 6 && !pc_rando_active()) {
+#else
                 if (getType() == 6) {
+#endif
                     dComIfGp_setItemMaxMagicCount(0x20);
                     dComIfGp_setItemMagicCount(0x20);
                 }

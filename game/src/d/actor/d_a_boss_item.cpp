@@ -8,6 +8,9 @@
 #include "f_op/f_op_actor.h"
 #include "f_op/f_op_actor_mng.h"
 #include "d/d_com_inf_game.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 00000078-00000080       .text daBossItem_IsDelete__FP14bossitem_class */
 static BOOL daBossItem_IsDelete(bossitem_class* i_this) {
@@ -32,7 +35,13 @@ static cPhs_State daBossItem_Create(fopAc_ac_c* i_this) {
 
     if (isStageBossDead && !dComIfGs_isStageLife(stageNo)) {
         fopAcM_createItemForBoss(
+#if TARGET_PC
+            // Rando: the seed writes the boss's item into this actor's params (mask 0000FF00) in the
+            // stage data (wwrando: daBossItem_Create reads it as the item)
+            &i_this->current.pos, pc_rando_active() ? (fopAcM_GetParam(i_this) >> 8) & 0xFF : 1, fopAcM_GetRoomNo(i_this),
+#else
             &i_this->current.pos, 1, fopAcM_GetRoomNo(i_this),
+#endif
             &i_this->current.angle, NULL, 1
         );
     }

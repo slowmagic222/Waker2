@@ -27,6 +27,9 @@
 #include "JSystem/JKernel/JKRSolidHeap.h"
 #include "JSystem/JUtility/JUTAssert.h"
 #include "SSystem/SComponent/c_malloc.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 #define MAKE_ITEM_PARAMS(itemNo, itemBitNo, switchNo2, type, action)                               \
     ((itemNo & 0xFF) << 0 | (itemBitNo & 0xFF) << 8 | (switchNo2 & 0xFF) << 16 | (type & 0x3) << 24 | (action & 0x3F) << 26)
@@ -972,6 +975,16 @@ fpc_ProcID fopAcM_createDemoItem(cXyz* pos, int i_itemNo, int i_itemBitNo, csXyz
 
 /* 80026A68-80026ADC       .text fopAcM_createItemForBoss__FP4cXyziiP5csXyzP4cXyzi */
 fpc_ProcID fopAcM_createItemForBoss(cXyz* pos, int unused, int roomNo, csXyz* angle, cXyz* scale, int param_6) {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm): the six bosses give different items, so
+    // the item is the second argument (the boss's, the disappear cloud's or the boss item's, all
+    // reading the seed), not always a Heart Container. Item flag 0x15 (unused in dungeons) keeps it
+    // from being taken again, since item_func_utuwa_heart no longer sets the boss item flag
+    if (pc_rando_active()) {
+        return fopAcM_createItem(pos, unused, 0x15, roomNo, daItemType_3_e, angle,
+                                 param_6 == 1 ? daItemAct_BOSS_e : daItemAct_BOSS_DISAPPEAR_e, scale);
+    }
+#endif
     switch (param_6) {
     case 1:
         return fopAcM_createItem(pos, dItemNo_HEART_CONTAINER_e, -1, roomNo, daItemType_3_e, angle, daItemAct_BOSS_e, scale);
@@ -1312,8 +1325,13 @@ fopAc_ac_c* fopAcM_myRoomSearchEnemy(s8 roomNo) {
 }
 
 /* 80027A9C-80027B24       .text fopAcM_createDisappear__FP10fopAc_ac_cP4cXyzUcUcUc */
+#if TARGET_PC
+fpc_ProcID fopAcM_createDisappear(fopAc_ac_c* i_actor, cXyz* p_pos, u8 i_scale, u8 i_dropType, u8 i_itemBitNo, u8 i_bossItemNo) {
+    u32 params = (u32)i_bossItemNo << 24 | (i_itemBitNo & 0xFF) << 16 | (i_scale & 0xFF) << 8 | (i_dropType & 0xFF) << 0;
+#else
 fpc_ProcID fopAcM_createDisappear(fopAc_ac_c* i_actor, cXyz* p_pos, u8 i_scale, u8 i_dropType, u8 i_itemBitNo) {
     u32 params = (i_itemBitNo & 0xFF) << 16 | (i_scale & 0xFF) << 8 | (i_dropType & 0xFF) << 0;
+#endif
 #if VERSION == VERSION_DEMO
     fopAc_ac_c* disappear = (fopAc_ac_c*)fopAcM_fastCreate(fpcNm_DISAPPEAR_e, params, p_pos, fopAcM_GetRoomNo(i_actor));
 #else

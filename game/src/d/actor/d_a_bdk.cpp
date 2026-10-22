@@ -22,6 +22,9 @@
 #include "m_Do/m_Do_ext.h"
 #include "m_Do/m_Do_hostIO.h"
 #include "m_Do/m_Do_graphic.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 enum ActionStatus {
     ACTION_FLY = 0,
@@ -1962,7 +1965,12 @@ static void end(bdk_class* i_this) {
 #if VERSION > VERSION_DEMO
                 actor->current.angle.y = 0x4000;
 #endif
+#if TARGET_PC
+                // Rando (pc_rando.h): "Forsaken Fortress - Helmaroc King Heart Container" rels/d_a_bdk.rel@5CCE
+                fopAcM_createDisappear(actor, &i_this->m2CC, 0x32, 2, 0xFF, pc_rando_rel_item("d_a_bdk", 0x5CCE, dItemNo_HEART_CONTAINER_e));
+#else
                 fopAcM_createDisappear(actor, &i_this->m2CC, 0x32, 2);
+#endif
                 mDoAud_seStart(JA_SE_CM_DK_DIE_EXPLODE, &i_this->m2CC, 0x0, dComIfGp_getReverb(fopAcM_GetRoomNo(actor)));
                 i_this->m2EC[0] = 0x1E;
 

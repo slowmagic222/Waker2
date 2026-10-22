@@ -601,6 +601,13 @@ void item_func_utuwa_heart() {
     dComIfGp_setItemMaxLifeCount(4);
     dComIfGp_setItemLifeCount(dComIfGs_getMaxLife());
     
+#if TARGET_PC
+    // Rando (wwrando flexible_item_locations.asm): a Heart Container found elsewhere in a dungeon must not
+    // mark the boss's item as taken; the boss's item keeps track with its item flag (createItemForBoss)
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
 #if VERSION == VERSION_DEMO
     dComIfGs_onStageLife();
 #else
@@ -1447,6 +1454,13 @@ void item_func_magic_power() {
 /* 800C4D0C-800C4D24       .text item_func_max_mp_up1__Fv */
 void item_func_max_mp_up1() {
     dComIfGp_setItemMaxMagicCount(32);
+#if TARGET_PC
+    // Rando (wwrando flexible_item_locations.asm): the Great Fairy refilled the meter in the original game;
+    // the upgrade can now come from anywhere, so it refills it itself
+    if (pc_rando_active()) {
+        dComIfGp_setItemMagicCount(32);
+    }
+#endif
 }
 
 /* 800C4D24-800C4D3C       .text item_func_tincle_rupee1__Fv */

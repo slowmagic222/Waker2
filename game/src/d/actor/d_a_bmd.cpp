@@ -17,6 +17,9 @@
 #include "f_op/f_op_camera.h"
 #include "JSystem/JUtility/JUTReport.h"
 #include "m_Do/m_Do_graphic.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daBmd_HIO_c : public JORReflexible {
 public:
@@ -744,7 +747,12 @@ void core_move(bmd_class* i_this) {
         if (i_this->mpHeadDeadMorf->isStop()) {
             local_58 = i_this->m924;
             local_58.y += REG0_F(2) + 80.0f;
+#if TARGET_PC
+            // Rando (pc_rando.h): "Forbidden Woods - Kalle Demos Heart Container" rels/d_a_bmd.rel@2B2E
+            fopAcM_createDisappear(actor, &local_58, 15, daDisItem_HEART_CONTAINER_e, 0xFF, pc_rando_rel_item("d_a_bmd", 0x2B2E, dItemNo_HEART_CONTAINER_e));
+#else
             fopAcM_createDisappear(actor, &local_58, 15, daDisItem_HEART_CONTAINER_e);
+#endif
             i_this->m306 = 0x6e;
             i_this->m308[2] = 0xaa;
         }
