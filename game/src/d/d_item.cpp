@@ -10,6 +10,7 @@
 #include "d/d_item_data.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/pc_rando.h"
 #endif
 
 typedef void (ItemGetFunc)();
@@ -535,6 +536,14 @@ ItemGetCheckFunc* item_getcheck_func_ptr[0x100] = {
 
 /* 800C2DFC-800C2E30       .text execItemGet__FUc */
 void execItemGet(u8 itemNo) {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando hurricane_spin_item_func): the Hurricane Spin item sets event bit 6901
+    // (unused in the original game), which then lets the player use it (procCutTurnMove_init), apart
+    // from the event where Orca teaches it
+    if (itemNo == dItemNo_HURRICANE_SPIN_e && pc_rando_active()) {
+        dComIfGs_onEventBit(0x6901);
+    }
+#endif
     item_func_ptr[itemNo]();
 }
 

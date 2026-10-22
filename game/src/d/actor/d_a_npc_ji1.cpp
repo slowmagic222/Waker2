@@ -14,6 +14,9 @@
 #include "d/d_snap.h"
 #include "d/d_lib.h"
 #include "f_op/f_op_msg.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static BOOL daNpc_Ji1_setHairAngle(daNpc_Ji1_c*);
 
@@ -1502,7 +1505,13 @@ void daNpc_Ji1_c::createItem() {
         itemNo = dItemNo_SWORD_e;
     }
     else if(field_0xD7B == 1) {
+#if TARGET_PC
+        // Rando (pc_rando.h): wwrando's "Outset Island - Orca - Give 10 Knight's Crests"
+        // (rels/d_a_npc_ji1.rel@4267)
+        itemNo = pc_rando_rel_item("d_a_npc_ji1", 0x4267, dItemNo_HURRICANE_SPIN_e);
+#else
         itemNo = dItemNo_HURRICANE_SPIN_e;
+#endif
     }
     else if(dComIfGs_getEventReg(dSv_event_flag_c::UNK_D003) == 1) {
         itemNo = dItemNo_PURPLE_RUPEE_e;
@@ -1514,7 +1523,12 @@ void daNpc_Ji1_c::createItem() {
         itemNo = dItemNo_SILVER_RUPEE_e;
     }
     else {
+#if TARGET_PC
+        // Rando: "Outset Island - Orca - Hit 500 Times" (rels/d_a_npc_ji1.rel@42F7)
+        itemNo = pc_rando_rel_item("d_a_npc_ji1", 0x42F7, dItemNo_HEART_PIECE_e);
+#else
         itemNo = dItemNo_HEART_PIECE_e;
+#endif
         dComIfGs_onEventBit(dSv_event_flag_c::UNK_0F10);
     }
 
