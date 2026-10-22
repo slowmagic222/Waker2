@@ -57,11 +57,12 @@ int pc_qol(PcQol which) {
         }
     }
     // Rando: wwrando always applies these patches (remove_cutscenes.asm: the intro, song replays and the Ballad
-    // of Gales warp cutscene; tingle_chests_without_tuner.asm; fix_vanilla_bugs.asm), so a seed plays with
+    // of Gales warp cutscene; tingle_chests_without_tuner.asm; fix_vanilla_bugs.asm; misc_rando_features.asm's
+    // turning while swinging on a rope), so a seed plays with
     // the matching options on whatever the menu says
     if (o.value == 0 && pc_rando_active() &&
         (which == PC_QOL_SKIP_INTRO || which == PC_QOL_NO_SONG_REPLAY || which == PC_QOL_FAST_BALLAD ||
-         which == PC_QOL_TINGLE_CHESTS || which == PC_QOL_FIX_BUGS)) {
+         which == PC_QOL_TINGLE_CHESTS || which == PC_QOL_FIX_BUGS || which == PC_QOL_SWING_TURN)) {
         return 1;
     }
     return o.value;

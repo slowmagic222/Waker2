@@ -88,7 +88,13 @@ int daPy_lk_c::setShapeFanLeaf() {
     m355C = m355C + 0x82F;
     m3558 = 0x600 * cM_ssin(m355C);
     m355A = 0x800 * cM_ssin(m355C - 0xE00);
+#if TARGET_PC
+    // Rando (wwrando misc_rando_features.asm, 0x8014BDF8): the Deku Leaf fans a gust with no magic too, so it
+    // is of use without a magic meter (and Horseshoe Island's golf needs only the fan)
+    if (pc_rando_active() || dComIfGs_getMagic() >= 1) {
+#else
     if (dComIfGs_getMagic() >= 1) {
+#endif
         // Show material:
         // * "leafAMat"
         for (; mtl != NULL; mtl = mtl->getNext()) {

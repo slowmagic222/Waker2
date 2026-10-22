@@ -13,6 +13,9 @@
 #include "m_Do/m_Do_mtx.h"
 #include "m_Do/m_Do_Reset.h"
 #include "JSystem/J2DGraph/J2DOrthoGraph.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 8018E1CC-8018E4B4       .text draw__24dDlst_Gameover_CAPTURE_cFv */
 void dDlst_Gameover_CAPTURE_c::draw() {
@@ -120,6 +123,13 @@ BOOL dGameover_c::_execute() {
 #else
         if (dMs_c->_open()) {
             mState = 4;
+#if TARGET_PC
+            // Rando (wwrando misc_rando_features.asm, 0x8018E7D0): a seed can start with fewer than 3 hearts, so
+            // continuing gives 3 hearts or the full hearts of the max, whichever is less
+            if (pc_rando_active() && (dComIfGs_getMaxLife() & ~3) < 12) {
+                dComIfGs_setLife(dComIfGs_getMaxLife() & ~3);
+            } else
+#endif
             dComIfGs_setLife(12);
         }
 #endif

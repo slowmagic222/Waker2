@@ -23,6 +23,9 @@
 #if VERSION <= VERSION_JPN
 #include "d/d_s_play.h"
 #endif
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 STControl stick;
 
@@ -3676,6 +3679,26 @@ void fopMsgM_msgDataProc_c::stringSet() {
         }
 
         if (bmgData[count] == 0x1A) {
+#if TARGET_PC
+            // Rando (wwrando misc_rando_features.asm, 0x80033E74 check_run_new_text_commands): the key bag's
+            // text commands 0x4B-0x4F (group 0) print the small keys held for DRC, FW, TotG, ET or WT, then
+            // " +Big" with that dungeon's big key, else blanks so the column keeps its place
+            if (pc_rando_active() && (u8)bmgData[count + 2] == 0 && (u8)bmgData[count + 3] == 0 &&
+                (u8)bmgData[count + 4] >= 0x4B && (u8)bmgData[count + 4] <= 0x4F)
+            {
+                int stageNo = (u8)bmgData[count + 4] - 0x48;
+                dSv_memBit_c& bit = g_dComIfG_gameInfo.save.getDan().mStageNo == stageNo
+                                        ? g_dComIfG_gameInfo.save.getMemory().getBit()
+                                        : g_dComIfG_gameInfo.save.getSavedata().getSave(stageNo).getBit();
+                char keys[32];
+                fopMsgM_int_to_char(keys, bit.getKeyNum(), false);
+                strcat(keys, bit.isDungeonItemBossKey() ? " +Big" : "     ");
+                strcat(field_0x60, keys);
+                strcat(field_0x68, keys);
+                count += 5;
+                continue;
+            }
+#endif
             if ((u8)bmgData[count + 2] == 0xFF && (u8)bmgData[count + 3] == 0 && (u8)bmgData[count + 4] == MsgSpclCode_COLOR) {
 #if VERSION > VERSION_JPN
                 if (mesgEntry->mMsgNo == 0x42 || mesgEntry->mMsgNo == 0x43 || mesgEntry->mMsgNo == 0x44 || mesgEntry->mMsgNo == 0x45 ||
