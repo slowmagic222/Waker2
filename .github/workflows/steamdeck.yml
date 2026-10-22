@@ -7,6 +7,8 @@
 #   waker2/waker2.sh                    launcher: COS_DISC / COS_RANDO_DISC from the .isos next to it
 #   waker2/initial_pipeline_cache.db    the pipeline list (as in the Switch download)
 #   waker2/tracker-logic/               the tracker's logic and art for the tracker screen in the game
+#   waker2/seedgen/                     the in-game seed generator: Python 3.12 + wwrando
+#                                       (scripts/seedgen/bundle.sh, docs/SEEDGEN.md)
 #                                       (L3+R3, docs/TRACKER.md)
 # Steps for the Deck: docs/STEAM_DECK.md.
 #
@@ -23,6 +25,8 @@ on:
       - 'scripts/steamdeck/**'
       - 'scripts/tracker/**'
       - 'native/src/pc/features/pc_tracker*'
+      - 'scripts/seedgen/**'
+      - 'native/src/pc/features/pc_seedgen*'
       - 'native/cmake/quickjs.cmake'
 
 permissions:
@@ -95,12 +99,15 @@ jobs:
           cp -R out/tracker-logic out/waker2/tracker-logic
           chmod +x out/waker2/switchwaker out/waker2/waker2.sh
           strip out/waker2/switchwaker || true
+          # The in-game seed generator (docs/SEEDGEN.md): Python 3.12 + wwrando, about 190 MB.
+          scripts/seedgen/bundle.sh out/waker2/seedgen build/seedgen-work
           tar -C out -czf "out/waker2-steamdeck-$sha.tar.gz" waker2
           echo "NAME=waker2-steamdeck-$sha" >> "$GITHUB_ENV"
           ls -la out out/waker2
       - name: Check nothing from the disc is in the package
         run: |
-          if tar -tzf "out/$NAME.tar.gz" | grep -Ei '\.(iso|gcm|rvz|dol|rel|gci)$'; then exit 1; fi
+          # (wwrando's own two custom actor RELs, seedgen/wwrando/asm/*.rel, are its code, not the game's)
+          if tar -tzf "out/$NAME.tar.gz" | grep -v '^waker2/seedgen/wwrando/asm/' | grep -Ei '\.(iso|gcm|rvz|dol|rel|gci)$'; then exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }}
