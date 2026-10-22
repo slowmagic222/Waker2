@@ -17,7 +17,10 @@
  * The overlay: L3+R3 (both sticks pressed together) or F2 shows the tracker over the game, a second press
  * its locations page, a third hides it. Nothing to turn on.
  *
- * The server is off by default. The state is built only while something reads it (the server, the overlay).
+ * The server is off by default. The state is built only while something reads it (the server, the overlay),
+ * or with a randomizer disc, whose progress is also kept on disk so a crash does not lose it:
+ * <user dir>/tracker/<disc file>-<size>-file<N>.txt (COS_TRACKER_SAVE_DIR=<dir> elsewhere). A location or
+ * item once seen stays in the state even if the save in memory loses it.
  */
 #ifndef PC_TRACKER_H
 #define PC_TRACKER_H
@@ -56,6 +59,7 @@ struct Snapshot {
     std::vector<NamedCount> smallKeysHeld;
     std::vector<Area> areas;
     int salvaged = 0; // sunken treasures (charts salvaged), of 49
+    int keptOnly = 0; // checks kept on disk that the save in memory does not have (a crash, an older save)
 };
 const Snapshot& snapshot();
 // pc_tracker_overlay.cpp: the overlay is on screen (the state is then built even without the server)

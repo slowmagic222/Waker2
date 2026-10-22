@@ -233,6 +233,9 @@ extern "C" void pc_tracker_overlay_frame(void) {
         ImGui::TextColored(kAccent, "Tracker  %d/%d checks  +%d/49 sunken", checked, total, s.salvaged);
         ImGui::SameLine();
         label(kDim, sPage == ITEMS ? "  (L3+R3 / F2: locations)" : "  (L3+R3 / F2: hide)");
+        if (s.keptOnly > 0) {
+            ImGui::TextColored(kDim, "%d of them kept from before a crash or an older save: not in this save", s.keptOnly);
+        }
         ImGui::Separator();
         if (sPage == ITEMS) {
             drawItems(s);
