@@ -24,9 +24,10 @@
 #include "pc/pc_rando.h"
 #include "d/d_item.h"
 
-// Rando (pc_rando.h): the new-game settings wwrando writes into main.dol (its custom_symbols at the
-// pinned version), from num_triforce_shards_to_start_with (0x803FDC70) to option_targeting_mode
-// (0x803FDCD0). With no randomizer disc, or no such bytes, wwrando's defaults.
+// Rando (pc_rando.h): the new-game settings wwrando writes into main.dol (its custom_symbols), from
+// num_triforce_shards_to_start_with to option_targeting_mode: at 0x803FDC70 at 9775811, at 0x803FDC2C with a
+// shorter starting gear list and no targeting option in 1.10.0. With no randomizer disc, or no such bytes,
+// wwrando's defaults.
 struct dSv_randoSettings {
     u8 triforceShards;
     u8 swordMode; // 0: start with a sword, 1: randomized sword, 2: swordless
@@ -40,17 +41,21 @@ struct dSv_randoSettings {
 
 static dSv_randoSettings dSv_randoGetSettings() {
     dSv_randoSettings s = {0, 0, 1, {0xFF}, 12, 16, 0x04, 0};
-    const u8* p = pc_rando_dol_bytes(0x803FDC70, 0x61);
+    const bool v1_10 = pc_rando_version() == PC_RANDO_VERSION_1_10_0;
+    // the offset of starting_quarter_hearts; the starting gear list is before it
+    const u32 hearts = v1_10 ? 0x4C : 0x5C;
+    const u8* p = pc_rando_dol_bytes(v1_10 ? 0x803FDC2C : 0x803FDC70, v1_10 ? 0x50 : 0x61);
     if (p != NULL) {
         s.triforceShards = p[0x00];
         s.swordMode = p[0x02];
         s.skipRematchBosses = p[0x03];
-        memcpy(s.startingGear, p + 0x04, sizeof(s.startingGear));
-        s.startingGear[sizeof(s.startingGear) - 1] = 0xFF;
-        s.quarterHearts = (u16)((p[0x5C] << 8) | p[0x5D]);
-        s.magic = p[0x5E];
-        s.prologuePigs = p[0x5F];
-        s.targetingMode = p[0x60];
+        const u32 gear = hearts - 0x04 < sizeof(s.startingGear) ? hearts - 0x04 : sizeof(s.startingGear);
+        memcpy(s.startingGear, p + 0x04, gear);
+        s.startingGear[gear - 1] = 0xFF;
+        s.quarterHearts = (u16)((p[hearts] << 8) | p[hearts + 1]);
+        s.magic = p[hearts + 2];
+        s.prologuePigs = p[hearts + 3];
+        s.targetingMode = v1_10 ? 0 : p[0x60];
     }
     return s;
 }
