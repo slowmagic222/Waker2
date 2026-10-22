@@ -65,6 +65,13 @@ int pc_qol(PcQol which) {
          which == PC_QOL_TINGLE_CHESTS || which == PC_QOL_FIX_BUGS || which == PC_QOL_SWING_TURN)) {
         return 1;
     }
+    // Rando: the seed's options reveal_sea_chart.asm and swift_sail.asm, the same as these two options
+    if (o.value == 0 && which == PC_QOL_REVEAL_CHART && pc_rando_option(PC_RANDO_REVEAL_CHART)) {
+        return 1;
+    }
+    if (which == PC_QOL_SAIL && o.value != PC_QOL_SAIL_SWIFT && pc_rando_option(PC_RANDO_SWIFT_SAIL)) {
+        return PC_QOL_SAIL_SWIFT;
+    }
     return o.value;
 }
 

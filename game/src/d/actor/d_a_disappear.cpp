@@ -44,7 +44,16 @@ static BOOL daDisappear_Execute(disappear_class* i_this) {
                         dItemNo_ARROW_10_e,
                     };
                     if (dropType < daDisItem_HEART_e + ARRAY_SSIZE(ki_item_d)) {
+#if TARGET_PC
+                        // Rando (wwrando hero_mode.asm, 0x8038B0C0): with hero mode, the heart is a green rupee
+                        u32 itemNo = ki_item_d[dropType - daDisItem_HEART_e];
+                        if (itemNo == dItemNo_HEART_e && pc_rando_option(PC_RANDO_HERO_MODE)) {
+                            itemNo = dItemNo_GREEN_RUPEE_e;
+                        }
+                        fopAcM_createItem(&i_this->current.pos, itemNo, -1, -1, daItemType_0_e, NULL, daItemAct_4_e);
+#else
                         fopAcM_createItem(&i_this->current.pos, ki_item_d[dropType - daDisItem_HEART_e], -1, -1, daItemType_0_e, NULL, daItemAct_4_e);
+#endif
                     }
                 }
                 else {

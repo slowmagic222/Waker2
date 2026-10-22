@@ -41,6 +41,7 @@
 #include "d/actor/d_a_ship.h"
 #if TARGET_PC
 #include "pc/pc_controls.h"
+#include "pc/pc_rando.h"
 
 // The C stick as the camera reads it (mStickCPos*Last; nothing else in the camera reads the C
 // stick's position). On PC the options can invert either axis (pc_controls.h); only the camera:
@@ -48,7 +49,9 @@
 // and the figure viewer read the C stick themselves and keep its real directions. Every
 // CPad_GET_SUBSTICK_POS_X/Y below this point reads through these.
 static inline f32 dCamera_cStickX(int padId) {
-    if (pc_camera_invert_x()) {
+    // Rando (wwrando invert_camera_x_axis.asm, 0x80162488): a seed with the option inverts the X axis
+    // too (inverted once, whether the options also invert it or not)
+    if (pc_camera_invert_x() || pc_rando_option(PC_RANDO_INVERT_CAMERA)) {
         return -CPad_GET_SUBSTICK_POS_X(padId);
     }
     return CPad_GET_SUBSTICK_POS_X(padId);

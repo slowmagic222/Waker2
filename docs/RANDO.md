@@ -1,8 +1,9 @@
 # Wind Waker Randomizer seeds (rando mode)
 
-Status: **steps 1 to 4 of the plan below** (written 2026-10-22). The port opens a randomizer's output disc,
-gives the 73 code-given items, has the code a seed needs to be completable, and redoes the progressive items,
-removed cutscenes and the randomizer's own features. Nothing has run with a real seed yet: see "What works".
+Status: **steps 1 to 5 of the plan below** (written 2026-10-22). The port opens a randomizer's output disc,
+gives the 73 code-given items, has the code a seed needs to be completable, redoes the progressive items,
+removed cutscenes and the randomizer's own features, and follows the seed's options. Nothing has run with a
+real seed yet: see "What works".
 
 ## The idea
 
@@ -49,8 +50,9 @@ seed to play (docs/SEEDGEN.md).
   `CleanDisc` against a made-up disc image; **not yet run with a real seed**).
 - Items given by code (step 2, below).
 - What a seed needs to be completable (step 3, below).
-- Progressive items, removed cutscenes, the randomizer's features (step 4, below). Not yet: the optional
-  settings (step 5: swordless, hero mode, trap chests, starting clothes, custom colors, ...).
+- Progressive items, removed cutscenes, the randomizer's features (step 4, below).
+- The seed's options, and the enemy changes enemy randomization needs (step 5, below). Not redone: custom
+  player models and colors (wwrando's customizer), which come with the planned in-game seed generator.
 
 ## Items given by code (step 2)
 
@@ -59,6 +61,23 @@ byte wwrando wrote at its `logic/item_locations.txt` path from the randomizer's 
 `files/rels/`, else in `RELS.arc`), so the offsets are the randomizer's own and the hunk names them. Without
 `COS_RANDO_DISC` they return the original item. The hunks are pinned to wwrando's paths at `9775811`
 (2026-07-20); another wwrando version with other paths reads the wrong bytes.
+
+### wwrando versions
+
+Two versions are read: the **1.10.0 release** (2023-01-06, what wwrando's download page offers) and the
+development version at **9775811**. `pc_rando_version()` tells them apart by the target of the
+`bl init_save_with_tweaks` wwrando writes at 0x8005D618 (0x803FD850 in 1.10.0, 0x803FD87C at 9775811);
+`pc_disc.cpp` reads it from the image at startup and refuses any other version with a message, as reading
+another version's data gives wrong values (a 1.10.0 seed read at 9775811's addresses started with every
+Triforce shard and a garbage heart count).
+
+- The 66 code-given locations both versions have are at the same paths. 9775811 adds 5 (Kane's four gate
+  rewards, the Dragon Roost Cavern miniboss); a 1.10.0 seed has the original bytes there, so the original
+  items stay.
+- The new-game settings (`d_save.cpp dSv_randoGetSettings`) are at 0x803FDC2C in 1.10.0, with room for 70
+  starting items (86 at 9775811) and no targeting option.
+- Hero mode is 9775811 only. The behaviour hunks follow 9775811; where 1.10.0's patches differ, a 1.10.0 seed
+  plays with 9775811's behaviour.
 
 All 73 are hooked (each hunk names its wwrando location and path):
 
@@ -122,6 +141,25 @@ Not redone (cosmetic or for options): the file select's heart count of a blank f
 the Tingle Statue count on the quest screen, warp pot and Dark ChuChu colors, Aryll's outfit, the starting
 clothes, the developer-mode particle message.
 
+## Seed options (step 5)
+
+Most of wwrando's options only change data on the disc (item placement, entrances, hints, starting gear,
+instant text, the enemy placement of enemy randomization, chest textures, warp pots between dungeons), and the
+new-game settings (starting gear, sword mode, rematch bosses, targeting) were read in step 3. The options that
+patch code are found by their patch: `pc_rando_option()` (`pc_rando.h`) reads the first instruction or value
+the patch writes in the randomizer's `main.dol` or REL, so nothing has to be told which options a seed used.
+
+| Option | wwrando source | Here |
+|---|---|---|
+| Remove music | `remove_music.asm` | `JAIZelBasic::bgmStart`, `bgmNowBattle`, `subBgmStart`, `bgmStreamPlay` return at once |
+| Invert camera X axis | `invert_camera_x_axis.asm` | `d_camera.cpp`'s C stick X; inverted once, whether the options also invert it or not |
+| Invert sea compass X axis | `invert_sea_compass_x_axis.asm` | `dMeter_compassGetOnProc` |
+| Reveal full sea chart, swift sail | `reveal_sea_chart.asm`, `swift_sail.asm` | the QoL options `COS_QOL_REVEAL_CHART` and `COS_QOL_SAIL=swift` are on (`pc_qol.cpp`) |
+| Hero mode | `tweaks.py enable_hero_mode`, `hero_mode.asm` | `setDamagePoint` multiplies damage by the seed's `damage_multiplier` (4.0); hearts are rupees (`getItemNoByLife`, the Keese of Puppet Ganon's fight, Jalhalla's skulls) |
+| Swordless | `swordless.asm` | the Skull Hammer hurts Phantom Ganon (`d_a_fganon.cpp`); the Hero's Sword is lent in Ganon's Tower and Orca's house and taken back elsewhere (`d_s_play.cpp phase_4`). The barrier and Phantom Ganon's text come from step 3 and the disc |
+| Trap chests | `asm/actors/d_a_tbox.cpp` | a chest with params bit 0x40 gives no item and plays `DEFAULT_TREASURE_TRAP` (the randomizer adds it to the stage): the ice mist freezes the player and takes half a heart |
+| Enemy randomization | `flexible_enemies.asm` (applied to every seed) | ReDeads and Peahats get the "disable spawn on death" switch, Peahats the "enable spawn" switch; Moblins, Stalfos and Darknuts that fall 4000 units count as dead; rat holes count as enemies until their rats spawned. A Peahat's targeting flag is set once when its spawn switch is set, not every frame as in wwrando, so a dying Peahat stays untargetable |
+
 ## Plan
 
 1. Rando disc.
@@ -130,6 +168,8 @@ clothes, the developer-mode particle message.
    `flexible_item_locations` (what a seed needs to be completable).
 4. Progressive items, `misc_rando_features`, `remove_cutscenes`.
 5. The optional settings (swordless, hero mode, remove music, ...) and enemy randomization.
+6. Later: seed generation in a menu before the game (no computer needed), with wwrando's custom player models
+   and colors.
 
 The patch inventory (every hunk and the function it patches) and the reasoning are in the project's
 write-up; the patches already redone for the QoL options are listed in `docs/QOL_PLAN.md`.

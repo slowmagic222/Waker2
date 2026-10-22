@@ -75,6 +75,9 @@ public:
     void darkProc();
     void volmProc();
     void demoProcOpen();
+#if TARGET_PC
+    void demoProcSpringTrap();
+#endif
     void demoInitAppear_Tact();
     void demoInitAppear();
     void demoProcAppear_Tact();

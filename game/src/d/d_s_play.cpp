@@ -41,6 +41,7 @@
 #include <stdio.h>
 #if TARGET_PC
 #include "pc/pc_harness.h"
+#include "pc/pc_rando.h"
 #include "d/d_item_data.h"
 #endif
 
@@ -1417,6 +1418,20 @@ cPhs_State phase_4(dScnPly_ply_c* i_this) {
         else if (dComIfGs_isGetItem(dInvSlot_BOW_e, 0))
             dComIfGs_setItem(dInvSlot_BOW_e, dItemNo_BOW_e);
     }
+#if TARGET_PC
+    // Rando (wwrando swordless.asm, 0x80235F10, 0x8023607C, 0x80236084): in swordless, a player with no sword
+    // equipped holds the Hero's Sword for Ganondorf's fight (Ganon's Tower) and in Orca's house (for his two items);
+    // anywhere else, a player who owns no sword has that temporary sword taken away
+    if (pc_rando_option(PC_RANDO_SWORDLESS)) {
+        if (strcmp(dComIfGp_getStartStageName(), "GTower") == 0 || strcmp(dComIfGp_getStartStageName(), "Ojhous") == 0) {
+            if (dComIfGs_getSelectEquip(0) == dItemNo_NONE_e) {
+                dComIfGs_setSelectEquip(0, dItemNo_SWORD_e);
+            }
+        } else if (g_dComIfG_gameInfo.save.getPlayer().getCollect().checkCollect(0) == 0) {
+            dComIfGs_setSelectEquip(0, dItemNo_NONE_e);
+        }
+    }
+#endif
 
     if (strcmp(dComIfGp_getStartStageName(), "Xboss0") == 0 ||
         strcmp(dComIfGp_getStartStageName(), "Xboss1") == 0 ||
