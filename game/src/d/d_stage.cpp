@@ -2458,6 +2458,10 @@ void dStage_turnRestart() {
 #if VERSION > VERSION_DEMO
 /* 80043BD0-80043C84       .text dStage_escapeRestart__Fv */
 void dStage_escapeRestart() {
+#if TARGET_PC
+    fprintf(stderr, "[cos] stage: escape restart of %s (a room could not load) at frame %u\n",
+            dComIfGp_getStartStageName(), pc_frame_count());
+#endif
     daPy_lk_c* player_p = daPy_getPlayerLinkActorClass();
     dComIfGs_setTurnRestart(player_p->current.pos, player_p->shape_angle.y, fopAcM_GetRoomNo(player_p), player_p->getDayNightParamData());
 
