@@ -11,6 +11,7 @@
 #include "pc_internal.h"
 
 #include "pc/pc_game_id.h"
+#include "pc/pc_rando.h"
 
 #include <cerrno>
 #include <cstdarg>
@@ -176,6 +177,51 @@ void headerId(const unsigned char (&header)[0x20], char (&id)[7]) {
     id[6] = '\0';
 }
 
+// `n` bytes at `off` of the image at `path`
+bool readAt(const char* path, long long off, unsigned char* buf, size_t n) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+#if defined(__SWITCH__)
+    const ssize_t got = lseek(fd, (off_t)off, SEEK_SET) == (off_t)off ? read(fd, buf, n) : -1;
+#else
+    const ssize_t got = pread(fd, buf, n, (off_t)off);
+#endif
+    close(fd);
+    return got == (ssize_t)n;
+}
+
+uint32_t be32(const unsigned char* p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+}
+
+// The randomizer's version (pc_rando.h), from the word of its main.dol at kRandoVersionAddress: the DOL is at the
+// offset in the disc header's 0x420, its section table in its first 0x100 bytes. 0 if unknown or unreadable.
+int randoDiscVersion(const char* path) {
+    unsigned char word[4];
+    if (!readAt(path, 0x420, word, 4)) {
+        return 0;
+    }
+    const long long dol = be32(word);
+    unsigned char header[0x100];
+    if (!readAt(path, dol, header, sizeof header)) {
+        return 0;
+    }
+    for (int i = 0; i < 18; i++) {
+        const uint32_t off = be32(header + 4 * i), base = be32(header + 0x48 + 4 * i);
+        const uint32_t len = be32(header + 0x90 + 4 * i);
+        if (len == 0 || kRandoVersionAddress < base || kRandoVersionAddress + 4 > (uint64_t)base + len) {
+            continue;
+        }
+        if (!readAt(path, dol + off + (kRandoVersionAddress - base), word, 4)) {
+            return 0;
+        }
+        return randoVersionOf(be32(word));
+    }
+    return 0;
+}
+
 // The Wind Waker Randomizer (wwrando) writes this game ID into its output's header
 // (tweaks.update_game_name_icon_and_banners); it only randomizes the USA disc.
 constexpr char kRandoGameId[] = "GZLE99";
@@ -200,8 +246,15 @@ int checkRandoDisc() {
                     path, id, (unsigned int)header[7], kRandoGameId);
         return PC_EXIT_DISC;
     }
-    writef(STDERR_FILENO, "[cos] disc: %s %s (randomizer) revision 0, %lld bytes; the game reads its files\n",
-           path, id, size);
+    const int version = randoDiscVersion(path);
+    if (version == 0) {
+        discMessage("%s was made by a Wind Waker Randomizer version this build does not read; make the seed with "
+                    "wwrando 1.10.0 (the release) or its development version at 9775811",
+                    path);
+        return PC_EXIT_DISC;
+    }
+    writef(STDERR_FILENO, "[cos] disc: %s %s (randomizer %s) revision 0, %lld bytes; the game reads its files\n",
+           path, id, version == PC_RANDO_VERSION_1_10_0 ? "1.10.0" : "9775811", size);
     return 0;
 }
 
