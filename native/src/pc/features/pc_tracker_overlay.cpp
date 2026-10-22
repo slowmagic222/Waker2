@@ -451,6 +451,12 @@ void drawScreen() {
     } else if (!s.playing) {
         c.text("Start or load a file.", 1240, 26, kDimText, 20, 1);
     }
+    if (s.playing && s.keptOnly > 0) {
+        // progress kept on disk (pc_tracker.cpp) that this save does not have
+        char t[96];
+        snprintf(t, sizeof t, "%d checked before a crash or in a later save: kept", s.keptOnly);
+        c.text(t, 1240, 48, kDimText, 15, 1);
+    }
 
     drawItems(c, s, 40, 66);
     drawSeaChart(c, logic, 516, 66, 382, 363);

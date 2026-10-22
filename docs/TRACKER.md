@@ -77,11 +77,23 @@ What the game hands the logic, as JSON (`pc_tracker.cpp`):
  "items": {"Progressive Sword": 2, "Wind Waker": 1, "Treasure Chart 25": 1, "DRC Big Key": 0, ...},
  "smallKeysHeld": {"DRC Small Key": 1, "FW Small Key": 0, ...},
  "locations": {"Outset Island": {"Underneath Link's House": true, ...}, ...},
- "salvagedCharts": ["Treasure Chart 25"]}
+ "salvagedCharts": ["Treasure Chart 25"], "keptChecks": 0}
 ```
 
 Outside play (title, file select): `{"version": 1, "game": ..., "playing": false}`. Every item and
 location the game can tell is listed, false and 0 included; what it cannot tell is left out.
+
+## Progress kept on disk
+
+The state is read from the save in memory, so a crash (or loading an older save) used to take back every
+check made since the last save. With a randomizer disc the game also keeps what it has seen on disk, per
+seed and file slot: `user/tracker/<randomizer .iso name>-<size>-file<N>.txt` next to the game
+(`~/waker2/user/tracker/` on the Deck, `COS_TRACKER_SAVE_DIR=<dir>` elsewhere). A location checked, an item
+count reached or a chart salvaged is written as soon as it is seen, and stays in the state (the tracker screen
+and its logic) even when the save in memory no longer has it. `keptChecks` (and a line on the screen)
+counts the checks kept that the save in memory does not have: those chests are closed again in the game
+and their items are not held. Small keys held are not kept (they go down when used). Delete the file to
+start a seed's file over.
 
 ## Limits
 

@@ -22,7 +22,7 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 3. For a seed, copy the randomizer's `.iso` into the same folder. `waker2.sh` uses the first `.iso` that
    is not `GZLE01.iso` as `COS_RANDO_DISC`; keep only one seed there. Take it out to play the plain game.
 4. Try it once from Konsole: `~/waker2/waker2.sh`. If it closes at once, the output (also saved
-   as `~/waker2/waker2.log`, the last run) says why.
+   as `~/waker2/waker2.log`, the last run; the run before it is `~/waker2/waker2.prev.log`) says why.
 
 ## Add it to Steam (for Game Mode)
 
@@ -54,5 +54,6 @@ corner while you play, a third time to hide it. Works in Game Mode with nothing 
 same on a keyboard. It needs the seed's permalink next to the rando disc: the in-game seed generator writes
 `<disc> - Permalink.txt`, and wwrando's `WW Random <seed> - Non-Spoiler Log.txt` (or the spoiler log)
 works too, so copy it next to the `.iso`. Without one the screen shows items and checks but no logic.
-More in [TRACKER.md](TRACKER.md).
+With a seed, what it has seen is also kept in `~/waker2/user/tracker/`, so a crash or an older save does
+not take checks off it. More in [TRACKER.md](TRACKER.md).
 

@@ -33,6 +33,10 @@ export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
 # tracker-logic/ next to switchwaker.
 
 # The game's output also goes to waker2.log next to it (the last run), to read after a Game Mode start.
+# The run before it is kept as waker2.prev.log, so starting the game again after a crash keeps the crash.
+if [ -f "$here/waker2.log" ]; then
+    mv -f "$here/waker2.log" "$here/waker2.prev.log"
+fi
 exec > >(tee "$here/waker2.log") 2>&1
 echo "[waker2] COS_DISC=$COS_DISC"
 echo "[waker2] COS_RANDO_DISC=${COS_RANDO_DISC:-(none, plain game)}"

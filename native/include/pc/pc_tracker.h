@@ -12,7 +12,10 @@
  * a third hides it. Nothing to turn on. Which checks are in logic: the tracker's own logic, run in the
  * game (pc_tracker_logic.cpp).
  *
- * The state is built only while something reads it (a rando disc's logic, the screen).
+ * The state is built only while something reads it (the screen), or with a randomizer disc (for the
+ * logic), whose progress is also kept on disk so a crash does not lose it:
+ * <user dir>/tracker/<disc file>-<size>-file<N>.txt (COS_TRACKER_SAVE_DIR=<dir> elsewhere). A location or
+ * item once seen stays in the state even if the save in memory loses it.
  */
 #ifndef PC_TRACKER_H
 #define PC_TRACKER_H
@@ -51,6 +54,7 @@ struct Snapshot {
     std::vector<NamedCount> smallKeysHeld;
     std::vector<Area> areas;
     int salvaged = 0; // sunken treasures (charts salvaged), of 49
+    int keptOnly = 0; // checks kept on disk that the save in memory does not have (a crash, an older save)
 };
 const Snapshot& snapshot();
 

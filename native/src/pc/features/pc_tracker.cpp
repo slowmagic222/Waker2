@@ -14,6 +14,9 @@
 // untracked list, small keys used) are left to the tracker. Small keys are the ones held now: the save does
 // not count the keys used, so the tracker adds what the game's count gains. A sunken treasure is the
 // chart salvaged: the tracker's own chart mapping says which island that chart leads to.
+//
+// With a randomizer disc the state is also kept on disk, per seed and file slot (see "Progress kept on
+// disk" below): what was checked or found stays checked across a crash or a reload of an older save.
 #include "pc_internal.h"
 
 #include "pc/pc_tracker.h"
@@ -30,9 +33,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <climits>
+#include <map>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
+
+#if defined(__SWITCH__)
+#include "cos_switch.h"
+#endif
 
 namespace pc::tracker {
 
@@ -94,6 +104,181 @@ int sCurStage = -1;
 
 void* isPlayScene(void* proc, void*) {
     return fpcM_GetName(proc) == fpcNm_PLAY_SCENE_e ? proc : nullptr;
+}
+
+// Progress kept on disk. The state above is the save in memory, so a crash (or loading an older save)
+// takes back every check made since the last save. With a randomizer disc, every location checked, item
+// count reached and chart salvaged is also written to <user dir>/tracker/<disc>-<size>-file<N>.txt as
+// soon as it is seen (one line each, by the tracker's names), and the state shows the union of the two.
+// Small keys held are left out: they go down when used. The file is read again when the seed or the file
+// slot changes; delete it to start a seed's file over.
+constexpr size_t kLocationCount = sizeof(kLocations) / sizeof(kLocations[0]);
+constexpr size_t kIslandChartCount = sizeof(kIslandCharts) / sizeof(kIslandCharts[0]);
+
+struct Progress {
+    std::string key;  // the file's name, "" when nothing is kept (no randomizer disc, no file loaded)
+    std::string path;
+    std::vector<bool> locations = std::vector<bool>(kLocationCount);
+    std::map<std::string, int> items;
+    std::vector<bool> salvaged = std::vector<bool>(kIslandChartCount);
+    bool dirty = false;
+};
+Progress sProgress;
+
+std::string progressDir() {
+    if (const char* d = getenv("COS_TRACKER_SAVE_DIR"); d != nullptr && d[0] != '\0') {
+        return d;
+    }
+#if defined(__SWITCH__)
+    return COS_SWITCH_ROOT "/user/tracker";
+#else
+    // next to the options menu's user/settings.ini (pc_settings.cpp)
+    char exe[PATH_MAX] = {};
+    pc::executablePath(exe, sizeof(exe));
+    char real[PATH_MAX];
+    std::string dir = ".";
+    if (exe[0] != '\0') {
+        const char* path = realpath(exe, real) != nullptr ? real : exe;
+        const char* slash = strrchr(path, '/');
+        if (slash != nullptr) {
+            dir.assign(path, (size_t)(slash - path));
+        }
+    }
+    return dir + "/user/tracker";
+#endif
+}
+
+// The randomizer disc's file name (wwrando names it after the seed) and size, and the file slot
+std::string progressKey() {
+    if (gConfig.randoDisc == nullptr) {
+        return "";
+    }
+    static std::string sDisc; // the disc's part, worked out once
+    if (sDisc.empty()) {
+        const char* base = strrchr(gConfig.randoDisc, '/');
+        base = base != nullptr ? base + 1 : gConfig.randoDisc;
+        for (const char* c = base; *c != '\0'; c++) {
+            const bool plain = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') ||
+                               *c == '-' || *c == '_' || *c == '.';
+            sDisc += plain ? *c : '_';
+        }
+        struct stat st = {};
+        if (stat(gConfig.randoDisc, &st) == 0) {
+            sDisc += "-" + std::to_string((long long)st.st_size);
+        }
+    }
+    return sDisc + "-file" + std::to_string(dComIfGs_getDataNum());
+}
+
+bool readLine(FILE* f, std::string& out) {
+    out.clear();
+    char buf[512];
+    bool any = false;
+    while (fgets(buf, sizeof(buf), f) != nullptr) {
+        any = true;
+        out += buf;
+        if (out.back() == '\n') {
+            break;
+        }
+    }
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) {
+        out.pop_back();
+    }
+    return any;
+}
+
+// "L\t<general>\t<detailed>", "I\t<item>\t<count>", "C\t<chart>"
+void loadProgress(const std::string& key) {
+    sProgress = Progress{};
+    sProgress.key = key;
+    if (key.empty()) {
+        return;
+    }
+    const std::string dir = progressDir();
+    mkdir(dir.c_str(), 0755);
+    sProgress.path = dir + "/" + key + ".txt";
+    FILE* f = fopen(sProgress.path.c_str(), "r");
+    if (f == nullptr) {
+        return;
+    }
+    int n = 0;
+    std::string line;
+    while (readLine(f, line)) {
+        const size_t t1 = line.find('\t');
+        if (t1 != 1) {
+            continue;
+        }
+        const size_t t2 = line.find('\t', 2);
+        const std::string a = line.substr(2, t2 == std::string::npos ? std::string::npos : t2 - 2);
+        const std::string b = t2 == std::string::npos ? "" : line.substr(t2 + 1);
+        if (line[0] == 'L') {
+            for (size_t i = 0; i < kLocationCount; i++) {
+                if (a == kLocations[i].general && b == kLocations[i].detailed) {
+                    sProgress.locations[i] = true;
+                    n++;
+                }
+            }
+        } else if (line[0] == 'I') {
+            sProgress.items[a] = atoi(b.c_str());
+        } else if (line[0] == 'C') {
+            for (size_t i = 0; i < kIslandChartCount; i++) {
+                if (a == kIslandCharts[i].name) {
+                    sProgress.salvaged[i] = true;
+                }
+            }
+        }
+    }
+    fclose(f);
+    printf("[cos] tracker: %d checks kept from %s\n", n, sProgress.path.c_str());
+}
+
+// Written to a new file then renamed over the old one, so a crash mid-write keeps the last whole file
+void saveProgress() {
+    sProgress.dirty = false;
+    if (sProgress.path.empty()) {
+        return;
+    }
+    const std::string tmp = sProgress.path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "w");
+    if (f == nullptr) {
+        printf("[cos] tracker: cannot write %s\n", tmp.c_str());
+        return;
+    }
+    fprintf(f, "# Waker2 tracker progress (docs/TRACKER.md). Delete this file to start the seed's file over.\n");
+    for (size_t i = 0; i < kLocationCount; i++) {
+        if (sProgress.locations[i]) {
+            fprintf(f, "L\t%s\t%s\n", kLocations[i].general, kLocations[i].detailed);
+        }
+    }
+    for (const auto& [name, count] : sProgress.items) {
+        if (count > 0) {
+            fprintf(f, "I\t%s\t%d\n", name.c_str(), count);
+        }
+    }
+    for (size_t i = 0; i < kIslandChartCount; i++) {
+        if (sProgress.salvaged[i]) {
+            fprintf(f, "C\t%s\n", kIslandCharts[i].name);
+        }
+    }
+    fflush(f);
+#if !defined(__SWITCH__)
+    fsync(fileno(f));
+#endif
+    fclose(f);
+    rename(tmp.c_str(), sProgress.path.c_str());
+}
+
+// A count the save shows now, raised to the highest one kept (and the kept one raised to it)
+int keptCount(const char* name, int live) {
+    if (sProgress.key.empty()) {
+        return live;
+    }
+    int& kept = sProgress.items[name];
+    if (live > kept) {
+        kept = live;
+        sProgress.dirty = true;
+    }
+    return kept;
 }
 
 dSv_memBit_c& savedBit(int stage) {
@@ -185,6 +370,7 @@ void jsonString(std::string& out, const char* s) {
 struct Writer {
     std::string& out;
     std::vector<NamedCount>* record = nullptr; // also kept for the overlay (pc_tracker_overlay.cpp)
+    bool keep = false;                         // merged with the progress kept on disk
     bool first = true;
     void key(const char* k) {
         out += first ? "" : ", ";
@@ -193,6 +379,9 @@ struct Writer {
         out += ": ";
     }
     void num(const char* k, int v) {
+        if (keep) {
+            v = keptCount(k, v);
+        }
         key(k);
         out += std::to_string(v);
         if (record != nullptr) {
@@ -203,7 +392,7 @@ struct Writer {
 
 void items(std::string& out) {
     dSv_player_c& player = g_dComIfG_gameInfo.save.getPlayer();
-    Writer w{out, &sSnapshot.items};
+    Writer w{out, &sSnapshot.items, true};
     out += '{';
     const struct {
         const char* name;
@@ -338,7 +527,17 @@ void locations(std::string& out) {
         out += '{';
         for (const Location& l : kLocations) {
             if (strcmp(l.general, g) == 0) {
-                const bool done = checked(l);
+                const bool live = checked(l);
+                bool done = live;
+                if (!sProgress.key.empty()) {
+                    std::vector<bool>::reference kept = sProgress.locations[&l - kLocations];
+                    if (live && !kept) {
+                        kept = true;
+                        sProgress.dirty = true;
+                    }
+                    done = kept;
+                    sSnapshot.keptOnly += done && !live ? 1 : 0;
+                }
                 inner.key(l.detailed);
                 out += done ? "true" : "false";
                 area.checked += done ? 1 : 0;
@@ -356,7 +555,16 @@ void salvagedCharts(std::string& out) {
     out += '[';
     bool first = true;
     for (const Chart& c : kIslandCharts) {
-        if (map.isCompleteMap(c.index)) {
+        bool done = map.isCompleteMap(c.index);
+        if (!sProgress.key.empty()) {
+            std::vector<bool>::reference kept = sProgress.salvaged[&c - kIslandCharts];
+            if (done && !kept) {
+                kept = true;
+                sProgress.dirty = true;
+            }
+            done = kept;
+        }
+        if (done) {
             sSnapshot.salvaged++;
             out += first ? "" : ", ";
             first = false;
@@ -383,6 +591,9 @@ std::string build(unsigned int frame) {
     }
     sSnapshot.playing = true;
     sCurStage = dStage_stagInfo_GetSaveTbl(info);
+    if (const std::string key = progressKey(); key != sProgress.key) {
+        loadProgress(key);
+    }
     out += ", \"playing\": true, \"saveSlot\": " + std::to_string(dComIfGs_getDataNum());
     out += ", \"stage\": ";
     jsonString(out, dComIfGp_getStartStageName());
@@ -395,7 +606,11 @@ std::string build(unsigned int frame) {
     locations(out);
     out += ", \"salvagedCharts\": ";
     salvagedCharts(out);
+    out += ", \"keptChecks\": " + std::to_string(sSnapshot.keptOnly);
     out += '}';
+    if (sProgress.dirty) {
+        saveProgress();
+    }
     return out;
 }
 
@@ -424,7 +639,8 @@ extern "C" void pc_tracker_frame_end(unsigned int frame) {
     // the JSON is the host's memory, not the game's current heap
     JKRPcHostAllocScope hostAlloc;
     // a rando disc: always, for the logic (pc_tracker_logic.cpp), which follows the game's state the way
-    // the tracker's autotracking does (small keys gained between two states, ...)
+    // the tracker's autotracking does (small keys gained between two states, ...), and to keep the
+    // progress on disk
     const bool logic = pc::gConfig.randoDisc != nullptr;
     if ((!overlayShown() && !logic) || frame % kEveryFrames != 0) {
         return;
