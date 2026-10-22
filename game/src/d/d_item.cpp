@@ -582,10 +582,22 @@ static bool dItem_randoDungeonItemGet(u8 itemNo) {
 }
 #endif
 
+#if TARGET_PC
+static bool dItem_randoProgressiveHasNext(u8 itemNo);
+#endif
+
 void execItemGet(u8 itemNo) {
 #if TARGET_PC
     if (pc_rando_active() && dItem_randoDungeonItemGet(itemNo)) {
         return;
+    }
+    // Rando (wwrando tweaks.py make_items_progressive, custom_funcs.asm progressive_*_item_func): any ID of a
+    // progressive family gives the next tier up, and nothing once the family is complete
+    if (pc_rando_active()) {
+        if (!dItem_randoProgressiveHasNext(itemNo)) {
+            return;
+        }
+        itemNo = dItem_randoProgressive(itemNo);
     }
     // Rando (pc_rando.h; wwrando hurricane_spin_item_func): the Hurricane Spin item sets event bit 6901
     // (unused in the original game), which then lets the player use it (procCutTurnMove_init), apart
@@ -679,6 +691,46 @@ u8 dItem_randoProgressive(u8 itemNo) {
         }
     }
     return itemNo;
+}
+
+// Whether a progressive family still has a tier to give (the states dItem_randoProgressive knows, as the
+// progressive_*_item_func do nothing in any other); true for an item of no family
+static bool dItem_randoProgressiveHasNext(u8 itemNo) {
+    switch (itemNo) {
+    case dItemNo_SWORD_e:
+    case dItemNo_MASTER_SWORD_1_e:
+    case dItemNo_MASTER_SWORD_2_e:
+    case dItemNo_DROPPED_SWORD_e:
+    case dItemNo_MASTER_SWORD_3_e: {
+        int bits = dComIfGs_checkCollect(0);
+        return bits == 0 || bits == 1 || bits == 3 || bits == 7;
+    }
+    case dItemNo_SHIELD_e:
+    case dItemNo_MIRROR_SHIELD_e:
+        return dComIfGs_checkCollect(1) <= 1;
+    case dItemNo_BOW_e:
+    case dItemNo_MAGIC_ARROW_e:
+    case dItemNo_LIGHT_ARROW_e: {
+        u8 bits = dItem_getItemBits(dInvSlot_BOW_e);
+        return bits == 0 || bits == 1 || bits == 3;
+    }
+    case dItemNo_MAX_RUPEE_UP1_e:
+    case dItemNo_MAX_RUPEE_UP2_e:
+        return dComIfGs_getWalletSize() <= 1;
+    case dItemNo_MAX_BOMB_UP1_e:
+    case dItemNo_MAX_BOMB_UP2_e:
+        return dComIfGs_getBombMax() == 30 || dComIfGs_getBombMax() == 60;
+    case dItemNo_MAX_ARROW_UP1_e:
+    case dItemNo_MAX_ARROW_UP2_e:
+        return dComIfGs_getArrowMax() == 30 || dComIfGs_getArrowMax() == 60;
+    case dItemNo_PICTO_BOX_e:
+    case dItemNo_DELUXE_PICTO_BOX_e:
+        return dItem_getItemBits(dInvSlot_CAMERA_e) <= 1;
+    case dItemNo_MAGIC_POWER_e:
+    case dItemNo_MAX_MP_UP1_e:
+        return dComIfGs_getMaxMagic() == 0 || dComIfGs_getMaxMagic() == 16;
+    }
+    return true;
 }
 #endif
 
@@ -899,6 +951,13 @@ void item_func_camera2() {
 void item_func_bow() {
     dComIfGs_onGetItem(dInvSlot_BOW_e, 0);
     dComIfGs_setItem(dInvSlot_BOW_e, dItemNo_BOW_e);
+#if TARGET_PC
+    // Rando (wwrando tweaks.py make_items_progressive, 0x800C346C): the new game already sets 30 arrows, and
+    // setting them here would undo a quiver got before the bow
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     dComIfGs_setArrowNum(30);
     dComIfGs_setArrowMax(30);
 }
@@ -958,6 +1017,13 @@ void item_func_warasibe_bag() {
 void item_func_bomb_bag() {
     dComIfGs_onGetItem(dInvSlot_BOMB_e, 0);
     dComIfGs_setItem(dInvSlot_BOMB_e, dItemNo_BOMB_BAG_e);
+#if TARGET_PC
+    // Rando (wwrando tweaks.py make_items_progressive, 0x800C36C0): as for the bow, a bomb bag upgrade got
+    // before the bombs is kept
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     dComIfGs_setBombNum(30);
     dComIfGs_setBombMax(30);
 }
@@ -976,6 +1042,13 @@ void item_func_hummer() {
 void item_func_deku_leaf() {
     dComIfGs_onGetItem(dInvSlot_DEKU_LEAF_e, 0);
     dComIfGs_setItem(dInvSlot_DEKU_LEAF_e, dItemNo_DEKU_LEAF_e);
+#if TARGET_PC
+    // Rando (wwrando tweaks.py make_items_progressive, 0x800C375C): the magic meter is an item of its own
+    // (item_func_magic_power), so other magic items work before the Deku Leaf
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     dComIfGp_setItemMaxMagicCount(16);
     dComIfGp_setItemMagicCount(16);
 }
@@ -1234,18 +1307,42 @@ void item_func_triforce8() {
 }
 
 /* 800C43D8-800C4408       .text item_func_pearl1__Fv */
+#if TARGET_PC
+// Rando (wwrando remove_cutscenes.asm give_pearl_and_raise_totg_if_necessary): a pearl is placed in its goddess
+// statue's hands as soon as it is got (event bit), and the third one raises the Tower of the Gods
+static void dItem_randoPlacePearl(u16 placedBit) {
+    if (!pc_rando_active()) {
+        return;
+    }
+    dComIfGs_onEventBit(placedBit);
+    if (dComIfGs_isSymbol(dSymbol_NAYRU_e) && dComIfGs_isSymbol(dSymbol_DIN_e) && dComIfGs_isSymbol(dSymbol_FARORE_e)) {
+        dComIfGs_onEventBit(0x1E40); // TOWER_OF_THE_GODS_RAISED
+        dComIfGs_onEventBit(0x2E80); // PEARL_TOWER_CUTSCENE
+    }
+}
+#endif
+
 void item_func_pearl1() {
     dComIfGs_onSymbol(dSymbol_NAYRU_e);
+#if TARGET_PC
+    dItem_randoPlacePearl(0x1410);
+#endif
 }
 
 /* 800C4408-800C4438       .text item_func_pearl2__Fv */
 void item_func_pearl2() {
     dComIfGs_onSymbol(dSymbol_DIN_e);
+#if TARGET_PC
+    dItem_randoPlacePearl(0x1480);
+#endif
 }
 
 /* 800C4438-800C4468       .text item_func_pearl3__Fv */
 void item_func_pearl3() {
     dComIfGs_onSymbol(dSymbol_FARORE_e);
+#if TARGET_PC
+    dItem_randoPlacePearl(0x1440);
+#endif
 }
 
 /* 800C4468-800C446C       .text item_func_knowledge_tf__Fv */
@@ -1584,6 +1681,14 @@ void item_func_max_arrow_up2() {
 
 /* 800C4D08-800C4D0C       .text item_func_magic_power__Fv */
 void item_func_magic_power() {
+#if TARGET_PC
+    // Rando (wwrando custom_funcs.asm normal_magic_meter_item_func): the original was a placeholder; the magic
+    // meter item gives a meter of 16
+    if (pc_rando_active()) {
+        dComIfGp_setItemMaxMagicCount(16);
+        dComIfGp_setItemMagicCount(16);
+    }
+#endif
 }
 
 /* 800C4D0C-800C4D24       .text item_func_max_mp_up1__Fv */

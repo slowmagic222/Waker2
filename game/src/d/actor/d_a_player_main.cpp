@@ -11273,7 +11273,12 @@ BOOL daPy_lk_c::execute() {
     
     if (dComIfGp_event_runCheck()) {
         mStaffIdx = dComIfGp_evmng_getMyStaffId("Link", this);
+#if TARGET_PC
+        // Rando (wwrando misc_rando_features.asm, 0x80121B18): enemy weapons are carried through doors
+        if (!pc_rando_active() && eventInfo.checkCommandDoor() && !dComIfGp_event_chkEventFlag(0x4) && mEquipItem == daPyItem_BOKO_e) {
+#else
         if (eventInfo.checkCommandDoor() && !dComIfGp_event_chkEventFlag(0x4) && mEquipItem == daPyItem_BOKO_e) {
+#endif
             daBoko_c* boko = (daBoko_c*)mActorKeepEquip.getActor();
             if (boko) {
                 boko->moveStateInit(5.0f, 0.0f, shape_angle.y + 0x8000);

@@ -14,6 +14,9 @@
 #include "f_op/f_op_camera.h"
 #include "res/Object/Ysbwp00.h"
 #include "res/Object/Gtfglow.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace daWarpf_prm {
     static inline u32 getSetType(daWarpf_c* i_this) { return fopAcM_GetParam(i_this) >> 0x1C; }
@@ -207,6 +210,13 @@ bool daWarpf_c::_delete() {
 
 /* 00000B58-00000C34       .text checkEndDemo__9daWarpf_cFv */
 BOOL daWarpf_c::checkEndDemo() {
+#if TARGET_PC
+    // Rando (wwrando remove_cutscenes.asm, REL 0xC3C): the warp out of a boss room always skips the cutscene
+    // of the first warp out
+    if (pc_rando_active()) {
+        return TRUE;
+    }
+#endif
     BOOL ret = 0;
 
     switch (mStageNo) {

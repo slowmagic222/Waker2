@@ -233,6 +233,14 @@ cPhs_State daItem_c::_daItem_create() {
     fopAcM_ct(this, daItem_c);
     
     m_itemNo = daItem_prm::getItemNo(this);
+#if TARGET_PC
+    // Rando (wwrando make_items_progressive.asm, 0x800F5550): a field item shows the next tier of a progressive
+    // item, written back into its params as wwrando does
+    if (pc_rando_active()) {
+        m_itemNo = dItem_randoProgressive(m_itemNo);
+        fopAcM_SetParam(this, (fopAcM_GetParam(this) & ~0xFF) | m_itemNo);
+    }
+#endif
     
     if (!dItem_data::getFieldArc(m_itemNo)) {
         setLoadError();

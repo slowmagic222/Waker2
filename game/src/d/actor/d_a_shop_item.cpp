@@ -205,6 +205,13 @@ cPhs_State daShopItem_c::_create() {
     fopAcM_ct(this, daShopItem_c);
     
     m_itemNo = fopAcM_GetParamBit(fopAcM_GetParam(this), 0, 8);
+#if TARGET_PC
+    // Rando (wwrando make_items_progressive.asm, REL 0x8B8 convert_progressive_item_id_for_shop_item): a shop
+    // shows the next tier of a progressive item
+    if (pc_rando_active()) {
+        m_itemNo = dItem_randoProgressive(m_itemNo);
+    }
+#endif
     
     const char* arcName = getShopArcname();
     if (getShopBmdIdx() == -1 || arcName == 0) {

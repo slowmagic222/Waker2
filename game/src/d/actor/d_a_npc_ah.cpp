@@ -9,6 +9,9 @@
 #include "d/d_com_lib_game.h"
 #include "d/d_snap.h"
 #include "res/Object/Ah.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 const char daNpcAh_c::m_arcname[] = "Ah"; 
 
@@ -110,6 +113,14 @@ static u32 *l_msg_ah_tbl[] = {
 
 };
 
+// Old Man Ho Ho leaves once the Octo or stone head he points at is gone. Rando (wwrando misc_rando_features.asm,
+// REL 0x85C, 0x8A8, 0x8D8, 0x1018, 0x1044, 0x1078): he stays, since his hints still matter
+#if TARGET_PC
+#define COS_RANDO_AH_SW(isSwitch) (!pc_rando_active() && (isSwitch))
+#else
+#define COS_RANDO_AH_SW(isSwitch) (isSwitch)
+#endif
+
 /* 00000078-00000210       .text __ct__9daNpcAh_cFv */
 daNpcAh_c::daNpcAh_c() {
     setResFlag(0);
@@ -164,7 +175,7 @@ static cPhs_State phase_1(daNpcAh_c* i_this) {
     u8 prmArg = i_this->getPrmArg0();
     switch (prmArg) {
         case 2:
-            if(fopAcM_isSwitch(i_this, 0x6c)){
+            if(COS_RANDO_AH_SW(fopAcM_isSwitch(i_this, 0x6c))){
                 return cPhs_STOP_e;
             }
             if(!dComIfGs_isEventBit(dSv_event_flag_c::UNK_0520)){
@@ -172,12 +183,12 @@ static cPhs_State phase_1(daNpcAh_c* i_this) {
             }
             break;
         case 5:
-            if(fopAcM_isSwitch(i_this, 0x10)){
+            if(COS_RANDO_AH_SW(fopAcM_isSwitch(i_this, 0x10))){
                 return cPhs_STOP_e;
             }
             break;
         case 9:
-            if(fopAcM_isSwitch(i_this, i_this->getSwBit())){
+            if(COS_RANDO_AH_SW(fopAcM_isSwitch(i_this, i_this->getSwBit()))){
                 return cPhs_STOP_e;
             }
             break;
@@ -360,13 +371,13 @@ static MoveProc_t moveProc[]={
 bool daNpcAh_c::_execute() {
     switch (getPrmArg0()) {
         case 2:
-            if(fopAcM_isSwitch(this, 0x6c)) fopAcM_delete(this);
+            if(COS_RANDO_AH_SW(fopAcM_isSwitch(this, 0x6c))) fopAcM_delete(this);
             break;
         case 5:
-            if(fopAcM_isSwitch(this, 0x10)) fopAcM_delete(this);
+            if(COS_RANDO_AH_SW(fopAcM_isSwitch(this, 0x10))) fopAcM_delete(this);
             break;
         case 9:
-            if(fopAcM_isSwitch(this, getSwBit() & 0xff)) fopAcM_delete(this);
+            if(COS_RANDO_AH_SW(fopAcM_isSwitch(this, getSwBit() & 0xff))) fopAcM_delete(this);
             break;
     }
     chkAttention();

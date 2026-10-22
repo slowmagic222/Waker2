@@ -55,6 +55,36 @@ extern const cursorTable_t g_cursorTable[FMAP_WARP_COUNT] = {
 };
 #endif
 
+#if TARGET_PC
+// Rando (wwrando custom_data.asm ballad_of_gales_warp_table): warp 9 is the Forsaken Fortress (sector A1), left
+// of and above the first one
+static const cursorTable_t l_randoCursorTable[FMAP_WARP_MAX] = {
+    /* 0 */ {-2, -2, 0,  9,  1,  9,  7},
+    /* 1 */ { 0, -2, 1,  0,  2, -1,  7},
+    /* 2 */ { 2, -2, 2,  1, -1,  0,  7},
+    /* 3 */ {-2,  0, 3, -1,  4,  7,  8},
+    /* 4 */ { 1,  0, 4,  3, -1,  7,  8},
+    /* 5 */ { 2,  2, 5,  8, -1,  4,  6},
+    /* 6 */ {-2,  3, 6,  5, -1,  8, -1},
+    /* 7 */ {-1, -1, 7, -1, -1,  0,  3},
+    /* 8 */ { 0,  2, 8, -1,  5,  3,  6},
+    /* 9 */ {-3, -3, 9, -1,  0, -1,  0},
+};
+
+static int dMenu_Fmap_warpCount() {
+    return pc_rando_active() ? FMAP_WARP_MAX : FMAP_WARP_COUNT;
+}
+
+static const cursorTable_t* dMenu_Fmap_cursorTable() {
+    return pc_rando_active() ? l_randoCursorTable : g_cursorTable;
+}
+#define COS_FMAP_WARP_COUNT dMenu_Fmap_warpCount()
+#define COS_FMAP_CURSOR_TABLE dMenu_Fmap_cursorTable()
+#else
+#define COS_FMAP_WARP_COUNT FMAP_WARP_COUNT
+#define COS_FMAP_CURSOR_TABLE g_cursorTable
+#endif
+
 extern const u32 hist[] = {
     'mR01', 'mR02', 'mR03', 'mR04', 'mR05', 'mR06', 'mR07',
     'mR08', 'mR09', 'mR0A', 'mR0B', 'mR0C', 'mR0D', 'mR0E',
@@ -131,6 +161,11 @@ dMf_HIO_c::dMf_HIO_c() {
     mWarpSpotPosY[7] = -80.0f;
     mWarpSpotPosX[8] = -83.0f;
     mWarpSpotPosY[8] = 86.0f;
+#endif
+#if TARGET_PC
+    // Rando (wwrando custom_data.asm ballad_of_gales_warp_float_bank): the Forsaken Fortress warp's icon
+    mWarpSpotPosX[9] = -249.0f;
+    mWarpSpotPosY[9] = -193.0f;
 #endif
     mWarpSpotScaleSel = 1.6f;
     mWarpSpotScale = 0.75f;
@@ -2615,7 +2650,7 @@ bool dMenu_Fmap_c::_open_warpMode() {
 
     if (ret == TRUE) {
         mFrameTimer = 0;
-        for (int i = 0; i < FMAP_WARP_COUNT; i++) {
+        for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
             mWrapSpotEmitters[i]->playDrawParticle();
         }
         mWrapBackEmitter->clearStatus(JPAEmtrStts_StopDraw);
@@ -2662,7 +2697,7 @@ void dMenu_Fmap_c::init_warpMode() {
     mWrapBackEmitter->setStatus(JPAEmtrStts_StopDraw);
 
     int i = DEMO_SELECT(1, 0);
-    for (; i < FMAP_WARP_COUNT + DEMO_SELECT(1, 0); i++) {
+    for (; i < COS_FMAP_WARP_COUNT + DEMO_SELECT(1, 0); i++) {
         spotEmitter.x = g_mfHIO.mWarpSpotPosX[i-DEMO_SELECT(1, 0)];
         spotEmitter.y = g_mfHIO.mWarpSpotPosY[i-DEMO_SELECT(1, 0)];
         spotEmitter.z = 0.0f;
@@ -2716,6 +2751,13 @@ void dMenu_Fmap_c::wrapMove() {
 #if VERSION == VERSION_DEMO
             msgNo += 0x45;
 #else
+#if TARGET_PC
+            // Rando (wwrando misc_rando_features.asm, 0x801B80EC): the Forsaken Fortress warp's question is
+            // message 848, which the randomizer adds
+            if (pc_rando_active() && msgNo == 9) {
+                msgNo = 848;
+            } else
+#endif
             if (msgNo == 7) {
                 msgNo = 0x43;
             } else if (msgNo == 8) {
@@ -2755,7 +2797,7 @@ void dMenu_Fmap_c::wrapMove() {
         paneTranceWarpMsg(&mYsk0Pane, mFrameTimer, g_mfHIO.mWarpMsgAnimFrame, g_mfHIO.mWarpYesNoPosY, 0.0f, 0, 0);
         paneTranceWarpMsg(&mNok0Pane, mFrameTimer, g_mfHIO.mWarpMsgAnimFrame, g_mfHIO.mWarpYesNoPosY, 0.0f, 0, 0);
         areaTextChangeAnimeInit();
-        for (int i = 0; i < FMAP_WARP_COUNT; i++) {
+        for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
             mWrapSpotEmitters[i]->stopDrawParticle();
         }
         mWarpProcIdx = WARP_PROC_SEL_WIN_FADE_IN;
@@ -2767,7 +2809,7 @@ void dMenu_Fmap_c::wrapMove() {
             }
             mMapClose = true;
             stopWrapBackEmitter();
-            for (int i = 0; i < FMAP_WARP_COUNT; i++) {
+            for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
                 mWrapSpotEmitters[i]->stopDrawParticle();
                 stopWrapSpotEmitter(i);
             }
@@ -2880,7 +2922,7 @@ void dMenu_Fmap_c::wrapSelWinFadeOut() {
     mFrameTimer++;
     if (backAlpha == TRUE && msg == TRUE && msg2 == TRUE && yesMove == TRUE && noMove == TRUE) {
         mFrameTimer = 0;
-        for (int i = 0; i < FMAP_WARP_COUNT; i++) {
+        for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
             mWrapSpotEmitters[i]->playDrawParticle();
         }
         mWarpProcIdx = WARP_PROC_MOVE;
@@ -2904,7 +2946,7 @@ void dMenu_Fmap_c::wrapSelWarp() {
 
         mMapClose = true;
         stopWrapBackEmitter();
-        for (int i = 0; i < FMAP_WARP_COUNT; i++) {
+        for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
             mWrapSpotEmitters[i]->stopDrawParticle();
             stopWrapSpotEmitter(i);
         }
@@ -2920,7 +2962,7 @@ void dMenu_Fmap_c::warpAreaAnime0() {
     cXyz pos;
     scale.z = 0.0f;
     pos.z = 0.0f;
-    for (int i = 0; i < FMAP_WARP_COUNT; i++) {
+    for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
         pos.x = g_mfHIO.mWarpSpotPosX[i];
         pos.y = g_mfHIO.mWarpSpotPosY[i];
         mWrapSpotEmitters[i]->setGlobalTranslation(pos);
@@ -3015,12 +3057,12 @@ void dMenu_Fmap_c::warpSelCursorAnime() {
 
 /* 801B96D8-801B96F0       .text getWarpAreaGridX__12dMenu_Fmap_cFi */
 s8 dMenu_Fmap_c::getWarpAreaGridX(int i_no) {
-    return g_cursorTable[i_no].gridX;
+    return COS_FMAP_CURSOR_TABLE[i_no].gridX;
 }
 
 /* 801B96F0-801B970C       .text getWarpAreaGridY__12dMenu_Fmap_cFi */
 s8 dMenu_Fmap_c::getWarpAreaGridY(int i_no) {
-    return g_cursorTable[i_no].gridY;
+    return COS_FMAP_CURSOR_TABLE[i_no].gridY;
 }
 
 /* 801B970C-801B9724       .text getWarpAreaNo__12dMenu_Fmap_cFPC13cursorTable_t */
@@ -3071,9 +3113,9 @@ int dMenu_Fmap_c::getWarpAreaNoRight(const cursorTable_t* i_table) {
 /* 801B9784-801B97DC       .text getWarpAreaTablePtr__12dMenu_Fmap_cFScSc */
 const cursorTable_t* dMenu_Fmap_c::getWarpAreaTablePtr(s8 i_gridX, s8 i_gridY) {
     const cursorTable_t* table = NULL;
-    for (int i = 0; i < FMAP_WARP_COUNT; i++) {
-        if (g_cursorTable[i].gridX == i_gridX && g_cursorTable[i].gridY == i_gridY) {
-            table = &g_cursorTable[i];
+    for (int i = 0; i < COS_FMAP_WARP_COUNT; i++) {
+        if (COS_FMAP_CURSOR_TABLE[i].gridX == i_gridX && COS_FMAP_CURSOR_TABLE[i].gridY == i_gridY) {
+            table = &COS_FMAP_CURSOR_TABLE[i];
             break;
         }
     }

@@ -17,6 +17,9 @@
 #include "d/actor/d_a_bomb.h"
 #include "d/d_s_play.h"
 #include "res/Object/WallBom.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static daObj_Canon_HIO_c l_HIO;
 
@@ -207,7 +210,12 @@ bool daObj_Canon_c::checkTgHit() {
             case AT_TYPE_BOOMERANG:
                 field_0x46A = 0x190;
                 fopAcM_seStart(this, JA_SE_LK_W_WEP_HIT, 0x20);
+#if TARGET_PC
+                // Rando (wwrando misc_rando_features.asm, REL 0x7D0): one boomerang hit destroys a cannon
+                health -= pc_rando_active() ? 2 : 1;
+#else
                 health -= 1;
+#endif
                 break;
             default:
                 hit = false;
