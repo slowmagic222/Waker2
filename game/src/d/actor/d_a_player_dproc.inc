@@ -706,6 +706,13 @@ BOOL daPy_lk_c::dProcGetItem_init() {
         } else {
             item_no = dComIfGp_event_getGtItm();
         }
+#if TARGET_PC
+        // Rando (wwrando make_items_progressive.asm, 0x8012E7B8 and 0x8012E7DC): the item get shows the next
+        // tier of a progressive item
+        if (pc_rando_active()) {
+            item_no = dItem_randoProgressive(item_no);
+        }
+#endif
         fpc_ProcID itemID =
             fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, fopAcM_GetRoomNo(this));
         if (itemID != fpcM_ERROR_PROCESS_ID_e) {
