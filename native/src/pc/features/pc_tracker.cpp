@@ -2,6 +2,8 @@
 // TWW Randomizer Tracker tracks, in its own names, rebuilt every 15 frames on the game thread while the
 // tracker server runs, and kept as JSON for the server's thread.
 //
+// The overlay (pc_tracker_overlay.cpp) shows the same state inside the game; it is built while either runs.
+//
 // The JSON (version 1):
 //   {"version": 1, "game": "GZLE99", "rando": true, "playing": true, "frame": 1234, "saveSlot": 0,
 //    "stage": "sea", "room": 44,
@@ -83,6 +85,9 @@ const Dungeon kDungeons[] = {
 };
 
 constexpr unsigned kEveryFrames = 15;
+
+// The last state for the overlay (game thread only)
+Snapshot sSnapshot;
 
 std::mutex sMu;
 std::string sJson = "{\"version\": 1, \"playing\": false}";
@@ -184,6 +189,7 @@ void jsonString(std::string& out, const char* s) {
 
 struct Writer {
     std::string& out;
+    std::vector<NamedCount>* record = nullptr; // also kept for the overlay (pc_tracker_overlay.cpp)
     bool first = true;
     void key(const char* k) {
         out += first ? "" : ", ";
@@ -194,12 +200,15 @@ struct Writer {
     void num(const char* k, int v) {
         key(k);
         out += std::to_string(v);
+        if (record != nullptr) {
+            record->push_back({k, v});
+        }
     }
 };
 
 void items(std::string& out) {
     dSv_player_c& player = g_dComIfG_gameInfo.save.getPlayer();
-    Writer w{out};
+    Writer w{out, &sSnapshot.items};
     out += '{';
     const struct {
         const char* name;
@@ -298,7 +307,7 @@ void items(std::string& out) {
 }
 
 void smallKeys(std::string& out) {
-    Writer w{out};
+    Writer w{out, &sSnapshot.smallKeysHeld};
     out += '{';
     char name[32];
     for (const Dungeon& d : kDungeons) {
@@ -330,14 +339,19 @@ void locations(std::string& out) {
     for (const char* g : generals) {
         outer.key(g);
         Writer inner{out};
+        Area area{g, 0, 0};
         out += '{';
         for (const Location& l : kLocations) {
             if (strcmp(l.general, g) == 0) {
+                const bool done = checked(l);
                 inner.key(l.detailed);
-                out += checked(l) ? "true" : "false";
+                out += done ? "true" : "false";
+                area.checked += done ? 1 : 0;
+                area.total++;
             }
         }
         out += '}';
+        sSnapshot.areas.push_back(area);
     }
     out += '}';
 }
@@ -348,6 +362,7 @@ void salvagedCharts(std::string& out) {
     bool first = true;
     for (const Chart& c : kIslandCharts) {
         if (map.isCompleteMap(c.index)) {
+            sSnapshot.salvaged++;
             out += first ? "" : ", ";
             first = false;
             jsonString(out, c.name);
@@ -365,11 +380,13 @@ std::string build(unsigned int frame) {
     out += ", \"frame\": " + std::to_string(frame);
     stage_stag_info_class* info = dComIfGp_getStageStagInfo();
     const bool play = fpcM_Search(isPlayScene, nullptr) != nullptr && info != nullptr;
+    sSnapshot = Snapshot{};
     if (!play) {
         sCurStage = -1;
         out += ", \"playing\": false}";
         return out;
     }
+    sSnapshot.playing = true;
     sCurStage = dStage_stagInfo_GetSaveTbl(info);
     out += ", \"playing\": true, \"saveSlot\": " + std::to_string(dComIfGs_getDataNum());
     out += ", \"stage\": ";
@@ -399,6 +416,10 @@ int serverPort() {
 
 } // namespace
 
+const Snapshot& snapshot() {
+    return sSnapshot;
+}
+
 std::string stateJson() {
     std::lock_guard<std::mutex> lk(sMu);
     return sJson;
@@ -423,7 +444,7 @@ extern "C" void pc_tracker_frame_end(unsigned int frame) {
             sServing = startServer(bind != nullptr && *bind != '\0' ? bind : defaultBind, port);
         }
     }
-    if (!sServing || frame % kEveryFrames != 0) {
+    if ((!sServing && !overlayShown()) || frame % kEveryFrames != 0) {
         return;
     }
     std::string json = build(frame);

@@ -1621,6 +1621,8 @@ void pc_frame_end(void) {
         JKRPcHostAllocScope hostAlloc;
         // The options menu (pc_menu.cpp): input, pause and its window, in this frame's ImGui frame.
         menuFrame();
+        // The tracker overlay (pc_tracker.h): L3+R3 / F2, drawn over the game.
+        pc_tracker_overlay_frame();
         // Issue #15: the button remap (pc_button_remap.h) after the menu's settings poll: a changed
         // setting or a controller connected on a port gets the map before the next PADRead.
         pc_button_remap_frame();

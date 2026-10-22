@@ -50,7 +50,11 @@ Saves, settings and caches go in `~/waker2/user/`.
 
 ## The tracker
 
-While the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
+**In the game:** click both sticks in together (L3+R3) to show a small tracker over the game: items,
+each dungeon's keys and checks. Again for the checks per island, a third time to hide it. Works in Game
+Mode with nothing to set up; F2 does the same on a keyboard.
+
+**The full tracker, in its own window:** while the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
 with autotracking ([TRACKER.md](TRACKER.md)): open **http://127.0.0.1:6544/** in a browser, paste the seed's
 permalink and launch as usual. Items and checked locations follow the game by themselves, about once a
 second; marks made by hand stay. The tracker downloads the seed's logic from GitHub, so the Deck needs the
