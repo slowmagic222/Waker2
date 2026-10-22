@@ -15,6 +15,9 @@
 //   converters wrote them as numbers; raw arrays (textures, display lists) stay big-endian, as the
 //   generated headers have them.
 // - a disc whose main.dol or RELs do not match exits with PC_EXIT_DISC, as the disc check does.
+// - with COS_RANDO_DISC (docs/RANDO.md) the game's disc is the randomizer's, whose main.dol and RELs
+//   carry its patches: main.dol and the RELs are then read from COS_DISC, the clean disc, by a reader
+//   of the disc image of its own (CleanDisc), and checked the same way.
 // COS_SMOKE=assets writes every asset's bytes (after conversion) to <COS_RUN_DIR>/assets/ and
 // exits: native/tools/check_runtime_assets.py compares them with the decomp's extracted .bin files.
 #include "pc_internal.h"
@@ -30,6 +33,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <mutex>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -274,6 +278,81 @@ const uint8_t* relBytes(const cos_sdk::HostVector<uint8_t>& rel, uint32_t sectio
     return rel.data() + secOff + offset;
 }
 
+// ---- The clean disc as an image file (COS_RANDO_DISC: Aurora's DVD layer has the randomizer's open)
+// boot.bin: main.dol's offset at 0x420, the FST's offset and size at 0x424 and 0x428. FST entries
+// are 12 bytes: (directory flag << 24 | name offset), then a file's data offset and length, or a
+// directory's parent and the index after its last entry; the names follow the last entry.
+struct CleanDisc {
+    int fd = -1;
+    cos_sdk::HostVector<uint8_t> fst;
+
+    bool readAt(uint64_t off, void* dst, size_t len) const {
+#if defined(__SWITCH__)
+        // Horizon's C library has no pread.
+        if (lseek(fd, (off_t)off, SEEK_SET) != (off_t)off) return false;
+        return read(fd, dst, len) == (ssize_t)len;
+#else
+        return pread(fd, dst, len, (off_t)off) == (ssize_t)len;
+#endif
+    }
+    bool open(const char* path) {
+        fd = ::open(path, O_RDONLY | O_CLOEXEC);
+        if (fd < 0) return false;
+        uint8_t boot[0x430];
+        if (!readAt(0, boot, sizeof boot)) return false;
+        const uint32_t fstOff = rd32(boot + 0x424), fstLen = rd32(boot + 0x428);
+        if (fstLen < 12) return false;
+        fst.assign(fstLen, 0);
+        return readAt(fstOff, fst.data(), fstLen) && rd32(fst.data() + 8) * 12ull <= fstLen;
+    }
+    ~CleanDisc() {
+        if (fd >= 0) close(fd);
+    }
+    // main.dol: its size is where its last section ends
+    bool dol(cos_sdk::HostVector<uint8_t>& out) const {
+        uint8_t off[4], header[0x100];
+        if (!readAt(0x420, off, 4) || !readAt(rd32(off), header, sizeof header)) return false;
+        uint32_t len = sizeof header;
+        for (int i = 0; i < 18; i++) {
+            const uint32_t end = rd32(header + 4 * i) + rd32(header + 0x90 + 4 * i);
+            if (rd32(header + 0x90 + 4 * i) != 0 && end > len) len = end;
+        }
+        out.assign(len, 0);
+        return readAt(rd32(off), out.data(), len);
+    }
+    // a file by its FST path ("/rels/x.rel"), Yaz0 expanded, as readDiscFile
+    bool file(const char* path, cos_sdk::HostVector<uint8_t>& out) const {
+        const uint8_t* e = fst.data();
+        const uint32_t count = rd32(e + 8);
+        const char* names = (const char*)e + count * 12;
+        const size_t namesLen = fst.size() - count * 12;
+        const char* p = path[0] == '/' ? path + 1 : path;
+        uint32_t i = 1, end = count;
+        while (i < end) {
+            const char* slash = strchr(p, '/');
+            const size_t partLen = slash ? (size_t)(slash - p) : strlen(p);
+            const uint32_t w = rd32(e + i * 12), nameOff = w & 0xFFFFFF;
+            const bool isDir = (w >> 24) != 0;
+            const bool match = nameOff < namesLen && strnlen(names + nameOff, namesLen - nameOff) == partLen &&
+                               memcmp(names + nameOff, p, partLen) == 0;
+            if (match && isDir && slash) {
+                end = rd32(e + i * 12 + 8);
+                p = slash + 1;
+                i++;
+            } else if (match && !isDir && !slash) {
+                cos_sdk::HostVector<uint8_t> raw(rd32(e + i * 12 + 8));
+                if (!readAt(rd32(e + i * 12 + 4), raw.data(), raw.size())) return false;
+                if (raw.size() >= 4 && memcmp(raw.data(), "Yaz0", 4) == 0) return yaz0Expand(raw.data(), raw.size(), out);
+                out = std::move(raw);
+                return true;
+            } else {
+                i = isDir ? rd32(e + i * 12 + 8) : i + 1;
+            }
+        }
+        return false;
+    }
+};
+
 void fillLocked(State& st, void* array, uint32_t size, uint32_t id) {
     if (id >= kRowCount || size != kRows[id].size || st.data[id].size() != size) {
         pc::writef(STDERR_FILENO, "[cos] assets: array %u (%s) is %u bytes, the table says %u\n", id,
@@ -302,7 +381,18 @@ namespace pc {
 void loadAssets() {
     State& st = state();
     s32 dolLen = 0;
-    const uint8_t* dol = DVDGetDOLLocation(&dolLen);
+    const uint8_t* dol;
+    // COS_RANDO_DISC: main.dol and the RELs from the clean disc (COS_DISC), not the randomizer's
+    CleanDisc clean;
+    cos_sdk::HostVector<uint8_t> cleanDol;
+    const bool fromClean = gConfig.randoDisc != nullptr;
+    if (fromClean) {
+        if (!clean.open(gConfig.disc) || !clean.dol(cleanDol)) discError("%s cannot be read as a disc image", gConfig.disc);
+        dol = cleanDol.data();
+        dolLen = (s32)cleanDol.size();
+    } else {
+        dol = DVDGetDOLLocation(&dolLen);
+    }
     if (dol == nullptr || dolLen <= 0) discError("main.dol cannot be read from the disc");
     st.data.resize(kRowCount);
     bool dolChecked = false;
@@ -322,7 +412,8 @@ void loadAssets() {
             // the table lists a module's assets together: read each REL once
             if (curFile == nullptr || strcmp(curFile, r.file) != 0 || strcmp(curArc, r.arcFile) != 0) {
                 if (curFile == nullptr || strcmp(curFile, r.file) != 0) {
-                    if (!readDiscFile(r.file, container)) discError("%s cannot be read", r.file);
+                    if (!(fromClean ? clean.file(r.file, container) : readDiscFile(r.file, container)))
+                        discError("%s cannot be read", r.file);
                 }
                 if (r.arcFile[0] != '\0') {
                     if (!rarcFind(container, r.arcFile, rel)) discError("%s has no %s", r.file, r.arcFile);

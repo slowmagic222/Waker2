@@ -15,6 +15,9 @@ namespace pc {
 
 struct Config {
     const char* disc = nullptr;      // COS_DISC
+    // COS_RANDO_DISC (docs/RANDO.md): a Wind Waker Randomizer output (GZLE99) the game reads its files
+    // from; COS_DISC stays the clean disc the data arrays and the checks use. USA build only.
+    const char* randoDisc = nullptr;
     const char* smoke = nullptr;     // COS_SMOKE
     const char* milestone = nullptr; // COS_MILESTONE
     const char* trace = nullptr;     // COS_TRACE
@@ -93,6 +96,11 @@ void dumpAllThreads(int fd);
 // GZLE01, or GZLP01 for the European build), else prints why and returns
 // PC_EXIT_DISC.
 int checkDisc();
+// pc_disc.cpp: the image the game reads (aurora_dvd_open): COS_RANDO_DISC if set, else COS_DISC
+const char* gameDisc();
+// pc_disc.cpp: the game ID the game's disc must report (DVDGetCurrentDiskID): the randomizer's
+// GZLE99 with COS_RANDO_DISC, else COS_GAME_ID_STR
+const char* gameDiscId();
 // pc_disc.cpp: a disc problem: logged as "[cos] DISC: ...", kept for exitDisc
 void discMessage(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 // pc_disc.cpp: shows the last discMessage to the player (the Switch's error applet, with what the card

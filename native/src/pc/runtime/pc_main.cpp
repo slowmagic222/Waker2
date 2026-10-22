@@ -280,18 +280,18 @@ void pc_aurora_init(int argc, char* argv[]) {
     // COS_HD_TEXTURES (pc_hd_textures.h): the optional HD texture pack, off by default.
     pc_hd_textures_init(sUserPath);
 
-    // Before DVDInit (Aurora's rule); pc_harness_init already checked COS_DISC is set and readable.
-    if (!aurora_dvd_open(gConfig.disc)) {
-        discMessage("%s cannot be opened as a disc image (aurora_dvd_open)", gConfig.disc);
+    // Before DVDInit (Aurora's rule); pc_harness_init already checked COS_DISC (and COS_RANDO_DISC, the
+    // game's disc when set) is set and readable.
+    if (!aurora_dvd_open(gameDisc())) {
+        discMessage("%s cannot be opened as a disc image (aurora_dvd_open)", gameDisc());
         exitDisc();
     }
     const DVDDiskID* id = DVDGetCurrentDiskID();
-    if (id == nullptr || memcmp(id->gameName, COS_GAME_ID_STR, 4) != 0 ||
-        memcmp(id->company, COS_GAME_ID_STR + 4, 2) != 0 || id->gameVersion != 0) {
-        discMessage("the disc is %.4s%.2s version %u (DVDGetCurrentDiskID); the supported disc is " COS_GAME_ID_STR
-                    " version 0",
+    if (id == nullptr || memcmp(id->gameName, gameDiscId(), 4) != 0 || memcmp(id->company, gameDiscId() + 4, 2) != 0 ||
+        id->gameVersion != 0) {
+        discMessage("the disc is %.4s%.2s version %u (DVDGetCurrentDiskID); the supported disc is %s version 0",
                     id != nullptr ? id->gameName : "????", id != nullptr ? id->company : "??",
-                    id != nullptr ? (unsigned int)id->gameVersion : 0u);
+                    id != nullptr ? (unsigned int)id->gameVersion : 0u, gameDiscId());
         exitDisc();
     }
     writef(STDERR_FILENO, "[cos] dvd: %.4s%.2s version %u disc %u\n", id->gameName, id->company,
