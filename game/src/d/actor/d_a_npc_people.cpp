@@ -23,6 +23,9 @@
 #include "res/Object/Um.h"
 #include "res/Object/Sa.h"
 #include "res/Object/Ug.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 enum NpcNo_e {
     /* 0x00 */ NPC_UO1,
@@ -3865,6 +3868,33 @@ static int l_get_item_no[] = {
 };
 
 #if TARGET_PC
+// Rando (pc_rando.h): wwrando's Windfall townspeople locations, l_get_item_no's entries (Sam, Pompie and
+// Vera, Minenco, Linda and Anton, Kreeb, Kamo: rels/d_a_npc_people.rel@C54B, 4 bytes apart).
+static int rando_get_item_no(int idx) {
+    return pc_rando_rel_item("d_a_npc_people", 0xC54B + 4 * idx, l_get_item_no[idx]);
+}
+
+// Pompie and Vera, Minenco and Kamo know they gave their reward by the player owning its treasure chart,
+// which fails for any other item. In rando mode they set and check an event bit the original game never
+// uses instead (wwrando flexible_item_locations.asm: 6904, 6908 and 6910).
+static u16 rando_reward_bit(int itemNo) {
+    switch (itemNo) {
+    case dItemNo_COLLECT_MAP_20_e: return 0x6904; // Pompie and Vera
+    case dItemNo_COLLECT_MAP_16_e: return 0x6908; // Minenco
+    case dItemNo_COLLECT_MAP_15_e: return 0x6910; // Kamo
+    default: return 0;
+    }
+}
+static BOOL rando_checkGetReward(u8 itemNo) {
+    u16 bit = pc_rando_active() ? rando_reward_bit(itemNo) : 0;
+    return bit != 0 ? dComIfGs_isEventBit(bit) : dComIfGs_checkGetItem(itemNo);
+}
+#define COS_RANDO_CHECK_REWARD(itemNo) rando_checkGetReward(itemNo)
+#else
+#define COS_RANDO_CHECK_REWARD(itemNo) dComIfGs_checkGetItem(itemNo)
+#endif
+
+#if TARGET_PC
 // Native port step 3.3 (ODR): PsoData is also defined by d_a_npc_photo.cpp. All units link into
 // one executable on PC, so keep this definition local to the unit.
 namespace {
@@ -4272,7 +4302,7 @@ static cPhs_State phase_1(daNpcPeople_c* i_this) {
     switch(i_this->getNpcNo()) {
         case NPC_UB4:
             if(strcmp(dComIfGp_getStartStageName(), "Ocmera") == 0) {
-                if(dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_20_e) || arg0 != dComIfGp_getStartStagePoint()) {
+                if(COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_20_e) || arg0 != dComIfGp_getStartStagePoint()) {
                     return cPhs_STOP_e;
                 }
 
@@ -4592,7 +4622,7 @@ cPhs_State daNpcPeople_c::createInit() {
     m_jnt.setParam(mpNpcDat->field_0x04, mpNpcDat->field_0x06, mpNpcDat->field_0x0C, mpNpcDat->field_0x0E, mpNpcDat->field_0x00, mpNpcDat->field_0x02, mpNpcDat->field_0x08, mpNpcDat->field_0x0A, mpNpcDat->field_0x10);
 
     if(mNpcNo == NPC_UM3 && !mbIsNight) {
-        dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_15_e);
+        COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_15_e);
     }
 
     m79D = mpNpcDat->field_0x5A;
@@ -4827,7 +4857,7 @@ bool daNpcPeople_c::_execute() {
 
                     break;
                 case NPC_UM3:
-                    if(!dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_15_e) && (mAnmFlag & 0x3)) {
+                    if(!COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_15_e) && (mAnmFlag & 0x3)) {
                         mAnmFlag &= ~0x3;
                         u8 rand = getRand(8);
                         if(rand == m794) {
@@ -6054,13 +6084,23 @@ void daNpcPeople_c::eventGetItemInit(int staffIdx) {
     int itemNo;
     int* pItemIdx = dComIfGp_evmng_getMyIntegerP(staffIdx, "ItemNo");
     if(pItemIdx) {
+#if TARGET_PC
+        itemNo = rando_get_item_no(*pItemIdx);
+#else
         itemNo = l_get_item_no[*pItemIdx];
+#endif
     }
     else {
         itemNo = m75C;
     }
 
     fpc_ProcID itemPID = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, fopAcM_GetRoomNo(this));
+#if TARGET_PC
+    // Rando: the townsperson's "reward given" bit (rando_checkGetReward)
+    if(pItemIdx && pc_rando_active() && rando_reward_bit(l_get_item_no[*pItemIdx]) != 0) {
+        dComIfGs_onEventBit(rando_reward_bit(l_get_item_no[*pItemIdx]));
+    }
+#endif
     if (itemPID != fpcM_ERROR_PROCESS_ID_e) {
         dComIfGp_event_setItemPartnerId(itemPID);
     }
@@ -6556,7 +6596,13 @@ u16 daNpcPeople_c::next_msgStatus(u32* pMsgNo) {
                         if(!dComIfGs_isEventBit(l_item_chk_sa3[m792])) {
                             m734++;
                             *pMsgNo = *m734;
+#if TARGET_PC
+                            // Rando (pc_rando.h): wwrando's "Windfall Island - Kane - Place ... on Gate",
+                            // l_item_id_sa3's entries (rels/d_a_npc_people.rel@C21B, 4 bytes apart)
+                            m75C = pc_rando_rel_item("d_a_npc_people", 0xC21B + 4 * m792, l_item_id_sa3[m792]);
+#else
                             m75C = l_item_id_sa3[m792];
+#endif
                             dComIfGs_onEventBit(l_item_chk_sa3[m792]);
                         }
                         else {
@@ -6786,7 +6832,7 @@ u32 daNpcPeople_c::getMsg() {
                 else if(!isColor()) {
                     m734 = l_msg_xy_ub4_no_color;
                 }
-                else if(!dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_16_e)) {
+                else if(!COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_16_e)) {
                     m734 = l_msg_xy_ub4_get_item;
 #if VERSION > VERSION_JPN
                     dComIfGs_onEventBit(dSv_event_flag_c::UNK_2504);
@@ -7138,7 +7184,7 @@ u32 daNpcPeople_c::getMsg() {
                     else if(!dComIfGs_isEventBit(dSv_event_flag_c::UNK_2310)) {
                         m734 = l_msg_um3_no_nazo_talk;
                     }
-                    else if(dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_15_e)) {
+                    else if(COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_15_e)) {
                         m734 = l_msg_um3_map15;
                     }
                     else {
@@ -7152,7 +7198,7 @@ u32 daNpcPeople_c::getMsg() {
                 else if(!dComIfGs_isEventBit(dSv_event_flag_c::UNK_2308)) {
                     m734 = l_msg_um3_no_look_moon;
                 }
-                else if(dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_15_e) && dComIfGs_isEventBit(dSv_event_flag_c::UNK_2280)) {
+                else if(COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_15_e) && dComIfGs_isEventBit(dSv_event_flag_c::UNK_2280)) {
                     m734 = l_msg_um3_map15_n;
                 }
                 else {
@@ -7962,7 +8008,7 @@ void daNpcPeople_c::setWaitAnm() {
     if(mNpcNo == NPC_UB3 && m789 != 0) {
         setAnmTbl(l_npc_anm_wait, 0);
     }
-    else if(mNpcNo == NPC_UM3 && !mbIsNight && dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_15_e)) {
+    else if(mNpcNo == NPC_UM3 && !mbIsNight && COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_15_e)) {
         setAnmTbl(l_npc_anm_um3_wait3, 1);
     }
     else if(mNpcNo == NPC_UW2 && m793 == 1) {
@@ -8013,7 +8059,7 @@ s16 daNpcPeople_c::XyCheckCB(int i_itemBtn) {
 
             break;
         case NPC_UM3:
-            if(!mbIsNight && isPhoto(itemNo) && dComIfGs_isEventBit(dSv_event_flag_c::UNK_2310) && !dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_15_e)) {
+            if(!mbIsNight && isPhoto(itemNo) && dComIfGs_isEventBit(dSv_event_flag_c::UNK_2310) && !COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_15_e)) {
                 return true;
             }
 
@@ -8259,7 +8305,7 @@ BOOL daNpcPeople_c::chkEndEvent() {
 
 /* 000090D0-00009100       .text is1GetMap20__13daNpcPeople_cFv */
 BOOL daNpcPeople_c::is1GetMap20() {
-    return dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_20_e) ? TRUE : FALSE;
+    return COS_RANDO_CHECK_REWARD(dItemNo_COLLECT_MAP_20_e) ? TRUE : FALSE;
 }
 
 /* 00009100-00009144       .text is1DayGetMap20__13daNpcPeople_cFv */

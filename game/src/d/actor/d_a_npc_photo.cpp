@@ -16,6 +16,26 @@
 #include "d/d_kankyo_rain.h"
 #include "d/d_picture_box.h"
 #include "d/actor/d_a_tag_photo.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
+
+#if TARGET_PC
+// Rando (pc_rando.h; wwrando flexible_item_locations.asm): Lenzo knows Pompie and Vera gave their reward,
+// and that he gave his own Deluxe Picto Box reward, by the player owning those items, which fails when
+// they are randomized. In rando mode both are event bits the original game never uses (6904, set by
+// Pompie and Vera in d_a_npc_people.cpp, and 6920, set here when he takes the Forest Firefly).
+static BOOL rando_checkGetItem(u8 itemNo) {
+    if (pc_rando_active()) {
+        if (itemNo == dItemNo_COLLECT_MAP_20_e) return dComIfGs_isEventBit(0x6904);
+        if (itemNo == dItemNo_DELUXE_PICTO_BOX_e) return dComIfGs_isEventBit(0x6920);
+    }
+    return dComIfGs_checkGetItem(itemNo);
+}
+#define COS_RANDO_CHECK_GET_ITEM(itemNo) rando_checkGetItem(itemNo)
+#else
+#define COS_RANDO_CHECK_GET_ITEM(itemNo) dComIfGs_checkGetItem(itemNo)
+#endif
 
 const char daNpcPhoto_c::m_arcname[] = "Auc";
 
@@ -641,11 +661,11 @@ static cPhs_State phase_1(daNpcPhoto_c* i_this) {
     s16 arg0 = i_this->getPrmArg0();
     if(arg0 != 255){
         if(arg0 == 0){
-            if(!dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_20_e) && arg0 != dComIfGp_getStartStagePoint()){
+            if(!COS_RANDO_CHECK_GET_ITEM(dItemNo_COLLECT_MAP_20_e) && arg0 != dComIfGp_getStartStagePoint()){
                 return cPhs_STOP_e;
             }
         } else{
-            if(dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_20_e) || arg0 != dComIfGp_getStartStagePoint()) {
+            if(COS_RANDO_CHECK_GET_ITEM(dItemNo_COLLECT_MAP_20_e) || arg0 != dComIfGp_getStartStagePoint()) {
                 return cPhs_STOP_e;
             }
             i_this->field_0x9C1 = 4;
@@ -1049,12 +1069,23 @@ void daNpcPhoto_c::executeTalk() {
             u8 temp = field_0x9C6;
             if((temp & 1) != 0){
                 field_0x9C6 = temp & 254;
+#if TARGET_PC
+                // Rando (pc_rando.h): wwrando's "Windfall Island - Lenzo's House - Become Lenzo's Assistant"
+                // (rels/d_a_npc_photo.rel@1C13)
+                mItemNo = pc_rando_rel_item("d_a_npc_photo", 0x1C13, 31);
+#else
                 mItemNo = 31;
+#endif
                 field_0x9BE = 4;
             } else {
                 if((temp & 2) != 0){
                     field_0x9C6 = temp & ~0x02;
+#if TARGET_PC
+                    // Rando: "Windfall Island - Lenzo's House - Bring Forest Firefly" (rels/d_a_npc_photo.rel@1C37)
+                    mItemNo = pc_rando_rel_item("d_a_npc_photo", 0x1C37, 38);
+#else
                     mItemNo = 38;
+#endif
                     field_0x9BE = 5;
                 } else {
                     if((temp & 4) != 0){
@@ -1771,11 +1802,20 @@ u32 daNpcPhoto_c::getMsg() {
                 msgNo = 0x3787;
             }
         } else if(itemNo == dItemNo_FIREFLY_BOTTLE_e) {
-            if(eventReg >= 6 && !dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)) {
+            if(eventReg >= 6 && !COS_RANDO_CHECK_GET_ITEM(dItemNo_DELUXE_PICTO_BOX_e)) {
                 field_0x980 = l_msg_color_xy;
                 field_0x9D0 = 0;
                 dComIfGs_setEquipBottleItemEmpty();
+#if TARGET_PC
+                // Rando (pc_rando.h): wwrando's "Windfall Island - Lenzo's House - Bring Forest Firefly"
+                // (rels/d_a_npc_photo.rel@3BE3), and the bit that says he gave it (rando_checkGetItem)
+                if (pc_rando_active()) {
+                    dComIfGs_onEventBit(0x6920);
+                }
+                mItemNo = pc_rando_rel_item("d_a_npc_photo", 0x3BE3, dItemNo_DELUXE_PICTO_BOX_e);
+#else
                 mItemNo = dItemNo_DELUXE_PICTO_BOX_e;
+#endif
             } else{
                 msgNo = 0x2A57;
             }
@@ -1792,7 +1832,7 @@ u32 daNpcPhoto_c::getMsg() {
         if(field_0x9C1 == 1) {
             msgNo = mMsgNno;
         } else {
-            if(dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)) {
+            if(COS_RANDO_CHECK_GET_ITEM(dItemNo_DELUXE_PICTO_BOX_e)) {
                 if(dComIfGs_isTmpBit(dSv_event_tmp_flag_c::UNK_0301)) {
                     field_0x980 = (u32*)l_msg_buy_photo;
                     field_0x9D0 = 0;
@@ -2169,7 +2209,7 @@ s16 daNpcPhoto_c::XyEventCB(int i_itemBtn) {
             return dComIfGp_evmng_getEventIdx("DEFAULT_TALK_XY",0xff);
         }
     } else {
-        if(itemNo == dItemNo_FIREFLY_BOTTLE_e && dComIfGs_getEventReg(l_save_dat.field_0x06) >= 6 && !dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)){
+        if(itemNo == dItemNo_FIREFLY_BOTTLE_e && dComIfGs_getEventReg(l_save_dat.field_0x06) >= 6 && !COS_RANDO_CHECK_GET_ITEM(dItemNo_DELUXE_PICTO_BOX_e)){
             eventIdx = mPhotoGetItem2EventIdx;
             field_0x9C7 = false;
         } else {
