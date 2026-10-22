@@ -28,7 +28,8 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 
 1. In Steam (Desktop Mode): *Games*, *Add a Non-Steam Game to My Library...*, *Browse...*, pick
    `~/waker2/waker2.sh` (set the file type filter to *All files*), *Add Selected Programs*.
-2. Optional: in its *Properties*, rename it (e.g. "Wind Waker Rando"). Launch options can override the
+2. In its *Properties*, *Compatibility*: leave *Force the use of a specific Steam Play compatibility tool*
+   **off** (with Proton the script does not start at all). Optional: rename it (e.g. "Wind Waker Rando"). Launch options can override the
    launcher, e.g. `COS_RANDO_DISC="/home/deck/waker2/my seed.iso" %command%`, or
    `COS_BACKEND=opengl %command%` if Vulkan misbehaves.
 3. Back in Game Mode it is in your library under *Non-Steam*. The Deck's controls arrive as an Xbox-style
