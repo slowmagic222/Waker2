@@ -133,41 +133,6 @@ bool webFile(int fd, std::string path) {
     return true;
 }
 
-// The rando disc's permalink, from the text files next to it: "<disc> - Permalink.txt" (the game's own
-// seed generator) or wwrando's "<disc> - Non-Spoiler Log.txt" / "<disc> - Spoiler Log.txt"
-// ("Permalink: ..." line), <disc> being the disc's path without ".iso". Empty if none says.
-std::string seedPermalink() {
-    if (gConfig.randoDisc == nullptr) {
-        return "";
-    }
-    std::string base = gConfig.randoDisc;
-    if (const size_t dot = base.rfind('.'); dot != std::string::npos && base.find('/', dot) == std::string::npos) {
-        base.resize(dot);
-    }
-    const auto trim = [](std::string v) {
-        while (!v.empty() && (v.back() == '\r' || v.back() == '\n' || v.back() == ' ')) {
-            v.pop_back();
-        }
-        while (!v.empty() && v.front() == ' ') {
-            v.erase(0, 1);
-        }
-        return v;
-    };
-    std::string line;
-    if (std::ifstream in(base + " - Permalink.txt"); in && std::getline(in, line) && !trim(line).empty()) {
-        return trim(line);
-    }
-    for (const char* log : {" - Non-Spoiler Log.txt", " - Spoiler Log.txt"}) {
-        std::ifstream in(base + log);
-        for (int i = 0; in && i < 40 && std::getline(in, line); i++) {
-            if (line.rfind("Permalink:", 0) == 0) {
-                return trim(line.substr(10));
-            }
-        }
-    }
-    return "";
-}
-
 std::string urlEncode(const std::string& s) {
     std::string out;
     for (const unsigned char c : s) {
@@ -259,6 +224,41 @@ void serve() {
 }
 
 } // namespace
+
+// The rando disc's permalink, from the text files next to it: "<disc> - Permalink.txt" (the game's own
+// seed generator) or wwrando's "<disc> - Non-Spoiler Log.txt" / "<disc> - Spoiler Log.txt"
+// ("Permalink: ..." line), <disc> being the disc's path without ".iso". Empty if none says.
+std::string seedPermalink() {
+    if (gConfig.randoDisc == nullptr) {
+        return "";
+    }
+    std::string base = gConfig.randoDisc;
+    if (const size_t dot = base.rfind('.'); dot != std::string::npos && base.find('/', dot) == std::string::npos) {
+        base.resize(dot);
+    }
+    const auto trim = [](std::string v) {
+        while (!v.empty() && (v.back() == '\r' || v.back() == '\n' || v.back() == ' ')) {
+            v.pop_back();
+        }
+        while (!v.empty() && v.front() == ' ') {
+            v.erase(0, 1);
+        }
+        return v;
+    };
+    std::string line;
+    if (std::ifstream in(base + " - Permalink.txt"); in && std::getline(in, line) && !trim(line).empty()) {
+        return trim(line);
+    }
+    for (const char* log : {" - Non-Spoiler Log.txt", " - Spoiler Log.txt"}) {
+        std::ifstream in(base + log);
+        for (int i = 0; in && i < 40 && std::getline(in, line); i++) {
+            if (line.rfind("Permalink:", 0) == 0) {
+                return trim(line.substr(10));
+            }
+        }
+    }
+    return "";
+}
 
 bool startServer(const char* bindAddress, int port) {
     if (inet_pton(AF_INET, bindAddress, &sBind) != 1) {

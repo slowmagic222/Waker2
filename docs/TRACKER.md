@@ -31,13 +31,25 @@ against the chart's collect-map number in `game/src/d/d_item.cpp` (all 49 agree)
 
 ## Use
 
-**The overlay, in the game:** press both sticks in together (L3+R3, on any controller) or F2. The first
-press shows the items page (items with their counts, each dungeon's map, compass, big key, keys held and
-checks), the second the locations page (checks per island and dungeon, sunken treasures), the third hides
-it. Nothing to turn on, and the game keeps its input (the default button map gives neither stick click
-to the game). The same on the Switch, where the Joy-Cons' or Pro Controller's stick clicks toggle it.
-It shows what the game knows, not the tracker's logic (what is in logic needs the seed's
-settings; plan step 3). With the options menu open it is hidden.
+**In the game:** press both sticks in together (L3+R3, on any controller; the Switch's too) or F2.
+
+1. The tracker screen: the game pauses, and the screen shows the tracker's items, its sea chart with each
+   island's checks "in logic / not checked", and the dungeons (keys, map, compass, big key, counts), in
+   wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the islands and dungeons, and
+   the list on the right names the checks of the one under it, coloured as the tracker colours them:
+   blue in logic, red not yet, grey checked. A on a place moves into its list, and A there marks a check
+   by hand (or unmarks it), for what the game cannot tell; B goes back, and B again closes the screen.
+2. A second press: a small panel in a corner while the game runs (in logic / left).
+3. A third press hides it.
+
+Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
+open it is hidden. Which checks are in logic is the tracker's own answer: the game runs the tracker's
+logic code (its `src/services`, bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of
+its own, on the seed's settings (its permalink, read from the text next to the rando disc, see "The
+tracker, served by the game") and wwrando's logic files, and feeds it the game's state the way the
+tracker's autotracking does. That needs the `tracker-logic/` folder next to the game (on the Switch,
+next to `user/`; `COS_TRACKER_LOGIC=<dir>` elsewhere) and the permalink; without them the screen says
+which is missing and shows the items only. Marks made by hand last until the game is closed.
 
 **The game's server:** `COS_TRACKER_SERVER=1` (environment on Linux and the Mac, the `[dev]` section of the
 settings file on the Switch). The log says `[cos] tracker: state at http://127.0.0.1:6544/state`.
@@ -47,7 +59,8 @@ Switch (the tracker runs elsewhere); `COS_TRACKER_BIND=<ipv4>` overrides that.
 **The tracker, served by the game:** with `COS_TRACKER_WEB=<dir>` the same server also serves the
 files of that directory, so `http://127.0.0.1:6544/` is the tracker itself and it autotracks with no
 setup (it finds the state next to the page). `scripts/tracker/build_tracker.sh <dir>` makes that
-directory: wooferzfg/tww-rando-tracker at `1c6d5a0` (GPL-3.0) with
+directory: wooferzfg/tww-rando-tracker at `dd48285` (its next-rando-version branch, which reads the permalinks
+of the wwrando rando mode is pinned to; its main branch reads only 1.10.0's; GPL-3.0) with
 `scripts/tracker/tww-rando-tracker-autotrack.patch`, its tests, its production build. The Steam Deck
 package has it in `tracker/` and its launcher sets this up ([STEAM_DECK.md](STEAM_DECK.md), "The
 tracker"); its launcher opens it in the browser when the game starts, and
@@ -127,16 +140,20 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
 1. The state from the save, served over HTTP; the tracker's autotracking patch. (This step.)
 2. Run it with a seed; send the autotracking upstream to wooferzfg's tracker (or keep a fork) so the
    hosted tracker can use it; read the chart mapping and entrances from the randomizer's disc.
-3. A tracker inside the game: an overlay drawn with the ImGui the options menu already uses
-   (`pc_menu.cpp`), from the same state. Items and checked counts per area are in
-   (`pc_tracker_overlay.cpp`); next, the tracker's logic (which locations are in logic) once the
-   permalink's settings can be read from the seed.
+3. A tracker inside the game (`pc_tracker_overlay.cpp`, `pc_tracker_logic.cpp`): items, the sea chart and
+   the dungeons with what is in logic, in the tracker's art, marks by hand. Next: keep the marks made by
+   hand with the save, the chart mapping and entrances for randomized charts and entrances, a nicer font.
 
 ## Files
 
 - `native/include/pc/pc_tracker.h`, `native/src/pc/features/pc_tracker.cpp`: the state, built after each
   15th game frame (`pc_frame.cpp`) while the server runs or the overlay is shown.
-- `native/src/pc/features/pc_tracker_overlay.cpp`: the overlay (ImGui) and its toggle.
+- `native/src/pc/features/pc_tracker_overlay.cpp`: the tracker screen and the small panel (ImGui) and
+  their toggle.
+- `native/src/pc/features/pc_tracker_logic.cpp`, `native/cmake/quickjs.cmake`: the tracker's logic in
+  QuickJS (quickjs-ng, MIT) on its own thread.
+- `scripts/tracker/build_logic.sh`, `scripts/tracker/logic/`: the `tracker-logic/` folder: the logic
+  bundle (`entry.js`), the art atlas (`pack_art.js`, `images_map.js`), wwrando's logic files.
 - `native/src/pc/features/pc_tracker_server.cpp`: the HTTP server (one thread, host memory).
 - `native/src/pc/features/pc_tracker_tables.inc`, `native/tools/gen_tracker_tables.py`: the location and
   chart tables and their generator (`--ap <Archipelago>/worlds/tww --ap-rev <commit> --wwrando <wwrando>`;

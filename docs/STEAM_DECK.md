@@ -51,9 +51,12 @@ Saves, settings and caches go in `~/waker2/user/`.
 
 ## The tracker
 
-**In the game:** click both sticks in together (L3+R3) to show a small tracker over the game: items,
-each dungeon's keys and checks. Again for the checks per island, a third time to hide it. Works in Game
-Mode with nothing to set up; F2 does the same on a keyboard.
+**In the game:** click both sticks in together (L3+R3) for the tracker screen: the game pauses, and it
+shows the items, the sea chart with what is in logic on each island, and the dungeons, in the tracker's
+own art. Move over an island or dungeon to see its checks (blue in logic, red not yet, grey checked);
+A goes into the list and marks a check by hand, B goes back and closes. Again for a small panel in a
+corner while you play, a third time to hide it. Works in Game Mode with nothing to set up; F2 does the
+same on a keyboard. It needs the seed's permalink next to the rando disc (see below).
 
 **The full tracker, in its own window:** while the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
 with autotracking ([TRACKER.md](TRACKER.md)): the launcher opens it in the browser on the seed being played, as long as the seed's permalink is next

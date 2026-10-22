@@ -1,4 +1,4 @@
-From ba67270a93019a2db1492b548307a82c0237c0c3 Mon Sep 17 00:00:00 2001
+From a288295ac2e17e0356d9b7206b2aa1b61b8690be Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 22 Oct 2026 02:31:56 +0000
 Subject: [PATCH] Autotracking from SwitchWaker (?autotrack=)
@@ -10,22 +10,24 @@ locations and salvaged charts' sunken treasures checked, never unchecked. Turned
 and on its own when the game serves the tracker itself (the state next to the page);
 ?autotrack=0 turns it off.
 ---
- src/services/autotracker.js      | 154 ++++++++++++++++++++
- src/services/autotracker.test.js | 241 +++++++++++++++++++++++++++++++
+ src/services/autotracker.js      | 156 ++++++++++++++++++++
+ src/services/autotracker.test.js | 242 +++++++++++++++++++++++++++++++
  src/ui/tracker.jsx               |  80 ++++++++++
- 3 files changed, 475 insertions(+)
+ 3 files changed, 478 insertions(+)
  create mode 100644 src/services/autotracker.js
  create mode 100644 src/services/autotracker.test.js
 
 diff --git a/src/services/autotracker.js b/src/services/autotracker.js
 new file mode 100644
-index 0000000..cc6f046
+index 0000000..c5e7984
 --- /dev/null
 +++ b/src/services/autotracker.js
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,156 @@
 +import _ from 'lodash';
 +
 +import LogicHelper from './logic-helper';
++import Permalink from './permalink';
++import Settings from './settings';
 +import TrackerState from './tracker-state';
 +
 +// Autotracking from SwitchWaker (the Wind Waker port), which serves what the game's save holds
@@ -147,7 +149,7 @@ index 0000000..cc6f046
 +    if (!_.isNil(mappedIsland)) {
 +      return mappedIsland;
 +    }
-+    if (LogicHelper.isRandomizedChartsSettings()) {
++    if (Settings.getOptionValue(Permalink.OPTIONS.RANDOMIZE_CHARTS)) {
 +      return null;
 +    }
 +    return LogicHelper.islandForChart(chart);
@@ -179,12 +181,13 @@ index 0000000..cc6f046
 +export default Autotracker;
 diff --git a/src/services/autotracker.test.js b/src/services/autotracker.test.js
 new file mode 100644
-index 0000000..6330996
+index 0000000..3125814
 --- /dev/null
 +++ b/src/services/autotracker.test.js
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,242 @@
 +import Autotracker from './autotracker';
 +import LogicHelper from './logic-helper';
++import Settings from './settings';
 +import TrackerState from './tracker-state';
 +
 +describe('Autotracker', () => {
@@ -209,7 +212,7 @@ index 0000000..6330996
 +      'DRC Small Key': 4,
 +      'Wind Waker': 1,
 +    }[item]));
-+    jest.spyOn(LogicHelper, 'isRandomizedChartsSettings').mockReturnValue(false);
++    jest.spyOn(Settings, 'getOptionValue').mockReturnValue(false);
 +    jest.spyOn(LogicHelper, 'islandForChart').mockImplementation((chart) => ({
 +      'Treasure Chart 25': 'Forsaken Fortress Sector',
 +    }[chart] || null));
@@ -356,7 +359,7 @@ index 0000000..6330996
 +
 +    expect(vanilla.isLocationChecked('Forsaken Fortress Sector', 'Sunken Treasure')).toBe(true);
 +
-+    LogicHelper.isRandomizedChartsSettings.mockReturnValue(true);
++    Settings.getOptionValue.mockReturnValue(true);
 +    const unmapped = Autotracker.apply(
 +      trackerState,
 +      gameState({ salvagedCharts: ['Treasure Chart 25'] }),
@@ -425,7 +428,7 @@ index 0000000..6330996
 +  });
 +});
 diff --git a/src/ui/tracker.jsx b/src/ui/tracker.jsx
-index c225697..ac09a4c 100644
+index ccaa68f..4a8b137 100644
 --- a/src/ui/tracker.jsx
 +++ b/src/ui/tracker.jsx
 @@ -4,6 +4,7 @@ import React from 'react';
@@ -436,20 +439,20 @@ index c225697..ac09a4c 100644
  import LogicHelper from '../services/logic-helper';
  import TrackerController from '../services/tracker-controller';
  
-@@ -45,6 +46,11 @@ class Tracker extends React.PureComponent {
- 
+@@ -60,6 +61,11 @@ class Tracker extends React.PureComponent {
      this.initialize();
  
+     this.clearAllLocations = this.clearAllLocations.bind(this);
 +    this.autotrackSearch = `${window.location.search}&${_.last(_.split(window.location.hash, '?', 2)) || ''}`;
 +    this.autotrackUrl = Autotracker.urlFromSearch(this.autotrackSearch);
 +    this.autotrackConnected = false;
 +    this.lastGameState = null;
 +
      this.clearOpenedMenus = this.clearOpenedMenus.bind(this);
-     this.clearRaceModeBannedLocations = this.clearRaceModeBannedLocations.bind(this);
      this.decrementItem = this.decrementItem.bind(this);
-@@ -67,6 +73,18 @@ class Tracker extends React.PureComponent {
-     this.updateOpenedLocation = this.updateOpenedLocation.bind(this);
+     this.disableStartingItemMode = this.disableStartingItemMode.bind(this);
+@@ -86,6 +92,18 @@ class Tracker extends React.PureComponent {
+     this.updateSettingsWindowPosition = this.updateSettingsWindowPosition.bind(this);
    }
  
 +  componentDidMount() {
@@ -467,7 +470,7 @@ index c225697..ac09a4c 100644
    async initialize() {
      await Images.importImages();
  
-@@ -125,6 +143,68 @@ class Tracker extends React.PureComponent {
+@@ -144,6 +162,68 @@ class Tracker extends React.PureComponent {
      });
    }
  
@@ -533,7 +536,7 @@ index c225697..ac09a4c 100644
 +    }
 +  }
 +
-   incrementItem(itemName) {
+   incrementItem(itemName, trackItemLocation) {
      const {
        lastLocation,
 -- 

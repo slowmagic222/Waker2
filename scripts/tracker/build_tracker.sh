@@ -11,7 +11,9 @@
 set -euo pipefail
 
 TRACKER_REPO=https://github.com/wooferzfg/tww-rando-tracker.git
-TRACKER_COMMIT=1c6d5a06b4f0109f742036e3491a7e8ad46bd3ba
+# its next-rando-version branch: the main branch reads only wwrando 1.10.0 permalinks, and rando mode
+# is pinned to a later wwrando (9775811, docs/RANDO.md), whose permalinks and logic only this branch reads
+TRACKER_COMMIT=dd48285589d340a1a65a5975def94ba3c64ef214
 
 [ $# -ge 1 ] || { echo "usage: $0 OUT_DIR [WORK_DIR]" >&2; exit 2; }
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

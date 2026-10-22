@@ -22,6 +22,7 @@
 #include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_item_data.h"
+#include "d/d_s_play.h"
 #include "d/d_save.h"
 #include "d/d_stage.h"
 #include "f_pc/f_pc_manager.h"
@@ -416,6 +417,18 @@ int serverPort() {
 
 } // namespace
 
+void holdGame(bool first) {
+    if (fpcM_Search(isPlayScene, nullptr) == nullptr) {
+        return; // the title, the name entry: they run on (without input), as behind the options menu
+    }
+    if (first) {
+        // a rumble running now would never get the game's stop (pc_menu.cpp does the same)
+        dComIfGp_getVibration().Kill();
+    }
+    // the hit-stop pause of the PLAY scene, renewed every frame (pc_menu.cpp)
+    dScnPly_ply_c::setPauseTimer(2);
+}
+
 const Snapshot& snapshot() {
     return sSnapshot;
 }
@@ -444,10 +457,25 @@ extern "C" void pc_tracker_frame_end(unsigned int frame) {
             sServing = startServer(bind != nullptr && *bind != '\0' ? bind : defaultBind, port);
         }
     }
-    if ((!sServing && !overlayShown()) || frame % kEveryFrames != 0) {
+    // a rando disc: always, for the logic (pc_tracker_logic.cpp), which follows the game's state the way
+    // the tracker's autotracking does (small keys gained between two states, ...)
+    const bool logic = pc::gConfig.randoDisc != nullptr;
+    if ((!sServing && !overlayShown() && !logic) || frame % kEveryFrames != 0) {
         return;
     }
     std::string json = build(frame);
+    if (logic) {
+        // only a changed state (the frame number aside) costs the logic thread anything
+        static std::string sLastForLogic;
+        std::string key = json;
+        if (const size_t at = key.find(", \"frame\": "); at != std::string::npos) {
+            key.erase(at, key.find(',', at + 2) - at);
+        }
+        if (key != sLastForLogic) {
+            sLastForLogic.swap(key);
+            logicSubmit(json);
+        }
+    }
     std::lock_guard<std::mutex> lk(sMu);
     sJson.swap(json);
 }

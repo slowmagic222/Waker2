@@ -58,6 +58,43 @@ struct Snapshot {
     int salvaged = 0; // sunken treasures (charts salvaged), of 49
 };
 const Snapshot& snapshot();
+
+// pc_tracker_logic.cpp: the tracker's logic (which locations are in logic), on its own thread
+namespace LogicColor {
+enum : char { AVAILABLE = 'a', UNAVAILABLE = 'u', CHECKED = 'c', NON_PROGRESS = 'n' };
+}
+struct LogicLocation {
+    std::string name; // a detailed location ("Underneath Link's House")
+    char color;       // LogicColor
+};
+struct LogicArea {
+    std::string name; // a general location: an island or a dungeon
+    bool dungeon = false;
+    int available = 0; // not checked and in logic
+    int remaining = 0; // not checked
+    char color = LogicColor::UNAVAILABLE;
+    std::vector<LogicLocation> locations;
+};
+struct LogicResult {
+    bool ready = false;
+    std::string error; // why there is no logic (no permalink, no files ...); empty while it starts
+    int checked = 0, available = 0, remaining = 0;
+    std::vector<LogicArea> areas; // the 49 islands (sea chart order), the 7 dungeons, the 3 others
+    int millis = 0;               // how long the last one took
+};
+// The logic's folder: COS_TRACKER_LOGIC, else tracker-logic/ next to the game (the Switch: next to user/)
+std::string logicDir();
+// Game thread: work out this state (stateJson's JSON) next; the first call starts the thread.
+void logicSubmit(const std::string& stateJson);
+// Game thread: mark a check by hand (or unmark it), as a click in the tracker does
+void logicToggle(const std::string& generalLocation, const std::string& detailedLocation);
+// Game thread: the newest result
+const LogicResult& logicResult();
+// pc_tracker_server.cpp: the rando disc's permalink from the text next to it; empty if none
+std::string seedPermalink();
+// pc_tracker.cpp: keeps the PLAY scene paused while the tracker screen is open (call each frame;
+// first: the frame it opened)
+void holdGame(bool first);
 // pc_tracker_overlay.cpp: the overlay is on screen (the state is then built even without the server)
 bool overlayShown();
 // The last state as JSON (any thread); before the first build, {"version": 1, "playing": false}.
