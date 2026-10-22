@@ -35,7 +35,8 @@ against the chart's collect-map number in `game/src/d/d_item.cpp` (all 49 agree)
 press shows the items page (items with their counts, each dungeon's map, compass, big key, keys held and
 checks), the second the locations page (checks per island and dungeon, sunken treasures), the third hides
 it. Nothing to turn on, and the game keeps its input (the default button map gives neither stick click
-to the game). It shows what the game knows, not the tracker's logic (what is in logic needs the seed's
+to the game). The same on the Switch, where the Joy-Cons' or Pro Controller's stick clicks toggle it.
+It shows what the game knows, not the tracker's logic (what is in logic needs the seed's
 settings; plan step 3). With the options menu open it is hidden.
 
 **The game's server:** `COS_TRACKER_SERVER=1` (environment on Linux and the Mac, the `[dev]` section of the
@@ -49,7 +50,7 @@ setup (it finds the state next to the page). `scripts/tracker/build_tracker.sh <
 directory: wooferzfg/tww-rando-tracker at `1c6d5a0` (GPL-3.0) with
 `scripts/tracker/tww-rando-tracker-autotrack.patch`, its tests, its production build. The Steam Deck
 package has it in `tracker/` and its launcher sets this up ([STEAM_DECK.md](STEAM_DECK.md), "The
-tracker"); its launcher opens it in the browser when the game starts (Desktop Mode), and
+tracker"); its launcher opens it in the browser when the game starts, and
 `scripts/steamdeck/waker2-tracker.sh` opens it again.
 
 **The tracker, elsewhere:** the patched tracker reads any game's address with `?autotrack=1` (the game

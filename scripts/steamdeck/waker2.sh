@@ -35,16 +35,10 @@ export COS_TRACKER_SERVER="${COS_TRACKER_SERVER:-1}"   # only does something in 
 if [ -z "${COS_TRACKER_WEB:-}" ] && [ -f "$here/tracker/index.html" ]; then
     export COS_TRACKER_WEB="$here/tracker"
 fi
-# The tracker opens in the browser by itself once the game answers (waker2-tracker.sh), in Desktop Mode.
-# Not in Game Mode, where the browser would cover the game: L3+R3 shows the tracker in the game there.
-# COS_TRACKER_OPEN=1 opens it either way, 0 never.
-if [ -z "${COS_TRACKER_OPEN:-}" ]; then
-    if [ -n "${GAMESCOPE_WAYLAND_DISPLAY:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "gamescope" ]; then
-        COS_TRACKER_OPEN=0
-    else
-        COS_TRACKER_OPEN=1
-    fi
-fi
+# The tracker opens in the browser by itself once the game answers (waker2-tracker.sh); in Game Mode it
+# is another window of the game (STEAM button to switch), and L3+R3 shows it in the game as well.
+# COS_TRACKER_OPEN=0 keeps the browser closed.
+COS_TRACKER_OPEN="${COS_TRACKER_OPEN:-1}"
 if [ "$COS_TRACKER_OPEN" = "1" ] && [ -n "${COS_TRACKER_WEB:-}" ] && [ -x "$here/waker2-tracker.sh" ]; then
     "$here/waker2-tracker.sh" --wait >/dev/null 2>&1 &
 fi
