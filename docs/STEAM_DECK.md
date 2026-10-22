@@ -43,7 +43,7 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 | `COS_FULLSCREEN` | `1` | |
 | `COS_TRACKER_SERVER` | `1` | serves the tracker and its state on port 6544 |
 | `COS_TRACKER_WEB` | `~/waker2/tracker` | the tracker's files the game serves |
-| `COS_TRACKER_OPEN` | `0` | `1`: open the tracker in the browser once the game runs |
+| `COS_TRACKER_OPEN` | `1` in Desktop Mode, `0` in Game Mode | `1`: open the tracker in the browser once the game runs; `0`: don't |
 | `COS_TRACKER_BIND` | `127.0.0.1` | `0.0.0.0`: the tracker can be opened from a phone or PC on the same network |
 
 Saves, settings and caches go in `~/waker2/user/`.
@@ -60,11 +60,13 @@ permalink and launch as usual. Items and checked locations follow the game by th
 second; marks made by hand stay. The tracker downloads the seed's logic from GitHub, so the Deck needs the
 network the first time for each wwrando version.
 
-- **Desktop Mode:** `~/waker2/waker2-tracker.sh` opens it in the default browser (or start the game
-  with `COS_TRACKER_OPEN=1`). Put the two windows side by side, or switch with Alt+Tab.
-- **Game Mode** shows one window at a time. Start the game with `COS_TRACKER_OPEN=1 %command%` (launch
-  options) so the browser opens as a window of the game, then switch with the **STEAM** button: the
-  game's entry lists its windows. Not yet tried on a Deck.
+- **Desktop Mode:** `waker2.sh` opens it in the default browser by itself once the game is up
+  (`COS_TRACKER_OPEN=0` turns that off; `~/waker2/waker2-tracker.sh` opens it again if it was closed).
+  Put the two windows side by side, or switch with Alt+Tab.
+- **Game Mode** shows one window at a time, so the browser doesn't open by itself there (it would cover
+  the game; L3+R3 is the tracker in Game Mode). To have it anyway, start the game with
+  `COS_TRACKER_OPEN=1 %command%` (launch options) so the browser opens as a window of the game, then
+  switch with the **STEAM** button: the game's entry lists its windows. Not yet tried on a Deck.
 - **Another screen:** `COS_TRACKER_BIND=0.0.0.0 %command%`, then open `http://<the Deck's address>:6544/`
   on a phone or PC on the same network (the Deck's address: *Settings*, *Internet*, the network's
   details).

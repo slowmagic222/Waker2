@@ -49,7 +49,8 @@ setup (it finds the state next to the page). `scripts/tracker/build_tracker.sh <
 directory: wooferzfg/tww-rando-tracker at `1c6d5a0` (GPL-3.0) with
 `scripts/tracker/tww-rando-tracker-autotrack.patch`, its tests, its production build. The Steam Deck
 package has it in `tracker/` and its launcher sets this up ([STEAM_DECK.md](STEAM_DECK.md), "The
-tracker"); `scripts/steamdeck/waker2-tracker.sh` opens it in the browser.
+tracker"); its launcher opens it in the browser when the game starts (Desktop Mode), and
+`scripts/steamdeck/waker2-tracker.sh` opens it again.
 
 **The tracker, elsewhere:** the patched tracker reads any game's address with `?autotrack=1` (the game
 on 127.0.0.1:6544) or `?autotrack=http://<address>:6544` after its URL
