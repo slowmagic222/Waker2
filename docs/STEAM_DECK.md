@@ -42,34 +42,19 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 | `COS_DISC` | `~/waker2/GZLE01.iso` | the clean disc |
 | `COS_RANDO_DISC` | the other `.iso` in the folder, if any | the seed; set it empty (`COS_RANDO_DISC= %command%`) to ignore one |
 | `COS_FULLSCREEN` | `1` | |
-| `COS_TRACKER_SERVER` | `1` | serves the tracker and its state on port 6544 |
-| `COS_TRACKER_WEB` | `~/waker2/tracker` | the tracker's files the game serves |
-| `COS_TRACKER_OPEN` | `1` | open the tracker in the browser once the game runs; `0`: don't |
-| `COS_TRACKER_BIND` | `127.0.0.1` | `0.0.0.0`: the tracker can be opened from a phone or PC on the same network |
 
 Saves, settings and caches go in `~/waker2/user/`.
 
 ## The tracker
 
-**In the game:** click both sticks in together (L3+R3) to show a small tracker over the game: items,
-each dungeon's keys and checks. Again for the checks per island, a third time to hide it. Works in Game
-Mode with nothing to set up; F2 does the same on a keyboard. With a seed, what it has seen is also kept
-in `~/waker2/user/tracker/`, so a crash or an older save does not take checks off it ([TRACKER.md](TRACKER.md)).
+**In the game:** click both sticks in together (L3+R3) for the tracker screen: the game pauses, and it
+shows the items, the sea chart with what is in logic on each island, and the dungeons, in the tracker's
+own art. Move over an island or dungeon to see its checks (blue in logic, red not yet, grey checked);
+A goes into the list and marks a check by hand, B goes back and closes. Again for a small panel in a
+corner while you play, a third time to hide it. Works in Game Mode with nothing to set up; F2 does the
+same on a keyboard. It needs the seed's permalink next to the rando disc: the in-game seed generator writes
+`<disc> - Permalink.txt`, and wwrando's `WW Random <seed> - Non-Spoiler Log.txt` (or the spoiler log)
+works too, so copy it next to the `.iso`. Without one the screen shows items and checks but no logic.
+With a seed, what it has seen is also kept in `~/waker2/user/tracker/`, so a crash or an older save does
+not take checks off it. More in [TRACKER.md](TRACKER.md).
 
-**The full tracker, in its own window:** while the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
-with autotracking ([TRACKER.md](TRACKER.md)): the launcher opens it in the browser on the seed being played, as long as the seed's permalink is next
-to its disc: the in-game seed generator writes `<disc> - Permalink.txt`, and wwrando's
-`WW Random <seed> - Non-Spoiler Log.txt` (or the spoiler log) works too, so copy it next to the `.iso`.
-Without one it opens on the tracker's first page: paste the permalink and launch as usual. Items and checked locations follow the game by themselves, about once a
-second; marks made by hand stay. The tracker downloads the seed's logic from GitHub, so the Deck needs the
-network the first time for each wwrando version.
-
-- **Desktop Mode:** `waker2.sh` opens it in the default browser by itself once the game is up
-  (`COS_TRACKER_OPEN=0` turns that off; `~/waker2/waker2-tracker.sh` opens it again if it was closed).
-  Put the two windows side by side, or switch with Alt+Tab.
-- **Game Mode** shows one window at a time: the browser opens as another window of the game, and the
-  **STEAM** button switches between them (the game's entry lists its windows). L3+R3 shows the tracker
-  in the game without switching.
-- **Another screen:** `COS_TRACKER_BIND=0.0.0.0 %command%`, then open `http://<the Deck's address>:6544/`
-  on a phone or PC on the same network (the Deck's address: *Settings*, *Internet*, the network's
-  details).

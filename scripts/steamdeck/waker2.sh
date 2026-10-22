@@ -29,19 +29,8 @@ if [ ! -f "$COS_DISC" ]; then
 fi
 
 export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
-export COS_TRACKER_SERVER="${COS_TRACKER_SERVER:-1}"   # only does something in builds with the tracker
-# The randomizer tracker, served by the game at http://127.0.0.1:6544/ while it runs (docs/TRACKER.md);
-# it autotracks by itself. COS_TRACKER_BIND=0.0.0.0 opens it to a phone or PC on the same network.
-if [ -z "${COS_TRACKER_WEB:-}" ] && [ -f "$here/tracker/index.html" ]; then
-    export COS_TRACKER_WEB="$here/tracker"
-fi
-# The tracker opens in the browser by itself once the game answers (waker2-tracker.sh); in Game Mode it
-# is another window of the game (STEAM button to switch), and L3+R3 shows it in the game as well.
-# COS_TRACKER_OPEN=0 keeps the browser closed.
-COS_TRACKER_OPEN="${COS_TRACKER_OPEN:-1}"
-if [ "$COS_TRACKER_OPEN" = "1" ] && [ -n "${COS_TRACKER_WEB:-}" ] && [ -x "$here/waker2-tracker.sh" ]; then
-    "$here/waker2-tracker.sh" --wait >/dev/null 2>&1 &
-fi
+# The randomizer tracker is inside the game: L3+R3 (docs/TRACKER.md). Its logic and art come from
+# tracker-logic/ next to switchwaker.
 
 # The game's output also goes to waker2.log next to it (the last run), to read after a Game Mode start.
 # The run before it is kept as waker2.prev.log, so starting the game again after a crash keeps the crash.

@@ -1654,7 +1654,7 @@ void pc_frame_end(void) {
         sCycleReadbackNs += monotonicNs() - readbackStart;
         // COS_HD_TEXTURES (pc_hd_textures.h): the runtime toggle and the stats line.
         pc_hd_textures_frame_end(pc_frame_count() + 1);
-        // COS_TRACKER_SERVER (pc_tracker.h): the randomizer tracker's state, read from the save.
+        // The randomizer tracker's state, read from the save (pc_tracker.h).
         pc_tracker_frame_end(pc_frame_count() + 1);
         stats = aurora_get_stats();
     }
