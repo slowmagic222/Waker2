@@ -9,6 +9,9 @@
 #include "d/d_snap.h"
 #include "m_Do/m_Do_lib.h"
 #include "res/Object/Kp.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 static daNpc_Kp1_HIO_c l_HIO;
 daNpc_Kp1_HIO_c::daNpc_Kp1_HIO_c() {
     static hio_prm_c a_prm_tbl = {0x1FFE, 0x38E0, (s16)0xF448, (s16)0xC720, 0, 0, 0, 0, 1500, 1024, 170.0f, 0};
@@ -389,6 +392,17 @@ u32 daNpc_Kp1_c::getMsg() {
         mGaveHeart = 0;
         return 0x1E9E;
     }
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm): Maggie never acts as if her quest were over
+    // (that locked out her first item), and whether she gave her first item is event bit 6A01 (unused in
+    // the original game), not the player holding Maggie's Letter
+    if (pc_rando_active()) {
+        if (dComIfGs_isEventBit(0x6A01)) {
+            return dComIfGs_isGetItemBeast(0) ? 0x1E87 : 0x1E88;
+        }
+        return mRefused ? 0x1E93 : 0x1E8A;
+    }
+#endif
     if (dComIfGs_isGetItemReserve(15) && !dComIfGs_checkReserveItem(dItemNo_MOBLINS_LETTER_e)) {
         return dComIfGs_getEventReg(0xCCFF) >= 1 ? 0x1E84 : 0x1E83;
     }
@@ -511,7 +525,17 @@ bool daNpc_Kp1_c::event_action() {
     bool result = false;
     switch (mEventAction) {
     case 0: {
+#if TARGET_PC
+            // Rando: wwrando's "Windfall Island - Maggie - Free Item" (rels/d_a_npc_kp1.rel@17D7), and the
+            // bit that says she gave it
+            fpc_ProcID id = fopAcM_createItemForPresentDemo(
+                &current.pos, pc_rando_rel_item("d_a_npc_kp1", 0x17D7, dItemNo_MAGGIES_LETTER_e), 0, -1, -1, NULL, NULL);
+            if (pc_rando_active()) {
+                dComIfGs_onEventBit(0x6A01);
+            }
+#else
             fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, dItemNo_MAGGIES_LETTER_e, 0, -1, -1, NULL, NULL);
+#endif
             if (id != fpcM_ERROR_PROCESS_ID_e) {
                 dComIfGp_event_setItemPartnerId(id);
                 result = true;
@@ -519,7 +543,13 @@ bool daNpc_Kp1_c::event_action() {
             break;
         }
     case 1: {
+#if TARGET_PC
+            // Rando: wwrando's "Windfall Island - Maggie - Delivery Reward" (rels/d_a_npc_kp1.rel@1817)
+            fpc_ProcID id = fopAcM_createItemForPresentDemo(
+                &current.pos, pc_rando_rel_item("d_a_npc_kp1", 0x1817, dItemNo_HEART_PIECE_e), 0, -1, -1, NULL, NULL);
+#else
             fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, dItemNo_HEART_PIECE_e, 0, -1, -1, NULL, NULL);
+#endif
             if (id != fpcM_ERROR_PROCESS_ID_e) {
                 dComIfGp_event_setItemPartnerId(id);
                 result = true;
