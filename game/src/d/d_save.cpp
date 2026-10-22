@@ -20,6 +20,9 @@
 #include "SSystem/SComponent/c_math.h"
 #include "string.h"
 #include "stdio.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 800589A8-80058B54       .text init__21dSv_player_status_a_cFv */
 void dSv_player_status_a_c::init() {
@@ -1458,13 +1461,29 @@ void dSv_info_c::reinit() {
         dComIfGs_onEventBit(l_onEventBit[i]);
     }
 
-#if VERSION > VERSION_DEMO
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, main.dol 0x8005D78C to 0x8005D82C): New Game+
+    // does not finish Lenzo's assistant quest, open the Windfall jail chest or give the Deluxe Picto Box,
+    // which are item locations in a seed
+    const BOOL rando = pc_rando_active();
+#endif
+#if TARGET_PC
+    if (!rando) {
+        dComIfGs_setEventReg(dSv_event_flag_c::UNK_C407, 7);
+    }
+#elif VERSION > VERSION_DEMO
     dComIfGs_setEventReg(dSv_event_flag_c::UNK_C407, 7);
 #endif
 
     dComIfGs_setClearCount(clearCount);
 
+#if TARGET_PC
+    if (!rando) {
+        dComIfGs_onSaveTbox(dSv_save_c::STAGE_MISC, 0x00);
+    }
+#else
     dComIfGs_onSaveTbox(dSv_save_c::STAGE_MISC, 0x00);
+#endif
     dComIfGs_onSaveSwitch(dSv_save_c::STAGE_SEA, 0x47);
     dComIfGs_onSaveSwitch(dSv_save_c::STAGE_SEA, 0x5E);
 
@@ -1477,13 +1496,25 @@ void dSv_info_c::reinit() {
 
     dComIfGs_setRandomSalvagePoint(3);
 
+#if TARGET_PC
+    if (!rando) {
+        dComIfGs_setItem(dInvSlot_CAMERA_e, dItemNo_DELUXE_PICTO_BOX_e);
+    }
+#else
     dComIfGs_setItem(dInvSlot_CAMERA_e, dItemNo_DELUXE_PICTO_BOX_e);
+#endif
     dComIfGp_setItem(dInvSlot_CAMERA_e, dItemNo_DELUXE_PICTO_BOX_e);
 
-#if VERSION > VERSION_DEMO
+#if TARGET_PC
+    if (!rando) {
+        dComIfGs_onGetItem(dInvSlot_CAMERA_e, 0);
+        dComIfGs_onGetItem(dInvSlot_CAMERA_e, 1);
+    }
+#elif VERSION > VERSION_DEMO
     dComIfGs_onGetItem(dInvSlot_CAMERA_e, 0);
     dComIfGs_onGetItem(dInvSlot_CAMERA_e, 1);
-
+#endif
+#if VERSION > VERSION_DEMO
     dComIfGs_setPictureNum(pictureNum);
 
     dComIfGs_setEventReg(dSv_event_flag_c::UNK_89FF, r27);

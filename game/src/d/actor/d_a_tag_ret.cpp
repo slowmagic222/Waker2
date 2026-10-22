@@ -10,6 +10,9 @@
 #include "d/d_cc_d.h"
 #include "d/d_com_inf_game.h"
 #include "d/actor/d_a_player_main.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static dCcD_SrcCyl cyl_check_src = {
     // dCcD_SrcGObjInf
@@ -48,7 +51,13 @@ cPhs_State Act_c::_create() {
     fopAcM_ct(this, daTagRet::Act_c);
 
     #if VERSION > VERSION_DEMO
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x22C): the void between Forest Haven and the
+    // Forbidden Woods stays after Farore's Pearl, so a fall there does not mean crossing Forest Haven again
+    if (!pc_rando_active() && checkItemGet(dItemNo_PEARL_FARORE_e, TRUE)) {
+#else
     if (checkItemGet(dItemNo_PEARL_FARORE_e, TRUE)) {
+#endif
         return cPhs_STOP_e;
     }
     #endif

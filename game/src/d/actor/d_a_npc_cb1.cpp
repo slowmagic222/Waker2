@@ -17,6 +17,9 @@
 #include "m_Do/m_Do_controller_pad.h"
 #include "d/actor/d_a_player_main.h"
 #include "res/Object/Cb.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_Cb1_HIO_c : public JORReflexible {
 public:
@@ -259,12 +262,50 @@ static BOOL CheckCreateHeap(fopAc_ac_c* i_this) {
 }
 
 /* 000004F8-00000814       .text create__11daNpc_Cb1_cFv */
+#if TARGET_PC
+// Rando: where Makar starts in the Wind Temple for each entrance (spawn ID), from wwrando's
+// makar_possible_wt_spawn_positions; any other entrance: where the player is.
+static void daNpc_Cb1_randoSpawn(cXyz* pos, s16* angle, s8* roomNo) {
+    static const struct {
+        s16 spawnId;
+        s8 roomNo;
+        s16 angle;
+        f32 x, y, z;
+    } spawns[] = {
+        {15, 15, (s16)0x94A0, -3651.02f, 1557.67f, 13235.2f},  // entrance
+        {22, 0, 0x4000, -4196.33f, 754.518f, 7448.5f},          // first warp pot
+        {23, 2, (s16)0xB000, 668.107f, 1550.0f, 2298.75f},      // second warp pot
+        {24, 12, (s16)0xC000, 14203.1f, -5062.49f, 8948.05f},   // third warp pot
+        {69, 3, 0x4000, -4146.65f, 1100.0f, 47.88f},            // inter-dungeon warp pot
+        {20, 2, 0, -111.29f, -3600.0f, -1747.64f},              // miniboss door
+        {27, 12, (s16)0x8000, 14084.78f, -5062.49f, 9650.55f},  // boss door
+    };
+    s16 spawnId = dComIfGp_getStartStagePoint();
+    for (int i = 0; i < (int)ARRAY_SIZE(spawns); i++) {
+        if (spawns[i].spawnId == spawnId) {
+            pos->set(spawns[i].x, spawns[i].y, spawns[i].z);
+            *angle = spawns[i].angle;
+            *roomNo = spawns[i].roomNo;
+            return;
+        }
+    }
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
+    *pos = player != NULL ? player->current.pos : cXyz::Zero;
+    *angle = player != NULL ? player->shape_angle.y : 0;
+    *roomNo = dStage_roomControl_c::getStayNo();
+}
+#endif
+
 cPhs_State daNpc_Cb1_c::create() {
     fopAcM_ct(this, daNpc_Cb1_c);
 
     if(!isTypeBossDie()) {
 #if VERSION == VERSION_DEMO
         if(dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_WT))
+#elif TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x640): Makar stays after the Master Sword
+        // (Full Power) is found, which a seed can give before the Wind Temple
+        if(!pc_rando_active() && dComIfGs_checkGetItem(dItemNo_MASTER_SWORD_3_e))
 #else
         if(dComIfGs_checkGetItem(dItemNo_MASTER_SWORD_3_e))
 #endif
@@ -309,6 +350,17 @@ cPhs_State daNpc_Cb1_c::create() {
     cPhs_State result = dComIfG_resLoad(&mPhs, "Cb");
     if(result == cPhs_COMPLEATE_e) {
         if(isTypeKaze()) {
+#if TARGET_PC
+            // Rando (wwrando make_game_nonlinear.asm reset_makar_position, REL 0x7B4 and 0x7D4): in the Wind
+            // Temple Makar starts at the entrance the player came in by, not at the last partner's position
+            if(pc_rando_active()) {
+                cXyz pos;
+                s16 angle;
+                s8 roomNo;
+                daNpc_Cb1_randoSpawn(&pos, &angle, &roomNo);
+                dComIfGs_setRestartOption(&pos, angle, roomNo, 1);
+            } else
+#endif
             if(dComIfGs_getPlayerPriestFlag() == 1) {
 #if TARGET_PC
                 // The saved position is big-endian (d_save.h): pass a host copy.

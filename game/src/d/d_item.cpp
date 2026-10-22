@@ -2965,12 +2965,22 @@ u8 check_itemno(int itemNo) {
             return dItemNo_GREEN_RUPEE_e;
         }
     }
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, main.dol 0x800C7E58 and 0x800C7E84): bait and
+    // spoils drop without their bags, so they can be had before the bags
+    if (!pc_rando_active() && !checkItemGet(dItemNo_BAIT_BAG_e, TRUE)) {
+#else
     if (!checkItemGet(dItemNo_BAIT_BAG_e, TRUE)) {
+#endif
         if (isEsa(itemNo)) {
             return dItemNo_GREEN_RUPEE_e;
         }
     }
+#if TARGET_PC
+    if (!pc_rando_active() && !checkItemGet(dItemNo_SPOILS_BAG_e, TRUE)) {
+#else
     if (!checkItemGet(dItemNo_SPOILS_BAG_e, TRUE)) {
+#endif
         if (isEmono(itemNo)) {
             return dItemNo_GREEN_RUPEE_e;
         }
