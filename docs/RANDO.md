@@ -40,6 +40,9 @@ On the Switch, `COS_RANDO_DISC=sdmc:/switch/switchwaker/<file>.iso` in the `[dev
   it are under the `GZLE99` game code, apart from the original game's.
 - A randomizer output given as `COS_DISC` is refused with a message naming `COS_RANDO_DISC`.
 
+Or make the seed in the game: the options menu's Randomizer tab runs wwrando on the device and picks the
+seed to play (docs/SEEDGEN.md).
+
 ## What works
 
 - The checks and the disc switch above (built; checked with a syntax build of the changed units and a test of
