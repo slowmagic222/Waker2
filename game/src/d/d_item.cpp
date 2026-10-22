@@ -547,6 +547,91 @@ void execItemGet(u8 itemNo) {
     item_func_ptr[itemNo]();
 }
 
+#if TARGET_PC
+// The byte of "ever got" bits of inventory slot `slot` (dSv_player_get_item_c).
+static u8 dItem_getItemBits(int slot) {
+    u8 bits = 0;
+    for (int i = 0; i < 8; i++) {
+        if (dComIfGs_isGetItem(slot, i)) {
+            bits |= 1 << i;
+        }
+    }
+    return bits;
+}
+
+// Rando (pc_rando.h; wwrando custom_funcs.asm convert_progressive_item_id): a seed's swords, shields, bows,
+// wallets, bomb bags, quivers, picto boxes and magic meters are progressive: whichever of the family's
+// IDs the seed placed, the player gets the next one up from what they own.
+u8 dItem_randoProgressive(u8 itemNo) {
+    switch (itemNo) {
+    case dItemNo_SWORD_e:
+    case dItemNo_MASTER_SWORD_1_e:
+    case dItemNo_MASTER_SWORD_2_e:
+    case dItemNo_DROPPED_SWORD_e:
+    case dItemNo_MASTER_SWORD_3_e:
+        switch (dComIfGs_checkCollect(0)) {
+        case 0: return dItemNo_SWORD_e;
+        case 1: return dItemNo_MASTER_SWORD_1_e;
+        case 3: return dItemNo_MASTER_SWORD_2_e;
+        case 7: return dItemNo_MASTER_SWORD_3_e;
+        default: return dItemNo_SWORD_e;
+        }
+    case dItemNo_SHIELD_e:
+    case dItemNo_MIRROR_SHIELD_e:
+        switch (dComIfGs_checkCollect(1)) {
+        case 0: return dItemNo_SHIELD_e;
+        case 1: return dItemNo_MIRROR_SHIELD_e;
+        default: return dItemNo_SHIELD_e;
+        }
+    case dItemNo_BOW_e:
+    case dItemNo_MAGIC_ARROW_e:
+    case dItemNo_LIGHT_ARROW_e:
+        switch (dItem_getItemBits(dInvSlot_BOW_e)) {
+        case 0: return dItemNo_BOW_e;
+        case 1: return dItemNo_MAGIC_ARROW_e;
+        case 3: return dItemNo_LIGHT_ARROW_e;
+        default: return dItemNo_BOW_e;
+        }
+    case dItemNo_MAX_RUPEE_UP1_e:
+    case dItemNo_MAX_RUPEE_UP2_e:
+        switch (dComIfGs_getWalletSize()) {
+        case 0: return dItemNo_MAX_RUPEE_UP1_e;
+        case 1: return dItemNo_MAX_RUPEE_UP2_e;
+        default: return dItemNo_MAX_RUPEE_UP1_e;
+        }
+    case dItemNo_MAX_BOMB_UP1_e:
+    case dItemNo_MAX_BOMB_UP2_e:
+        switch (dComIfGs_getBombMax()) {
+        case 30: return dItemNo_MAX_BOMB_UP1_e;
+        case 60: return dItemNo_MAX_BOMB_UP2_e;
+        default: return dItemNo_MAX_BOMB_UP1_e;
+        }
+    case dItemNo_MAX_ARROW_UP1_e:
+    case dItemNo_MAX_ARROW_UP2_e:
+        switch (dComIfGs_getArrowMax()) {
+        case 30: return dItemNo_MAX_ARROW_UP1_e;
+        case 60: return dItemNo_MAX_ARROW_UP2_e;
+        default: return dItemNo_MAX_ARROW_UP1_e;
+        }
+    case dItemNo_PICTO_BOX_e:
+    case dItemNo_DELUXE_PICTO_BOX_e:
+        switch (dItem_getItemBits(dInvSlot_CAMERA_e)) {
+        case 0: return dItemNo_PICTO_BOX_e;
+        case 1: return dItemNo_DELUXE_PICTO_BOX_e;
+        default: return dItemNo_PICTO_BOX_e;
+        }
+    case dItemNo_MAGIC_POWER_e:
+    case dItemNo_MAX_MP_UP1_e:
+        switch (dComIfGs_getMaxMagic()) {
+        case 0: return dItemNo_MAGIC_POWER_e;
+        case 16: return dItemNo_MAX_MP_UP1_e;
+        default: return dItemNo_MAGIC_POWER_e;
+        }
+    }
+    return itemNo;
+}
+#endif
+
 /* 800C2E30-800C2E7C       .text checkItemGet__FUci */
 BOOL checkItemGet(u8 itemNo, BOOL defaultVal) {
     int result = item_getcheck_func_ptr[itemNo]();

@@ -22,12 +22,57 @@
 #include "stdio.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "d/d_item.h"
+
+// Rando (pc_rando.h): the new-game settings wwrando writes into main.dol (its custom_symbols at the
+// pinned version), from num_triforce_shards_to_start_with (0x803FDC70) to option_targeting_mode
+// (0x803FDCD0). With no randomizer disc, or no such bytes, wwrando's defaults.
+struct dSv_randoSettings {
+    u8 triforceShards;
+    u8 swordMode; // 0: start with a sword, 1: randomized sword, 2: swordless
+    u8 skipRematchBosses;
+    u8 startingGear[87]; // ends at 0xFF
+    u16 quarterHearts;
+    u8 magic;
+    u8 prologuePigs;
+    u8 targetingMode;
+};
+
+static dSv_randoSettings dSv_randoGetSettings() {
+    dSv_randoSettings s = {0, 0, 1, {0xFF}, 12, 16, 0x04, 0};
+    const u8* p = pc_rando_dol_bytes(0x803FDC70, 0x61);
+    if (p != NULL) {
+        s.triforceShards = p[0x00];
+        s.swordMode = p[0x02];
+        s.skipRematchBosses = p[0x03];
+        memcpy(s.startingGear, p + 0x04, sizeof(s.startingGear));
+        s.startingGear[sizeof(s.startingGear) - 1] = 0xFF;
+        s.quarterHearts = (u16)((p[0x5C] << 8) | p[0x5D]);
+        s.magic = p[0x5E];
+        s.prologuePigs = p[0x5F];
+        s.targetingMode = p[0x60];
+    }
+    return s;
+}
 #endif
 
 /* 800589A8-80058B54       .text init__21dSv_player_status_a_cFv */
 void dSv_player_status_a_c::init() {
+#if TARGET_PC
+    // Rando (wwrando misc_rando_features.asm set_starting_health): the seed's starting health; the current
+    // health without a partial heart
+    if (pc_rando_active()) {
+        u16 quarterHearts = dSv_randoGetSettings().quarterHearts;
+        mMaxLife = quarterHearts;
+        mLife = quarterHearts & ~3;
+    } else {
+        mMaxLife = 12;
+        mLife = 12;
+    }
+#else
     mMaxLife = 12;
     mLife = 12;
+#endif
     field_0x8 = 0;
 
     for (int i = 0; i < ARRAY_SIZE(mSelectItem); i++) {
@@ -1389,8 +1434,150 @@ void dSv_turnRestart_c::set(const cXyz& i_pos, s16 i_angle, s8 i_roomNo, u32 i_p
 }
 
 /* 8005D604-8005D660       .text init__10dSv_info_cFv */
+#if TARGET_PC
+// Rando (pc_rando.h; wwrando custom_funcs.asm init_save_with_tweaks, called from dSv_info_c::init in place of
+// dSv_save_c::init): a new seed's file starts past the prologue and the story events a seed skips, with the
+// seed's starting gear.
+static void dSv_randoInitSave() {
+    const dSv_randoSettings s = dSv_randoGetSettings();
+
+    if (s.swordMode == 0) {
+        item_func_sword();
+    } else if (s.swordMode == 2) {
+        dComIfGs_onEventBit(0x2C02); // BARRIER_DOWN
+        dComIfGs_onEventBit(0x3B08); // also set by the barrier
+    }
+
+    item_func_normal_sail();
+    item_func_wind_tact();
+    item_func_tact_song1(); // Wind's Requiem
+    item_func_pirates_omamori();
+
+    // 30 bombs and arrows, though not yet usable, so the bomb bag or quiver need not set them (which
+    // would lower an upgrade got first)
+    dComIfGs_setArrowNum(30);
+    dComIfGs_setBombNum(30);
+    dComIfGs_setArrowMax(30);
+    dComIfGs_setBombMax(30);
+
+    dComIfGs_setMaxMagic(s.magic);
+    dComIfGs_setMagic(s.magic);
+
+    for (int i = 0; i < (int)sizeof(s.startingGear) && s.startingGear[i] != 0xFF; i++) {
+        execItemGet(dItem_randoProgressive(s.startingGear[i]));
+    }
+
+    static const u16 l_eventBits[] = {
+        0x3510, // HAS_SEEN_INTRO
+        0x2A80, // HAS_HEROS_CLOTHES
+        0x0280, // SAW_TETRA_IN_FOREST_OF_FAIRIES
+        0x0520, // GOSSIP_STONE_AT_FF1
+        0x2E01, // WATCHED_MEETING_KORL_CUTSCENE
+        0x0F80, // KORL_UNLOCKED_AND_SPAWN_ON_WINDFALL
+        0x0908, // SAIL_INTRODUCTION_TEXT_AND_MAP_UNLOCKED
+        0x2A08, // ENTER_KORL_FOR_THE_FIRST_TIME_AND_SPAWN_ANYWHERE
+        0x0902, // SAW_DRAGON_ROOST_ISLAND_INTRO
+        0x1F40, // SAW_QUILL_CUTSCENE_ON_DRI
+        0x0A80, // KORL_DINS_PEARL_TEXT_ALLOWING_YOU_TO_ENTER_HIM
+        0x0901, // TRIGGERED_MAP_FISH
+        0x0A20, // WATCHED_FOREST_HAVEN_INTRO_CUTSCENE
+        0x1801, // WATCHED_DEKU_TREE_CUTSCENE
+        0x0A08, // TALKED_TO_KORL_AFTER_LEAVING_FH
+        0x0808, // leaving the pirate ship goes to Windfall
+        0x1F02, // TALKED_TO_KORL_AFTER_GETTING_BOMBS
+        0x2F20, // talked to KoRL after Nayru's Pearl
+        0x3840, // TALKED_TO_KORL_POST_TOWER_CUTSCENE
+        0x2D04, // MASTER_SWORD_CUTSCENE
+        0x3802, // COLORS_IN_HYRULE
+        0x2D01, // ANIMATION_SET_2
+        0x2D02, // TETRA_TO_ZELDA_CUTSCENE
+        0x3201, // KoRL told about the sages
+        0x3380, // KoRL told about the Triforce Shards
+        0x1001, // WATCHED_FIRE_AND_ICE_ARROWS_CUTSCENE
+        0x2E04, // MEDLI_IN_EARTH_TEMPLE_ENTRANCE
+        0x2920, // MEDLI_IN_EARTH_TEMPLE
+        0x1620, // Medli can be lifted and called
+        0x3304, // Medli called from the jail
+        0x2910, // MAKAR_IN_WIND_TEMPLE
+        0x1610, // Makar can be lifted and called
+        0x3440, // Makar called from the jail
+        0x3A20, // fishman and KoRL talked about the Forsaken Fortress
+        0x2D08, // HYRULE_3_WARP_CUTSCENE
+        0x3980, // HYRULE_3_ELECTRICAL_BARRIER_CUTSCENE_1
+        0x3B02, // before Puppet Ganon
+        0x4002, // before Ganondorf
+    };
+    for (int i = 0; i < (int)ARRAY_SIZE(l_eventBits); i++) {
+        dComIfGs_onEventBit(l_eventBits[i]);
+    }
+
+    dComIfGs_setEventReg(0xBFFF, s.prologuePigs); // the prologue pigs brought to Rose
+    dComIfGs_setOptAttentionType(s.targetingMode);
+    dComIfGs_onTmpBit(0x0310); // Grandma gave the Hero's Clothes
+
+    // Switches of events a seed has as seen, as wwrando writes them (each word: switches 32*n to 32*n+31)
+    static const struct {
+        u8 stage;
+        u8 word;
+        u32 bits;
+    } l_switches[] = {
+        {dSv_save_c::STAGE_MISC, 0, 0x4008038B},   // Outset's woods events, Rito Aerie, pond, Forest Haven, jail
+        {dSv_save_c::STAGE_MISC, 1, 0xC0000000},   // Earth and Wind Temple entrance tablets
+        {dSv_save_c::STAGE_SEA, 0, 0x02000000},    // Greatfish Isle (no endless night)
+        {dSv_save_c::STAGE_SEA, 1, 0x80000000},    // Windfall intro
+        {dSv_save_c::STAGE_SEA, 2, 0x41010080},    // FF2, Flight Control Platform, Nintendo Gallery
+        {dSv_save_c::STAGE_DRC, 0, 0x00000200},
+        {dSv_save_c::STAGE_DRC, 1, 0x00000002},
+        {dSv_save_c::STAGE_DRC, 2, 0x00000040},
+        {dSv_save_c::STAGE_FW, 1, 0x00400000},
+        {dSv_save_c::STAGE_TOTG, 1, 0x00002000},
+        {dSv_save_c::STAGE_TOTG, 3, 0x00000008},
+        {dSv_save_c::STAGE_ET, 1, 0x00000400},
+        {dSv_save_c::STAGE_HYRULE, 0, 0x00040040},
+        {dSv_save_c::STAGE_GT, 0, 0xF0042000},
+    };
+    for (int i = 0; i < (int)ARRAY_SIZE(l_switches); i++) {
+        for (int b = 0; b < 32; b++) {
+            if (l_switches[i].bits & (1u << b)) {
+                dComIfGs_onSaveSwitch(l_switches[i].stage, l_switches[i].word * 32 + b);
+            }
+        }
+    }
+
+    // The boss intros of the five dungeons as seen
+    for (int stage = dSv_save_c::STAGE_DRC; stage <= dSv_save_c::STAGE_WT; stage++) {
+        g_dComIfG_gameInfo.save.getSavedata().getSave(stage).getBit().onStageBossDemo();
+    }
+
+    // Every spoil and bait as had before, so the first of each has no item get
+    for (int i = 0; i < 8; i++) {
+        dComIfGs_onGetItemBeast(i);
+        dComIfGs_onGetItemBait(i);
+    }
+
+    for (int i = 0; i < s.triforceShards && i < 8; i++) {
+        dComIfGs_onTriforce(i);
+    }
+    if (s.triforceShards >= 8) {
+        dComIfGs_onEventBit(0x3D04); // saw the Triforce refuse
+    }
+
+    if (s.skipRematchBosses == 1) {
+        dComIfGs_onEventBit(0x3904); // recollection Gohma
+        dComIfGs_onEventBit(0x3902); // recollection Kalle Demos
+        dComIfGs_onEventBit(0x3901); // recollection Jalhalla
+        dComIfGs_onEventBit(0x3A80); // recollection Molgera
+    }
+}
+#endif
+
 void dSv_info_c::init() {
     mSavedata.init();
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dSv_randoInitSave();
+    }
+#endif
     mMemory.init();
     mDan.init(-1);
     initZone();

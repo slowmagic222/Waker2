@@ -63,6 +63,17 @@ unsigned char pc_rando_rel_item(const char* name, unsigned int offset, unsigned 
     return pick(name, offset, offset < bytes.size() ? bytes[offset] : -1, vanilla);
 }
 
+const unsigned char* pc_rando_dol_bytes(unsigned int address, unsigned int size) {
+    if (!pc_rando_active()) {
+        return nullptr;
+    }
+    const uint8_t* p = pc::dolBytes(address, size);
+    if (p == nullptr) {
+        pc::writef(STDERR_FILENO, "[cos] rando: main.dol has no bytes at %X (+%u)\n", address, size);
+    }
+    return p;
+}
+
 unsigned char pc_rando_dol_item(unsigned int address, unsigned char vanilla) {
     if (!pc_rando_active()) {
         return vanilla;
