@@ -25,6 +25,9 @@
 #include "m_Do/m_Do_printf.h"
 #include "math.h"
 
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 #include "d/d_kankyo_dayproc.inc"
 
 struct dKy_setLight__Status {

@@ -576,7 +576,13 @@ void daPy_lk_c::setGetItemSound(u16 param_1, BOOL param_2) {
     {
         mDoAud_subBgmStart(JA_BGM_ITEM_GET_S);
         dComIfGp_setMesgBgmOn();
+#if TARGET_PC
+    // Rando (wwrando remove_cutscenes.asm, 0x8012E3A4): every chest opens with the wooden chest event (prm0 1),
+    // so chests play the good item sound
+    } else if (param_2 && !pc_rando_active()) {
+#else
     } else if (param_2) {
+#endif
         seStartSystem(JA_SE_ME_ITEM_GET_S);
         dComIfGp_setMesgBgmOn2();
     } else {
@@ -706,6 +712,13 @@ BOOL daPy_lk_c::dProcGetItem_init() {
         } else {
             item_no = dComIfGp_event_getGtItm();
         }
+#if TARGET_PC
+        // Rando (wwrando make_items_progressive.asm, 0x8012E7B8 and 0x8012E7DC): the item get shows the next
+        // tier of a progressive item
+        if (pc_rando_active()) {
+            item_no = dItem_randoProgressive(item_no);
+        }
+#endif
         fpc_ProcID itemID =
             fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, fopAcM_GetRoomNo(this));
         if (itemID != fpcM_ERROR_PROCESS_ID_e) {

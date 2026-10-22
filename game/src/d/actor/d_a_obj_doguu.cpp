@@ -11,6 +11,9 @@
 #include "d/actor/d_a_player.h"
 #include "f_op/f_op_camera.h"
 #include "d/d_kankyo_rain.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static dCcD_SrcCyl l_cyl_src = {
     // dCcD_SrcGObjInf
@@ -736,6 +739,15 @@ bool daObjDoguu_c::_execute() {
     
             if (getFinishEventCount() >= 3) {
                 dComIfGs_onEventBit(dSv_event_flag_c::UNK_1E40);
+#if TARGET_PC
+                // Rando (wwrando remove_cutscenes.asm, REL 0x267C): no cutscene of the Tower of the Gods rising;
+                // the pearl event ends as for the first two pearls
+                if (pc_rando_active()) {
+                    field_0x8AC = 10;
+                    dComIfGp_event_reset();
+                    break;
+                }
+#endif
                 fopAcM_orderChangeEventId(this, mMegamiDemoEventIdx, 0, 0xFFFF);
                 field_0x8AC = 11;
             } else {

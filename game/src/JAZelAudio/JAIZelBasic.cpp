@@ -17,6 +17,17 @@
 #include "JSystem/JAudio/JASWaveBankMgr.h"
 #include "JSystem/JKernel/JKRSolidHeap.h"
 #include "d/d_com_inf_game.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+// Outset's alternate theme plays once the pirates took Aryll (event bit 0E20). Rando (wwrando
+// misc_rando_features.asm, 0x802A2BE4, 0x802AA2E4, 0x802AA4CC, 0x802AA4E8): Aryll is on the pirate ship instead,
+// so it plays once the pirate ship's chest (stage 13, chest 5) is open
+#define COS_RANDO_OUTSET_PIRATES()                                                                         \
+    (pc_rando_active() ? (g_dComIfG_gameInfo.save.getSavedata().getSave(13).getBit().isTbox(5) ? TRUE : FALSE) \
+                       : checkEventBit(0xE20))
+#else
+#define COS_RANDO_OUTSET_PIRATES() checkEventBit(0xE20)
+#endif
 
 JAIZelBasic* JAIZelBasic::zel_basic;
 u32 jai_rnd_seed = 0x12345678;
@@ -510,7 +521,7 @@ void JAIZelBasic::zeldaGFrameWork() {
             } else if (field_0x00bc == 3) {
                 u32 bgm;
 #if VERSION > VERSION_DEMO
-                if (mIslandRoomNo == 0x2C && checkEventBit(0xE20) == 1) {
+                if (mIslandRoomNo == 0x2C && COS_RANDO_OUTSET_PIRATES() == 1) {
                     bgm = JA_BGM_ISLAND_LINK_3;
                 } else
 #endif
@@ -3731,7 +3742,7 @@ void JAIZelBasic::startIsleBgm() {
     }
     u32 bgmNum;
 #if VERSION > VERSION_DEMO
-    if (mIslandRoomNo == dIsleRoom_OutsetIsland_e && checkEventBit(0xe20) == 1) {
+    if (mIslandRoomNo == dIsleRoom_OutsetIsland_e && COS_RANDO_OUTSET_PIRATES() == 1) {
         bgmNum = JA_BGM_ISLAND_LINK_3;
     } else
 #endif
@@ -3811,9 +3822,9 @@ void JAIZelBasic::setScene(s32 sceneNum, s32 roomNo, s32 param_3, s32 layerNo) {
                     bgmNum = JA_BGM_ISLAND_LINK_0;
                 } else if (checkEventBit(1) == 1 && checkEventBit(0x101) == 0) {
                     bgmNum = JA_BGM_ISLAND_LINK_2;
-                } else if (checkEventBit(0x101) == 1 && checkEventBit(0xe20) == 0) {
+                } else if (checkEventBit(0x101) == 1 && COS_RANDO_OUTSET_PIRATES() == 0) {
                     bgmNum = 0;
-                } else if (checkEventBit(0xe20) == 1) {
+                } else if (COS_RANDO_OUTSET_PIRATES() == 1) {
                     bgmNum = JA_BGM_ISLAND_LINK_3;
                 } else {
                     bgmNum = m_isle_info[mIslandRoomNo].bgmNum;

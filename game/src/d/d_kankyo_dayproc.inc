@@ -6,11 +6,23 @@
 
 /* 80197AB8-80197FE4       .text dKankyo_DayProc__Fv */
 static void dKankyo_DayProc() {
+#if TARGET_PC
+    // Rando (wwrando remove_cutscenes.asm, 0x80197ADC and 0x80197AFC): Aryll's and Tingle's letters came after
+    // a cutscene in Hyrule, which is gone; they come once the Helmaroc King is dead
+    BOOL afterHyrule2 = pc_rando_active() ? dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_FF)
+                                          : dComIfGs_isEventBit(dSv_event_flag_c::UNK_1820);
+    if (afterHyrule2)
+        dLetter_autoStock(dSv_event_flag_c::LETTER_ARYLL);
+
+    if (afterHyrule2 && dComIfGs_isEventBit(dSv_event_flag_c::UNK_0B80))
+        dLetter_autoStock(dSv_event_flag_c::LETTER_TINGLE);
+#else
     if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_1820))
         dLetter_autoStock(dSv_event_flag_c::LETTER_ARYLL);
 
     if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_1820) && dComIfGs_isEventBit(dSv_event_flag_c::UNK_0B80))
         dLetter_autoStock(dSv_event_flag_c::LETTER_TINGLE);
+#endif
 
     dLetter_delivery(dSv_event_flag_c::LETTER_BAITOS_MOM);
     dLetter_delivery(dSv_event_flag_c::LETTER_HOSKITS_GIRLFRIEND);

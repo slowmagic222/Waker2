@@ -58,6 +58,14 @@ enum dMf_WarpSel {
 #define FMAP_WARP_COUNT 9
 #endif
 
+#if TARGET_PC
+// Rando (wwrando tweaks.py add_new_bog_warp): a 10th Ballad of Gales warp, to the Forsaken Fortress. The arrays
+// hold it; the loops run to dMenu_Fmap_warpCount() (d_menu_fmap.cpp), 10 with a randomizer disc
+#define FMAP_WARP_MAX (FMAP_WARP_COUNT + 1)
+#else
+#define FMAP_WARP_MAX FMAP_WARP_COUNT
+#endif
+
 class dDlst_FMAP_c : public dDlst_base_c {
 public:
     virtual ~dDlst_FMAP_c() {}
@@ -387,7 +395,7 @@ private:
     /* 0x50D0 */ JUTFont* mFont;
     /* 0x50D4 */ JUTFont* mRFont;
     /* 0x50D8 */ JPABaseEmitter* mWrapBackEmitter;
-    /* 0x50DC */ JPABaseEmitter* mWrapSpotEmitters[FMAP_WARP_COUNT];
+    /* 0x50DC */ JPABaseEmitter* mWrapSpotEmitters[FMAP_WARP_MAX];
     /* 0x5100 */ u8 padding_0x5100[0x510C - 0x5100];
     /* 0x510C */ bool mMapClose;
     /* 0x510D */ u8 mSelCursorBufIdx;
@@ -524,8 +532,8 @@ public:
     /* 0x04D */ u8 mWarpCursorAlphaMin;
     /* 0x04E */ u8 mWarpCursorAlphaMax;
     /* 0x04F */ u8 padding_0x4F[0x50 - 0x4F];
-    /* 0x050 */ f32 mWarpSpotPosX[FMAP_WARP_COUNT];
-    /* 0x074 */ f32 mWarpSpotPosY[FMAP_WARP_COUNT];
+    /* 0x050 */ f32 mWarpSpotPosX[FMAP_WARP_MAX];
+    /* 0x074 */ f32 mWarpSpotPosY[FMAP_WARP_MAX];
     /* 0x098 */ f32 mWarpSpotScaleSel;
     /* 0x09C */ f32 mWarpSpotScale;
     /* 0x0A0 */ f32 field_0xA0;

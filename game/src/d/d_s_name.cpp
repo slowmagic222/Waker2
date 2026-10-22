@@ -37,6 +37,7 @@
 #if TARGET_PC
 #include "pc/pc_harness.h"
 #include "pc/pc_qol.h"
+#include "pc/pc_rando.h"
 #endif
 
 dSn_HIO_c g_snHIO;
@@ -1226,6 +1227,16 @@ void dScnName_c::FileSelectMainNormal() {
             mMainProc = 5;
         } else {
             dComIfGs_setCardToMemory(saveMemory, dFs_c->getSelectNum());
+#if TARGET_PC
+            // Rando (wwrando misc_rando_features.asm, 0x80231B08): a loaded save starts with a full magic meter,
+            // and with no more health than its full hearts (a seed can start with fewer than 3)
+            if (pc_rando_active()) {
+                dComIfGs_setMagic(dComIfGs_getMaxMagic());
+                if (dComIfGs_getLife() > (dComIfGs_getMaxLife() & ~3)) {
+                    dComIfGs_setLife(dComIfGs_getMaxLife() & ~3);
+                }
+            }
+#endif
             if (dFs_c->isDataExtra(dFs_c->getSelectNum()) && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_3510)) {
                 field_0x1bb9 = 1;
             }

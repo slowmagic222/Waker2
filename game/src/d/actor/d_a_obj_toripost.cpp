@@ -951,7 +951,14 @@ void daObjTpost_c::createInit() {
         dLetter_autoStock(dSv_event_flag_c::LETTER_BAITO);
     }
 
+#if TARGET_PC
+    // Rando (wwrando remove_cutscenes.asm, REL 0x1B0C): Orca's letter came after a cutscene on Greatfish Isle,
+    // which is gone; it comes once Kalle Demos is dead
+    if(pc_rando_active() ? dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_FW)
+                         : dComIfGs_isEventBit(DEMO_SELECT(dSv_event_flag_c::MASTER_SWORD_CUTSCENE, dSv_event_flag_c::UNK_1E80))) {
+#else
     if(dComIfGs_isEventBit(DEMO_SELECT(dSv_event_flag_c::MASTER_SWORD_CUTSCENE, dSv_event_flag_c::UNK_1E80))) {
+#endif
         dLetter_autoStock(dSv_event_flag_c::LETTER_ORCA);
     }
 

@@ -2946,7 +2946,13 @@ BOOL daNpc_Cb1_c::init() {
         gravity = -0.1f;
     } else if(isTypeBossDie()) {
         daNpc_Cb1_c::ActionFunc_t func =
+#if TARGET_PC
+            // Rando (wwrando remove_cutscenes.asm, REL 0x80B8): the Makar spawned at Kalle Demos's death acts as
+            // if spawned after it, so he doesn't start the event thanking the player
+            (pc_rando_active() || dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_FW)) ?
+#else
             dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_FW) ?
+#endif
                 &daNpc_Cb1_c::waitNpcAction :
                 &daNpc_Cb1_c::rescueNpcAction;
         setNpcAction(func, NULL);
@@ -2993,7 +2999,12 @@ BOOL daNpc_Cb1_c::init() {
         gravity = -0.1f;
     }
     else if(isTypeBossDie()) {
+#if TARGET_PC
+        // Rando (wwrando remove_cutscenes.asm, REL 0x80B8): see above
+        setNpcAction((pc_rando_active() || dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_FW)) ? &daNpc_Cb1_c::waitNpcAction : &daNpc_Cb1_c::rescueNpcAction, NULL);
+#else
         setNpcAction(dComIfGs_isStageBossEnemy(dSv_save_c::STAGE_FW) ? &daNpc_Cb1_c::waitNpcAction : &daNpc_Cb1_c::rescueNpcAction, NULL);
+#endif
     }
     else if(!isTypeEkaze() && !isTypeKaze() && shipRideCheck()) {
         attention_info.distances[fopAc_Attn_TYPE_TALK_e] = 0xAF;

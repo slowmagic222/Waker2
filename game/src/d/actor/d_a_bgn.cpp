@@ -29,6 +29,9 @@
 #include "f_op/f_op_camera.h"
 #include "m_Do/m_Do_graphic.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daBgn_HIO_c : public JORReflexible {
 public:
@@ -3354,7 +3357,13 @@ static BOOL daBgn_Execute(bgn_class* i_this) {
     i_this->m02B5 = l_HIO.m024;
     if (i_this->mCC90 == 2) {
         i_this->mCC90 = 0;
+#if TARGET_PC
+        // Rando (wwrando remove_cutscenes.asm, REL 0xB1E0): no layer 9 override (the new game marks its cutscene
+        // seen, and on layer 9 the rope out of the room is missing)
+        dComIfGp_setNextStage("GanonK", 4, 0, pc_rando_active() ? -1 : 9);
+#else
         dComIfGp_setNextStage("GanonK", 4, 0, 9);
+#endif
         dComIfGs_onEventBit(dSv_event_flag_c::UNK_3F10);
     }
     return TRUE;

@@ -109,6 +109,18 @@ BOOL daWarpdm20_c::CreateHeap() {
     return TRUE;
 }
 
+// Whether the warp down to Hyrule is open: event bit 2D08 (the cutscene of its opening). Rando (wwrando
+// remove_cutscenes.asm, REL 0x634 and 0xB50 check_hyrule_warp_unlocked): the new game sets 2D08 to skip that
+// cutscene, so the warp opens with all 8 Triforce shards instead
+static BOOL daWarpdm20_randoIsOpen() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        return dComIfGs_getTriforceNum() >= 8;
+    }
+#endif
+    return dComIfGs_isEventBit(dSv_event_flag_c::UNK_2D08);
+}
+
 /* 000004B4-000005C8       .text CreateInit__12daWarpdm20_cFv */
 void daWarpdm20_c::CreateInit() {
     fopAcM_SetMtx(this, mpModel->getBaseTRMtx());
@@ -118,7 +130,7 @@ void daWarpdm20_c::CreateInit() {
     m2E0 = current.pos;
     m2EC.set(1.0f, 1.0f, 1.0f);
     m2C8 = 0;
-    if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_2D08)) {
+    if (daWarpdm20_randoIsOpen()) {
         m2CC = 1;
         setEndAnm();
     }
@@ -194,7 +206,7 @@ void daWarpdm20_c::normal_execute() {
     f32 abs = (player->current.pos - current.pos).absXZ();
     f32 max = 2000.0f;
 
-    if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_2D08)) {
+    if (daWarpdm20_randoIsOpen()) {
         m2CC = 1;
         animPlay();
         if (emitter != NULL) {

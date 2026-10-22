@@ -1,8 +1,8 @@
 # Wind Waker Randomizer seeds (rando mode)
 
-Status: **steps 1 to 3 of the plan below** (written 2026-10-22). The port opens a randomizer's output disc,
-gives the 73 code-given items, and has the code a seed needs to be completable. Nothing has run with a real
-seed yet: see "What works".
+Status: **steps 1 to 4 of the plan below** (written 2026-10-22). The port opens a randomizer's output disc,
+gives the 73 code-given items, has the code a seed needs to be completable, and redoes the progressive items,
+removed cutscenes and the randomizer's own features. Nothing has run with a real seed yet: see "What works".
 
 ## The idea
 
@@ -45,9 +45,9 @@ On the Switch, `COS_RANDO_DISC=sdmc:/switch/switchwaker/<file>.iso` in the `[dev
 - The checks and the disc switch above (built; checked with a syntax build of the changed units and a test of
   `CleanDisc` against a made-up disc image; **not yet run with a real seed**).
 - Items given by code (step 2, below).
-- What a seed needs to be completable (step 3, below). Not yet: progressive items when picked up, the removed
-  cutscenes, `misc_rando_features` (step 4) and the optional settings (step 5), so a seed can still hit a
-  vanilla cutscene or give a sword tier out of order.
+- What a seed needs to be completable (step 3, below).
+- Progressive items, removed cutscenes, the randomizer's features (step 4, below). Not yet: the optional
+  settings (step 5: swordless, hero mode, trap chests, starting clothes, custom colors, ...).
 
 ## Items given by code (step 2)
 
@@ -105,8 +105,19 @@ All behind `pc_rando_active()`, each hunk naming the wwrando patch and offset it
 | Chests | `asm/actors/d_a_tbox.cpp` | every chest opens with the short cutscene. Trap chests (an option) are step 5 |
 | Shops, stone heads | `tweaks.py fix_shop_item_y_offsets`, `fix_stone_head_bugs` | shop items with no Y offset are raised; stone heads execute out of view |
 
-Left for step 4 with the rest of `tweaks.py`: the Ballad of Gales warp to the Forsaken Fortress
-(`add_new_bog_warp`) and the key and Tingle Statue counters on the menus.
+## Progressive items, cutscenes, features (step 4)
+
+| Part | wwrando source | Here |
+|---|---|---|
+| Progressive items | `make_items_progressive.asm`, `tweaks.py make_items_progressive` | `execItemGet` gives the next tier of a sword, shield, bow, wallet, bomb bag, quiver, picto box or magic meter (nothing once the family is complete); item get events, field items, shop items and Beedle's item get check show that tier. The bow, bomb bag and Deku Leaf no longer reset arrows, bombs or magic; the magic meter is an item of its own (`item_func_magic_power`) |
+| Removed cutscenes | `remove_cutscenes.asm` | boss warp-outs, the Tower of the Gods rising, the Hyrule warp (open with 8 Triforce shards), Orca's, Aryll's and Tingle's letters (after Kalle Demos and the Helmaroc King), Tott dancing once, Makar after Kalle Demos, Puppet Ganon's layer, the chest item sound, Ivan's birthday talk (Mrs. Marie reads 1F80), pearls placed when got (the third raises the tower) |
+| QoL patches wwrando always applies | `remove_cutscenes.asm`, `tingle_chests_without_tuner.asm`, `fix_vanilla_bugs.asm`, the rope turn of `misc_rando_features.asm` | `pc_qol()` reports skip intro, no song replays, fast Ballad of Gales, Tingle chests, the bug fixes and swing turning as on with a randomizer disc (the QoL swing turn uses BetterWW's 64 per frame, wwrando 100) |
+| Features | `misc_rando_features.asm` | the key bag's text commands, full magic and capped health on load, health after a game over, the Deku Leaf's fan with no magic, enemy weapons through doors and ladders, one-hit cannons, Old Man Ho Ho staying, Outset's theme after the pirate ship chest |
+| Ballad of Gales to the Forsaken Fortress | `tweaks.py add_new_bog_warp` | a 10th warp in `d_menu_fmap.cpp` (cursor table, icon, message 848 and its colors); it changes scene to the sea's exit 0xCE |
+
+Not redone (cosmetic or for options): the file select's heart count of a blank file, the rainbow 500 rupee,
+the Tingle Statue count on the quest screen, warp pot and Dark ChuChu colors, Aryll's outfit, the starting
+clothes, the developer-mode particle message.
 
 ## Plan
 

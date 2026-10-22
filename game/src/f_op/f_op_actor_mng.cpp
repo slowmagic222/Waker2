@@ -969,6 +969,13 @@ fpc_ProcID fopAcM_createDemoItem(cXyz* pos, int i_itemNo, int i_itemBitNo, csXyz
         return fpcM_ERROR_PROCESS_ID_e;
     }
 
+#if TARGET_PC
+    // Rando (wwrando make_items_progressive.asm, 0x80026A24): an item get event shows the next tier of a
+    // progressive item
+    if (pc_rando_active()) {
+        i_itemNo = dItem_randoProgressive(i_itemNo);
+    }
+#endif
     u32 params = (i_itemNo & 0xFF) << 0 | (i_itemBitNo & 0x7F) << 8 | (i_argFlag & 0xFF) << 16;
     return fopAcM_create(fpcNm_Demo_Item_e, params, pos, i_roomNo, i_angle, i_scale);
 }

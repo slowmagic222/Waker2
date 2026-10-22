@@ -852,6 +852,13 @@ u16 daNpc_Bs1_c::next_msgStatus(u32* pMsgNo) {
 #endif
 
                 int itemNo = mShopItems.getSelectItemNo();
+#if TARGET_PC
+                // Rando (wwrando make_items_progressive.asm, REL 0x1D00 custom_getSelectItemNo_progressive):
+                // the item get animation plays for a progressive item's next tier, not only its first
+                if(pc_rando_active()) {
+                    itemNo = dItem_randoProgressive(itemNo);
+                }
+#endif
                 if(!checkItemGet(itemNo, FALSE)) {
                     m82A = 3;
                     msgStatus = fopMsgStts_MSG_ENDS_e;
@@ -948,7 +955,13 @@ u16 daNpc_Bs1_c::next_msgStatus(u32* pMsgNo) {
                 }
 
                 // these int casts are probably fake
+#if TARGET_PC
+                // Rando (wwrando make_items_progressive.asm, REL 0x1F3C): as for the bait bag slot
+                if(!checkItemGet(pc_rando_active() ? (int)dItem_randoProgressive(mShopItems.getSelectItemNo())
+                                                   : (int)mShopItems.getSelectItemNo(), FALSE)) {
+#else
                 if(!checkItemGet((int)mShopItems.getSelectItemNo(), FALSE)) {
+#endif
                     m82A = 3;
                     msgStatus = fopMsgStts_MSG_ENDS_e;
                     break;

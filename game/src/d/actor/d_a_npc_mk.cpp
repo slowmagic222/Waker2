@@ -1208,7 +1208,13 @@ bool daNpc_Mk_c::visit01() {
                 mOrderFlags &= ~0x01; // is this an inline?
             }
 
+#if TARGET_PC
+            // Rando (wwrando remove_cutscenes.asm, REL 0x2F80): Ivan doesn't start the Killer Bees' talk about
+            // Mrs. Marie's birthday by himself (talking to a Killer Bee still does)
+            if (!pc_rando_active() && dComIfGs_isEventBit(dSv_event_flag_c::UNK_1F80) && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_1E02) && dComIfGs_isTmpBit(dSv_event_flag_c::UNK_0580)) {
+#else
             if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_1F80) && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_1E02) && dComIfGs_isTmpBit(dSv_event_flag_c::UNK_0580)) {
+#endif
                 SetOrder(0x2);
                 eventInfo.setEventName("MK_TALK4");
             } else {

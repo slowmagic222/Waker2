@@ -27,6 +27,18 @@ static const int l_btp_ix_tbl[] = {
     dRes_INDEX_HO_BTP_HO_MABA01_e
 };
 
+// Whether Mrs. Marie takes Joy Pendants: event bit 1E04 (the Killer Bees told the player about her birthday).
+// Rando (wwrando remove_cutscenes.asm, REL 0x15FC and 0xDB4): Ivan no longer starts that talk, so it is the
+// bit of her Killer Bees reward (1F80) instead
+static BOOL daNpc_Ho_randoJoyPendantsOpen() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        return dComIfGs_isEventBit(dSv_event_flag_c::UNK_1F80);
+    }
+#endif
+    return dComIfGs_isEventBit(DEMO_SELECT(dSv_event_flag_c::UNK_1E02, dSv_event_flag_c::UNK_1E04));
+}
+
 /* 00000078-0000022C       .text nodeCallBack_Ho__FP7J3DNodei */
 static BOOL nodeCallBack_Ho(J3DNode* node, int calcTiming) {
     if (calcTiming == J3DNodeCBCalcTiming_In) {
@@ -425,7 +437,7 @@ u32 daNpc_Ho_c::getMsg() {
             return (dComIfGs_getEventReg(dSv_event_flag_c::UNK_C0FF) == 0 ? 0 : 1) + 0x2712;
 
         case HO_STATE_TALK_03:
-            if(dComIfGp_event_getPreItemNo() != dItemNo_JOY_PENDANT_e || !dComIfGs_isEventBit(DEMO_SELECT(dSv_event_flag_c::UNK_1E02, dSv_event_flag_c::UNK_1E04))) {
+            if(dComIfGp_event_getPreItemNo() != dItemNo_JOY_PENDANT_e || !daNpc_Ho_randoJoyPendantsOpen()) {
                 return 0x2739;
             } 
 
@@ -644,7 +656,7 @@ bool daNpc_Ho_c::wait01() {
         setAnmStatus();
     } else {
         SetOrder(HO_FLAG_00000001);
-        if (dComIfGs_isEventBit(DEMO_SELECT(dSv_event_flag_c::UNK_1E02, dSv_event_flag_c::UNK_1E04)) && !dKy_checkEventNightStop()) {
+        if (daNpc_Ho_randoJoyPendantsOpen() && !dKy_checkEventNightStop()) {
             SetOrder(HO_FLAG_00000004);
         }
     }
