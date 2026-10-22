@@ -13,6 +13,9 @@
 #include "m_Do/m_Do_audio.h"
 #include "res/Object/Yswdr00.h"
 #include "m_Do/m_Do_hostIO.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace {
 const char l_arcname[] = "Yswdr00";
@@ -405,7 +408,17 @@ cPhs_State daObjFirewall_c::_create() {
             mSoundInitialized = 1;
 #endif
             mSwitch = param_get_swSave();
+#if TARGET_PC
+            // Rando (wwrando flexible_item_locations.asm, REL 0x1240): switch 5 (set when the Mighty Darknuts die)
+            // replaces event bit 3520. Once they are beaten the fire wall is removed so they never respawn and
+            // the chest the randomizer adds stays reachable; until then the short intro event plays
+            if (pc_rando_active() && dComIfGs_isSwitch(5, 0)) {
+                return cPhs_ERROR_e;
+            }
+            if (pc_rando_active() || dComIfGs_isEventBit(0x3520) == TRUE) {
+#else
             if (dComIfGs_isEventBit(0x3520) == TRUE) {
+#endif
                 mEventType = 1;
                 mEvent = dComIfGp_evmng_getEventIdx(l_ev_name_table[1]);
                 mAction = &daObjFirewall_c::wait2_act_proc;

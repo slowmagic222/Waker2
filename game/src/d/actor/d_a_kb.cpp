@@ -16,6 +16,9 @@
 #include "res/Object/Kb.h"
 #include "d/d_snap.h"
 #include "d/d_vibration.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 // Several functions use the same joint index for the tail on both the normal and big pig models
 // Because of this, PG_JNT_J_PG_TAIL_e *must* match the value of PG_BIG_JNT_J_PG_TAIL_e
@@ -370,7 +373,13 @@ void pl_attack_hit_check(kb_class* i_this) {
             atInfo.mpObj = i_this->mSph.GetTgHitObj();
             cc_at_check(actor, &atInfo);
 
+#if TARGET_PC
+            // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x1460 and 0x3C1C): pigs can be enraged
+            // without a sword (swordless)
+            if(!pc_rando_active() && dComIfGs_getSelectEquip(0) == dItemNo_NONE_e) {
+#else
             if(dComIfGs_getSelectEquip(0) == dItemNo_NONE_e) {
+#endif
                 actor->health = 10;
             }
 
@@ -1200,7 +1209,11 @@ void carry_move(kb_class* i_this) {
                 i_this->m4B4 = 0.0f;
                 actor->speed.set(0.0f, 0.0f, 0.0f);
 
+#if TARGET_PC
+                if(pc_rando_active() || dComIfGs_getSelectEquip(0) != dItemNo_NONE_e) {
+#else
                 if(dComIfGs_getSelectEquip(0) != dItemNo_NONE_e) {
+#endif
                     actor->health -= 1;
                 }
             }

@@ -231,6 +231,13 @@ int dComIfG_play_c::getLayerNo(int i_roomNo) {
                 return layer | 2;
             }
         } else if (strcmp(dComIfGp_getStartStageName(), "Hyroom") == 0) {
+#if TARGET_PC
+            // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, main.dol 0x80052668): Hyrule Castle always
+            // has the layer with its Moblins and Darknuts, whatever the story and Triforce Shards
+            if (pc_rando_active()) {
+                return layer;
+            }
+#endif
             if (dComIfGs_getTriforceNum() == 8 && !dComIfGs_isEventBit(dSv_event_flag_c::UNK_2C01)) {
                 return layer | 4;
             } else if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_3280)) {
@@ -1437,6 +1444,14 @@ void dComIfGs_gameStart() {
 
 /* 80054CC0-80054E9C       .text dComIfGs_copyPlayerRecollectionData__Fv */
 void dComIfGs_copyPlayerRecollectionData() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm): the inventory is left alone around the
+    // recollection boss fights (Hyrule's Ganon's Tower); with a boss's first fight skipped, restoring it
+    // replaced the whole inventory with item 00
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     s32 tbl;
     dSv_player_status_c_c stts;
 
@@ -1468,6 +1483,11 @@ void dComIfGs_copyPlayerRecollectionData() {
 
 /* 80054E9C-80055318       .text dComIfGs_setPlayerRecollectionData__Fv */
 void dComIfGs_setPlayerRecollectionData() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
 #if VERSION > VERSION_JPN
     daArrow_c::setKeepType(daArrow_c::TYPE_NORMAL);
 #endif
@@ -1607,6 +1627,11 @@ void dComIfGs_setPlayerRecollectionData() {
 
 /* 80055318-80055580       .text dComIfGs_revPlayerRecollectionData__Fv */
 void dComIfGs_revPlayerRecollectionData() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     if (dComIfGp_getPlayerInfoBufferStageNo() != 0) {
         dComIfGp_setPlayerInfoBufferStageNo(0);
     } else {
@@ -1708,6 +1733,11 @@ void dComIfGs_revPlayerRecollectionData() {
 
 /* 80055580-8005586C       .text dComIfGs_exchangePlayerRecollectionData__Fv */
 void dComIfGs_exchangePlayerRecollectionData() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
     if (dComIfGp_getPlayerInfoBufferStageNo() == 0) {
         return;
     }

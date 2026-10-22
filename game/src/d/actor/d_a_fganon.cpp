@@ -21,6 +21,9 @@
 #if TARGET_PC
 #include "pc/pc_qol.h"
 #endif
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 fganon_class* master;
 #if TARGET_PC
@@ -1077,7 +1080,15 @@ void standby(fganon_class* i_this) {
                     break;
                 }
             }
+#if TARGET_PC
+            // Rando (pc_rando.h; wwrando flexible_item_locations.asm check_ganons_tower_chest_opened, REL
+            // 0x4D4C): Phantom Ganon in the maze goes when Ganon's Tower's chest (the Light Arrows' in the
+            // original game) is opened, not when the player has the Light Arrows, which can come earlier
+            else if ((i_this->m2BC == 1) &&
+                     (pc_rando_active() ? dComIfGs_isStageTbox(dSv_save_c::STAGE_GT, 0) : dComIfGs_checkGetItem(dItemNo_LIGHT_ARROW_e))) {
+#else
             else if ((i_this->m2BC == 1) && dComIfGs_checkGetItem(dItemNo_LIGHT_ARROW_e)) {
+#endif
                 a_this->current.pos.y = -20000.0f;
                 break;
             }

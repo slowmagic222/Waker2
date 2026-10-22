@@ -9,6 +9,9 @@
 #include "d/actor/d_a_player_main.h"
 #include "d/actor/d_a_ship.h"
 #include "res/Object/Auzu.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace daObjAuzu {
 namespace {
@@ -113,6 +116,13 @@ bool daObjAuzu::Act_c::_delete() {
 /* 00000498-000004E8       .text is_exist__Q29daObjAuzu5Act_cCFv */
 bool daObjAuzu::Act_c::is_exist() const {
     if (mType == 0) {
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x580): the whirlpool outside Jabun's cave
+        // is there without the Endless Night event bit
+        if (pc_rando_active()) {
+            return true;
+        }
+#endif
         return dComIfGs_isEventBit(dSv_event_flag_c::ENDLESS_NIGHT);
     }
     return true;

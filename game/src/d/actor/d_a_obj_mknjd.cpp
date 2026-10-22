@@ -23,6 +23,9 @@
 #include "d/actor/d_a_player.h"
 #include "m_Do/m_Do_ext.h"
 #include "m_Do/m_Do_mtx.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 #define ACT_SETGOAL 0
 #define ACT_SETANGLE 1
@@ -224,6 +227,15 @@ BOOL daObjMknjD::Act_c::CreateHeap() {
 }
 
 /* 00000620-000008E8       .text Create__Q210daObjMknjD5Act_cFv */
+#if TARGET_PC
+// Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x96C, 0x205C, 0x20D4): each tablet acts as if the
+// player had its song, so the second Earth or Wind Temple tablet is not taken for the first (which gives the
+// song and sends the player back to the entrance)
+#define COS_RANDO_MKNJD_HAS_SONG() (pc_rando_active() || checkItemGet(mGiveItemNo, TRUE))
+#else
+#define COS_RANDO_MKNJD_HAS_SONG() checkItemGet(mGiveItemNo, TRUE)
+#endif
+
 BOOL daObjMknjD::Act_c::Create() {
     fopAcM_SetMtx(this, mMainMdl->getBaseTRMtx());
     init_mtx();
@@ -277,7 +289,7 @@ BOOL daObjMknjD::Act_c::Create() {
     attention_info.distances[fopAc_Attn_TYPE_SPEAK_e] = 0x3D;
     cLib_onBit<u32>(attention_info.flags, fopAc_Attn_ACTION_SPEAK_e | fopAc_Attn_TALKFLAG_CHECK_e);
 
-    if (!checkItemGet(mGiveItemNo, TRUE)) {
+    if (!COS_RANDO_MKNJD_HAS_SONG()) {
         m043F = 8;
         eventInfo.setXyCheckCB(daObjMknjD_XyCheckCB);
         eventInfo.setXyEventCB(daObjMknjD_XyEventCB);
@@ -895,7 +907,7 @@ BOOL daObjMknjD::Act_c::Execute(Mtx** i_mtx) {
             privateCut();
 
             if (!dComIfGp_event_runCheck()) {
-                if (checkItemGet(mGiveItemNo, TRUE)) {
+                if (COS_RANDO_MKNJD_HAS_SONG()) {
                     m043F = 0;
                 }
                 else {
@@ -913,7 +925,7 @@ BOOL daObjMknjD::Act_c::Execute(Mtx** i_mtx) {
                 player->offPlayerNoDraw();
                 dComIfGp_event_reset();
 
-                if (checkItemGet(mGiveItemNo, TRUE)) {
+                if (COS_RANDO_MKNJD_HAS_SONG()) {
                     m043F = 0;
                 }
                 else {

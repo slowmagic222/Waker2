@@ -17,6 +17,16 @@
 #include "JSystem/J3DGraphAnimator/J3DJoint.h"
 #include "JSystem/JUtility/JUTAssert.h"
 #include "res/Object/Bms.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
+#if TARGET_PC
+// Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x1B9C, 0x2064, 0x20B4, 0x36A0, 0x36EC, 0x3E3C): the
+// Windfall bomb shop sells at its lower prices from the start, as after Nayru's Pearl (0x69)
+#define COS_RANDO_BMS1_NAYRU() (pc_rando_active() || checkItemGet(0x69, 1))
+#else
+#define COS_RANDO_BMS1_NAYRU() checkItemGet(0x69, 1)
+#endif
 
 static dCcD_SrcCyl l_cyl_src = {
     // dCcD_SrcGObjInf
@@ -541,7 +551,7 @@ u16 daNpc_Bms1_c::shop_talk() {
     if (dShop_now_triggercheck(l_msg, &mStick, &mShopItems, &mMsgNo, NULL, NULL)) {
         mItemChanged = 1;
         mNextMsgNo = 0;
-        if (mShopItems.mSelectedItemIdx >= 0 && !checkItemGet(0x69, 1)) mHeadAnm.swing_vertical_init(1, 0x1800, 0x1000, 1);
+        if (mShopItems.mSelectedItemIdx >= 0 && !COS_RANDO_BMS1_NAYRU()) mHeadAnm.swing_vertical_init(1, 0x1800, 0x1000, 1);
     }
     u16 status = l_msg->mStatus;
     if (status == 14 || status == 15) {
@@ -630,11 +640,11 @@ BOOL daNpc_Bms1_c::CreateInit() {
     mItemChanged = 0;
     mOverrideMsgNo = 0;
     mItemNo = 255;
-    int shop = checkItemGet(0x69, 1) != 0 ? 2 : 1;
+    int shop = COS_RANDO_BMS1_NAYRU() != 0 ? 2 : 1;
     if (mType == 1) {
         mHairScaleL.set(1.2f, 0.9f, 0.9f);
         mHairScaleR.set(0.7f, 0.6f, 0.6f);
-    } else if (checkItemGet(0x69, 1)) {
+    } else if (COS_RANDO_BMS1_NAYRU()) {
         mHairScaleL.set(0.4f, 0.4f, 0.4f);
         mHairScaleR.set(0.4f, 0.4f, 0.4f);
     } else {
@@ -1017,13 +1027,13 @@ cPhs_State daNpc_Bms1_c::_create() {
     fopAcM_ct_Retail(this, daNpc_Bms1_c);
     mType = fopAcM_GetParam(this) >> 24;
     if (mType == 0) {
-        if (dComIfGs_isEventBit(0xA02) && !checkItemGet(0x69, 1)) {
+        if (dComIfGs_isEventBit(0xA02) && !COS_RANDO_BMS1_NAYRU()) {
             mSkipped = 1;
             return cPhs_ERROR_e;
         }
         mSkipped = 0;
     } else {
-        if (dComIfGs_isEventBit(0xA02) && !checkItemGet(0x69, 1)) mSkipped = 0;
+        if (dComIfGs_isEventBit(0xA02) && !COS_RANDO_BMS1_NAYRU()) mSkipped = 0;
         else {
             mSkipped = 1;
             return cPhs_ERROR_e;
@@ -1054,7 +1064,7 @@ BOOL daNpc_Bms1_c::CreateHeap() {
     J3DAnmTransform* bck;
     if (mType == 0) {
         body = (J3DModelData*) dComIfG_getObjectRes(m_arcname, dRes_INDEX_BMS_BDL_BY1_e);
-        if (!checkItemGet(0x69, 1)) bck = (J3DAnmTransform*) dComIfG_getObjectRes(m_arcname, dRes_INDEX_BMS_BCK_BY1_WAIT01_e);
+        if (!COS_RANDO_BMS1_NAYRU()) bck = (J3DAnmTransform*) dComIfG_getObjectRes(m_arcname, dRes_INDEX_BMS_BCK_BY1_WAIT01_e);
         else bck = (J3DAnmTransform*) dComIfG_getObjectRes(m_arcname, dRes_INDEX_BMS_BCK_BY1_WAIT02_e);
     } else {
         body = (J3DModelData*) dComIfG_getObjectRes(m_arcname, dRes_INDEX_BMS_BDL_BY2_e);

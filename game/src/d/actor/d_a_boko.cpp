@@ -16,6 +16,9 @@
 #include "d/d_bg_s_lin_chk.h"
 #include "d/d_s_play.h"
 #include "SSystem/SComponent/c_counter.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 u32 daBoko_c::m_bound_se[] = {
     /* Type_BOKO_STICK_e    */ JA_SE_CM_BOKOBOU_BOUND,
@@ -795,7 +798,15 @@ BOOL daBoko_c::execute() {
     }
 
     if (fopAcM_GetParam(this) == Type_PGANON_SWORD_e) {
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando flexible_item_locations.asm check_phantom_ganons_sword_should_disappear, REL
+        // 0x2A90): once the door is broken with Phantom Ganon's sword (3A08), his swords go, except in the maze
+        // (GanonJ), where the sword shows the way
+        if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_3A08) &&
+            !(pc_rando_active() && strcmp(dComIfGp_getStartStageName(), "GanonJ") == 0)) {
+#else
         if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_3A08)) {
+#endif
             mBrkAnm.play();
             bVar4 = true;
             if (mBrkAnm.isStop()) {

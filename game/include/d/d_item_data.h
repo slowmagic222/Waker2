@@ -351,6 +351,9 @@ public:
     static bool chkFlag(u8 no, u32 mask) { return item_info[no].mFlag & mask; }
     
     static bool checkAppearEffect(u8 no);
+#if TARGET_PC
+    static void randoAllowAllFieldItems();
+#endif
     static u16 getAppearEffect(u8 no);
     static bool checkSpecialEffect(u8 no);
     static u16 getSpecialEffect(u8 no);

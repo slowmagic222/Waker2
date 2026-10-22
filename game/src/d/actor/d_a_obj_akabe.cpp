@@ -11,6 +11,9 @@
 #include "res/Object/NBOX.h"
 #include "d/d_com_inf_game.h"
 #include "m_Do/m_Do_mtx.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace daObjAkabe {
 
@@ -134,6 +137,13 @@ bool Act_c::chk_appear() {
         return true;
     s32 swSaveNo = prm_get_swSave();
     if (swSaveNo == 0xFF) {
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x650): the walls that stand while the
+        // player has no sword never stand (swordless)
+        if (pc_rando_active()) {
+            return false;
+        }
+#endif
         return dComIfGs_checkCollect(0) == 0;
     } else {
         return !fopAcM_isSwitch(this, swSaveNo);

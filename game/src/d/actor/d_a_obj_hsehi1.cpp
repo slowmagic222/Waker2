@@ -8,6 +8,9 @@
 #include "d/actor/d_a_player.h"
 #include "res/Object/Hsehi1.h"
 #include "res/Object/Hsehi2.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static daObj_hsh_HIO_c l_HIO;
 static s32 l_hio_counter;
@@ -683,6 +686,14 @@ void daObj_hsh_c::initialDeleteEvent(int) {
 /* 00001D3C-00001D88       .text actionDeleteEvent__11daObj_hsh_cFi */
 BOOL daObj_hsh_c::actionDeleteEvent(int) {
     if (cLib_calcTimer(&mAppearDeleteTimer) == 0) {
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm set_item_obtained_from_totg_tablet_event_bit, REL
+        // 0x1E60): the Command Melody tablet marks itself used (2510), which the east servant does in the
+        // original game, as it can be used before that servant is returned
+        if (pc_rando_active()) {
+            dComIfGs_onEventBit(dSv_event_flag_c::UNK_2510);
+        }
+#endif
         drawStop();
         return TRUE;
     }

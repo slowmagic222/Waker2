@@ -1269,6 +1269,11 @@ static dStage_objectNameInf l_objectName[] = {
     OBJNAME("Vrbox", fpcNm_VRBOX_e, 255, 0),
     OBJNAME("Vrbox2", fpcNm_VRBOX2_e, 255, 0),
     OBJNAME("EndCode", fpcNm_PLAY_SCENE_e, 255, 0),
+#if TARGET_PC
+    // Rando custom actors (wwrando asm/patches/custom_data.asm custom_l_objectName)
+    OBJNAME("SwOp", fpcNm_SWITCH_OP_e, 255, 0),
+    OBJNAME("DngSw", fpcNm_DUNGEON_FLAG_SW_e, 255, 0),
+#endif
 };
 
 /* 80041544-800415B4       .text dStage_searchName__FPCc */

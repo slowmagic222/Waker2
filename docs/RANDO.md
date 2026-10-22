@@ -1,7 +1,8 @@
 # Wind Waker Randomizer seeds (rando mode)
 
-Status: **steps 1 and 2 of the plan below** (written 2026-10-22). This step only lets the port open a
-randomizer's output disc. It does not make a seed playable yet: see "What works".
+Status: **steps 1 to 3 of the plan below** (written 2026-10-22). The port opens a randomizer's output disc,
+gives the 73 code-given items, and has the code a seed needs to be completable. Nothing has run with a real
+seed yet: see "What works".
 
 ## The idea
 
@@ -17,7 +18,7 @@ of a seed split like this:
 | 73 item locations given by code (NPCs, bosses, minigames) | an item ID byte in `main.dol` or a REL | To read from the randomizer's patched `main.dol` / RELs at the offsets wwrando writes (`logic/item_locations.txt`) |
 | Behaviour (nonlinear story, progressive items, removed cutscenes, ...) | 22 asm patches, about 440 hunks | To redo in C++ behind rando mode, as the QoL options are |
 | Settings (starting gear, health, spawn, ...) | `tweaks.py` writes into `main.dol` | To read as data from the patched `main.dol` |
-| Custom actors `d_a_dungeon_flag_sw`, `d_a_switch_op` | new RELs | To write as decomp-style actors |
+| Custom actors `d_a_dungeon_flag_sw`, `d_a_switch_op` | new RELs | `d_a_dungeon_flag_sw.cpp`, `d_a_switch_op.cpp` (step 3) |
 
 ## Use
 
@@ -43,9 +44,10 @@ On the Switch, `COS_RANDO_DISC=sdmc:/switch/switchwaker/<file>.iso` in the `[dev
 
 - The checks and the disc switch above (built; checked with a syntax build of the changed units and a test of
   `CleanDisc` against a made-up disc image; **not yet run with a real seed**).
-- Items given by code (step 2, below). Nothing else of the randomizer's code side yet: stage data that
-  expects wwrando's patches (custom actors, item IDs the original code does not handle, custom text commands)
-  can misbehave. Expect a seed to be unplayable until the steps below land.
+- Items given by code (step 2, below).
+- What a seed needs to be completable (step 3, below). Not yet: progressive items when picked up, the removed
+  cutscenes, `misc_rando_features` (step 4) and the optional settings (step 5), so a seed can still hit a
+  vanilla cutscene or give a sword tier out of order.
 
 ## Items given by code (step 2)
 
@@ -87,6 +89,24 @@ The pig's buried item is stage data, but it is also created with `fopAcM_createI
 same reason as the withered trees.
 
 None of this has run with a real seed yet (syntax build only).
+
+## Completable seeds (step 3)
+
+All behind `pc_rando_active()`, each hunk naming the wwrando patch and offset it redoes.
+
+| Part | wwrando source | Here |
+|---|---|---|
+| Nonlinear story | `make_game_nonlinear.asm` (all hunks but one) | about 30 actors and `d_com_inf_game.cpp`, `d_save.cpp`, `d_menu_dmap.cpp`, `d_menu_fmap.cpp`, `d_door.cpp`: the boat and sail, Medli and Makar spawning in their temples, Farore's Pearl and the Forest Haven, the Tower of the Gods and Hyrule doors, Ganon's Tower, ... The Great Deku Tree hunk (`d_a_npc_de1` 0xDB0) is not redone: it cannot be placed in the decomp's function without the REL |
+| New game | `tweaks.py` starting gear, health, magic, sword mode, shards, pigs, targeting; `init_save_with_tweaks` | `d_save.cpp` `dSv_randoInitSave`, reading the custom symbols at 0x803FDC70 from the randomizer's `main.dol`; `dItem_randoProgressive` gives each starting item at its tier. The starting island and spawn come from the `li` immediates at 0x80058BA7 / 0x80058BAF |
+| Item locations that move | `flexible_item_locations.asm` | the Rito postman (event bit 6A02), Windfall letters, salvage, Puppet Ganon's sword and Ganon's Tower chest, Helmaroc King's Wind's Requiem, pearl and song item get music, the Mighty Darknuts (switch 5), pots (Z rotation 0xFF00) and stone heads (X rotation 0xFF) that drop any item |
+| Any item as a field item | `tweaks.py allow_all_items_to_be_field_items` | `dItem_data::randoAllowAllFieldItems` (run from `d_s_play.cpp` phase 1) copies the item get model into the field model and gives every item a pickup cylinder; `d_a_item.cpp` plays the full item get for any item, raises it by 23 and gives it heart piece physics |
+| Dungeon items anywhere | `tweaks.py allow_dungeon_items_to_appear_anywhere`, `custom_funcs.asm` | the 22 dungeon-specific keys, maps and compasses (`d_item.cpp` `dItem_randoDungeonItemGet`) count for their dungeon wherever they are found; their models and pickup data are the plain ones' |
+| Custom actors | `d_a_dungeon_flag_sw.cpp`, `d_a_switch_op.rel` | `SwOp` (proc 0x1F6) and `DngSw` (0x1F7), in `f_pc_name.h`, the profile list and `l_objectName`. `d_a_switch_op` ships without source and is ported from its disassembly |
+| Chests | `asm/actors/d_a_tbox.cpp` | every chest opens with the short cutscene. Trap chests (an option) are step 5 |
+| Shops, stone heads | `tweaks.py fix_shop_item_y_offsets`, `fix_stone_head_bugs` | shop items with no Y offset are raised; stone heads execute out of view |
+
+Left for step 4 with the rest of `tweaks.py`: the Ballad of Gales warp to the Forsaken Fortress
+(`add_new_bog_warp`) and the key and Tingle Statue counters on the menus.
 
 ## Plan
 

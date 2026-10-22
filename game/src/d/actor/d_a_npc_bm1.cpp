@@ -9,6 +9,9 @@
 #include "d/d_letter.h"
 #include "d/d_snap.h"
 #include "res/Object/Bm.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_Bm1_childHIO_c : public mDoHIO_entry_c {
 public:
@@ -633,7 +636,14 @@ bool daNpc_Bm1_c::init_BMC_1() {
 /* 00000F04-00000FB0       .text init_BMC_2__11daNpc_Bm1_cFv */
 bool daNpc_Bm1_c::init_BMC_2() {
     bool result = false;
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm, REL 0x1020, 0x3178, 0x225C): whether the Rito
+    // postman in the Windfall cafe gave his item (Moe's letter in the original game, the seed's here) is
+    // event bit 6A02, not the letter being in the player's mail
+    if (!(pc_rando_active() ? dComIfGs_isEventBit(0x6A02) : dComIfGs_isGetItemReserve(0x0F))) {
+#else
     if (!dComIfGs_isGetItemReserve(0x0F)) {
+#endif
         result = dComIfGs_isEventBit(dSv_event_flag_c::UNK_1808);
         if (result) {
             set_action(&daNpc_Bm1_c::wait_action5, NULL);
@@ -659,7 +669,13 @@ bool daNpc_Bm1_c::init_BMD_0() {
 
 /* 00001030-00001084       .text init_BMD_1__11daNpc_Bm1_cFv */
 bool daNpc_Bm1_c::init_BMD_1() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x1150): Kogoli stays after Medli is awakened
+    // as a sage (1620), which a seed has from the start
+    if (!pc_rando_active() && dComIfGs_isEventBit(dSv_event_flag_c::UNK_1620)) {
+#else
     if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_1620)) {
+#endif
         return false;
     }
     return init_BMC_0();
@@ -1186,6 +1202,12 @@ void daNpc_Bm1_c::eventOrder() {
     } else if (condition >= 3) {
         mEventIdx = condition - 3;
         fopAcM_orderOtherEventId(this, mEventIdTable[mEventIdx]);
+#if TARGET_PC
+        // Rando: the event that gives the cafe postman's item (wwrando rito_cafe_postman_start_event_and_set_event_bit)
+        if (pc_rando_active() && mEventIdx == 0) {
+            dComIfGs_onEventBit(0x6A02);
+        }
+#endif
     }
 }
 
@@ -1670,7 +1692,11 @@ u32 daNpc_Bm1_c::getMsg_BMC_2() {
     if (m87C != 0) {
         return 0x1EF7;
     }
+#if TARGET_PC
+    if (pc_rando_active() ? dComIfGs_isEventBit(0x6A02) : dComIfGs_isGetItemReserve(0xF)) {
+#else
     if (dComIfGs_isGetItemReserve(0xF)) {
+#endif
         return 0x1EF9;
     }
     return dComIfGs_isEventBit(dSv_event_flag_c::UNK_1908) ? 0x1EF2 : 0x1EF0;

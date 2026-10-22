@@ -5,6 +5,10 @@
 
 void execItemGet(u8 itemNo);
 BOOL checkItemGet(u8 itemNo, BOOL defaultVal);
+#if TARGET_PC
+// Rando (pc_rando.h): the item a progressive item stands for, given what the player owns now
+u8 dItem_randoProgressive(u8 itemNo);
+#endif
 
 void item_func_heart();
 void item_func_green_rupee();

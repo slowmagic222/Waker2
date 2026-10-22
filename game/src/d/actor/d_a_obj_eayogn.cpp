@@ -12,6 +12,9 @@
 #include "d/d_com_inf_game.h"
 #include "m_Do/m_Do_ext.h"
 #include "m_Do/m_Do_mtx.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 const char daObjEayogn_c::M_arcname[7] = "Eayogn";
 
@@ -87,6 +90,13 @@ bool daObjEayogn_c::_delete() {
 
 /* 00000330-00000360       .text check_ev_bit__13daObjEayogn_cCFv */
 BOOL daObjEayogn_c::check_ev_bit() const {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x40C): the lava in front of the Dragon Roost
+    // Cavern does not set after Din's Pearl, so the bomb flower puzzle stays
+    if (pc_rando_active()) {
+        return FALSE;
+    }
+#endif
     return dComIfGs_isSymbol(dSymbol_DIN_e);
 }
 

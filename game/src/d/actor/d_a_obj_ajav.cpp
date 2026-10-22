@@ -6,6 +6,9 @@
 #include "d/dolzel_rel.h" // IWYU pragma: keep
 #include "d/actor/d_a_obj_ajav.h"
 #include "res/Object/Ajav.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static cXyz l_daObjAjav_co_offset[3] = {
     cXyz(0.0f, 2550.0f, 200.0f),
@@ -467,7 +470,13 @@ cPhs_State daObjAjav::Act_c::_create() {
 
     mSwNo = fopAcM_GetParam(this) & 0xFF;
     mbResLoaded = false;
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x1568): the stone door in front of Jabun's cave
+    // is there without the Endless Night event bit
+    if ((pc_rando_active() || check_ev()) && !check_sw(mSwNo)) {
+#else
     if (check_ev() && !check_sw(mSwNo)) {
+#endif
         rt = dComIfG_resLoad(&mPhs, M_arcname);
         if (rt == cPhs_COMPLEATE_e) {
             if (fopAcM_entrySolidHeap(this, Act_c::solidHeapCB, 0)) {

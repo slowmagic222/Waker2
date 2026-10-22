@@ -877,7 +877,12 @@ bool daObjTpost_c::_execute() {
 #if VERSION == VERSION_DEMO
     mNumReadable = getReadableLetterNum();
 #else
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0x187C): mail comes before Din's Pearl
+    if(pc_rando_active() || dComIfGs_isSymbol(dSymbol_DIN_e)) {
+#else
     if(dComIfGs_isSymbol(dSymbol_DIN_e)) {
+#endif
         mNumReadable = getReadableLetterNum();
     }
     else {

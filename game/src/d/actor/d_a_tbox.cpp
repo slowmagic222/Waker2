@@ -19,6 +19,9 @@
 #include "m_Do/m_Do_graphic.h"
 #include "m_Do/m_Do_hostIO.h"
 #include "m_Do/m_Do_mtx.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 #define FUNC_TYPE_NORMAL 0
 #define FUNC_TYPE_SWITCH 1
@@ -962,7 +965,13 @@ BOOL daTbox_c::actionOpenWait() {
             dComIfGp_event_setItemPartnerId(itemPID);
         }
 
+#if TARGET_PC
+        // Rando (wwrando asm/actors/d_a_tbox.cpp): every chest opens with the short cutscene, so big chests
+        // skip the opening music and lighting too
+        if (getShapeType() != 0 && !pc_rando_active()) {
+#else
         if (getShapeType() != 0) {
+#endif
             mDoAud_subBgmStart(JA_BGM_OPEN_BOX);
             mAllColRatio = 0.4f;
 
@@ -985,7 +994,11 @@ BOOL daTbox_c::actionOpenWait() {
     else if (boxCheck()) {
         eventInfo.onCondition(dEvtCnd_CANDOOR_e);
 
+#if TARGET_PC
+        if (getShapeType() == 0 || pc_rando_active()) {
+#else
         if (getShapeType() == 0) {
+#endif
             eventInfo.setEventName("DEFAULT_TREASURE_A");
         }
         else {

@@ -554,6 +554,40 @@ static BOOL CheckCreateHeap(fopAc_ac_c* i_this) {
 }
 
 /* 00000884-00000D80       .text create__10daNpc_Md_cFv */
+#if TARGET_PC
+// Rando: where Medli starts in the Earth Temple for each entrance (spawn ID), from wwrando's
+// medli_possible_et_spawn_positions; any other entrance: where the player is.
+static void daNpc_Md_randoSpawn(cXyz* pos, s16* angle, s8* roomNo) {
+    static const struct {
+        s16 spawnId;
+        s8 roomNo;
+        s16 angle;
+        f32 x, y, z;
+    } spawns[] = {
+        {0, 0, (s16)0x8000, -7215.21f, -200.0f, 5258.79f},   // entrance
+        {22, 2, (s16)0xE000, -2013.11f, 200.0f, -1262.97f},  // first warp pot
+        {23, 6, (s16)0x8000, 4750.0f, 350.0f, -2251.06f},    // second warp pot
+        {24, 15, (s16)0xE000, -2371.38f, -2000.0f, 8471.54f}, // third warp pot
+        {69, 1, 0, -8010.0f, 1000.0f, -1508.94f},             // inter-dungeon warp pot
+        {9, 7, (s16)0x8000, 6301.06f, 1400.0f, 2355.29f},     // miniboss door
+        {27, 15, 0x4000, -5689.21f, -2300.0f, 9667.67f},      // boss door
+    };
+    s16 spawnId = dComIfGp_getStartStagePoint();
+    for (int i = 0; i < (int)ARRAY_SIZE(spawns); i++) {
+        if (spawns[i].spawnId == spawnId) {
+            pos->set(spawns[i].x, spawns[i].y, spawns[i].z);
+            *angle = spawns[i].angle;
+            *roomNo = spawns[i].roomNo;
+            return;
+        }
+    }
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
+    *pos = player != NULL ? player->current.pos : cXyz::Zero;
+    *angle = player != NULL ? player->shape_angle.y : 0;
+    *roomNo = dStage_roomControl_c::getStayNo();
+}
+#endif
+
 cPhs_State daNpc_Md_c::create() {
     m313D = 0;
     strcpy(mModelArcName, l_arc_name);
@@ -565,7 +599,13 @@ cPhs_State daNpc_Md_c::create() {
     if ((int)getTalkType() == -2) { // !@bug: Comparing unsigned value with -2 is always false.
         dComIfGs_onEventBit(dSv_event_flag_c::UNK_1620);
     } else {
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando make_game_nonlinear.asm, REL 0xA24): Medli stays after the Master Sword
+        // (Half Power) is found, which a seed can give before the Earth Temple
+        if (!pc_rando_active() && dComIfGs_isCollect(0, 2)) {
+#else
         if (dComIfGs_isCollect(0, 2)) {
+#endif
             if (strcmp(dComIfGp_getStartStageName(), "M_DaiB") != 0) {
                 return cPhs_ERROR_e;
             } else {
@@ -634,6 +674,18 @@ cPhs_State daNpc_Md_c::create() {
 
         if (isTypeM_Dai()) {
             u8 flag = dComIfGs_getPlayerPriestFlag();
+#if TARGET_PC
+            // Rando (wwrando make_game_nonlinear.asm reset_medli_position, REL 0xD94 and 0xDB4): in the Earth
+            // Temple Medli starts at the entrance the player came in by (any warp pot included), not at the
+            // position saved for the last partner, which may be elsewhere or another partner's
+            if (pc_rando_active()) {
+                cXyz pos;
+                s16 angle;
+                s8 roomNo;
+                daNpc_Md_randoSpawn(&pos, &angle, &roomNo);
+                dComIfGs_setRestartOption(&pos, angle, roomNo, 2);
+            } else
+#endif
             if (flag == 2) {
 #if TARGET_PC
                 // The saved position is big-endian (d_save.h): pass a host copy.
