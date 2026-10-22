@@ -44,6 +44,7 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 | `COS_TRACKER_SERVER` | `1` | serves the tracker and its state on port 6544 |
 | `COS_TRACKER_WEB` | `~/waker2/tracker` | the tracker's files the game serves |
 | `COS_TRACKER_OPEN` | `1` | open the tracker in the browser once the game runs; `0`: don't |
+| `COS_TRACKER_BROWSER` | (found) | the browser command the tracker opens in |
 | `COS_TRACKER_BIND` | `127.0.0.1` | `0.0.0.0`: the tracker can be opened from a phone or PC on the same network |
 
 Saves, settings and caches go in `~/waker2/user/`.
@@ -66,8 +67,10 @@ network the first time for each wwrando version.
   (`COS_TRACKER_OPEN=0` turns that off; `~/waker2/waker2-tracker.sh` opens it again if it was closed).
   Put the two windows side by side, or switch with Alt+Tab.
 - **Game Mode** shows one window at a time: the browser opens as another window of the game, and the
-  **STEAM** button switches between them (the game's entry lists its windows). L3+R3 shows the tracker
-  in the game without switching.
+  **STEAM** button switches between them (the game's entry lists its windows). For that the launcher
+  runs a browser installed from Discover itself (Chrome, Chromium, Brave, Edge or Firefox, in that
+  order; `COS_TRACKER_BROWSER=<command>` picks another). L3+R3 shows the tracker in the game without
+  switching. Not yet confirmed on a Deck.
 - **Another screen:** `COS_TRACKER_BIND=0.0.0.0 %command%`, then open `http://<the Deck's address>:6544/`
   on a phone or PC on the same network (the Deck's address: *Settings*, *Internet*, the network's
   details).
