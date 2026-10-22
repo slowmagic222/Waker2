@@ -535,8 +535,58 @@ ItemGetCheckFunc* item_getcheck_func_ptr[0x100] = {
 };
 
 /* 800C2DFC-800C2E30       .text execItemGet__FUc */
+#if TARGET_PC
+// Rando (wwrando tweaks.py allow_dungeon_items_to_appear_anywhere, custom_funcs.asm generic_small_key_item_get_func
+// and generic_on_dungeon_bit): the seed's dungeon items are items of their own (DRC Small Key, FW Big Key...)
+// that count for their dungeon wherever they are found. Returns false for any other item
+static bool dItem_randoDungeonItemGet(u8 itemNo) {
+    enum { SMALL_KEY = -1, MAP = 0, COMPASS = 1, BIG_KEY = 2 };
+    static const struct {
+        u8 itemNo;
+        s8 stageNo;
+        s8 kind;
+    } l_items[] = {
+        {0x13, 3, SMALL_KEY}, {0x14, 3, BIG_KEY}, {0x1B, 3, MAP}, {0x1C, 3, COMPASS},
+        {0x1D, 4, SMALL_KEY}, {0x40, 4, BIG_KEY}, {0x41, 4, MAP}, {0x5A, 4, COMPASS},
+        {0x5B, 5, SMALL_KEY}, {0x5C, 5, BIG_KEY}, {0x5D, 5, MAP}, {0x5E, 5, COMPASS},
+        {0x5F, 2, MAP}, {0x60, 2, COMPASS},
+        {0x73, 6, SMALL_KEY}, {0x74, 6, BIG_KEY}, {0x75, 6, MAP}, {0x76, 6, COMPASS},
+        {0x77, 7, SMALL_KEY}, {0x81, 7, BIG_KEY}, {0x84, 7, MAP}, {0x85, 7, COMPASS},
+    };
+    for (int i = 0; i < (int)ARRAY_SIZE(l_items); i++) {
+        if (l_items[i].itemNo != itemNo) {
+            continue;
+        }
+        int stageNo = l_items[i].stageNo;
+        bool inDungeon = g_dComIfG_gameInfo.save.getDan().mStageNo == stageNo;
+        if (l_items[i].kind == SMALL_KEY) {
+            if (!inDungeon) {
+                dSv_memBit_c& bit = g_dComIfG_gameInfo.save.getSavedata().getSave(stageNo).getBit();
+                bit.setKeyNum(bit.getKeyNum() + 1);
+            } else if (!dStage_stagInfo_ChkKeyDisp(dComIfGp_getStageStagInfo())) {
+                // A room of the dungeon without the key counter (the boss room): the normal key func only
+                // counts the key through that counter
+                dSv_memBit_c& bit = g_dComIfG_gameInfo.save.getMemory().getBit();
+                bit.setKeyNum(bit.getKeyNum() + 1);
+            } else {
+                item_func_small_key();
+            }
+        } else if (inDungeon) {
+            g_dComIfG_gameInfo.save.getMemory().getBit().onDungeonItem(l_items[i].kind);
+        } else {
+            g_dComIfG_gameInfo.save.getSavedata().getSave(stageNo).getBit().onDungeonItem(l_items[i].kind);
+        }
+        return true;
+    }
+    return false;
+}
+#endif
+
 void execItemGet(u8 itemNo) {
 #if TARGET_PC
+    if (pc_rando_active() && dItem_randoDungeonItemGet(itemNo)) {
+        return;
+    }
     // Rando (pc_rando.h; wwrando hurricane_spin_item_func): the Hurricane Spin item sets event bit 6901
     // (unused in the original game), which then lets the player use it (procCutTurnMove_init), apart
     // from the event where Orca teaches it

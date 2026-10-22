@@ -112,6 +112,19 @@ void dSv_player_return_place_c::init() {
     strcpy(mName, "sea");
     mRoomNo = dIsleRoom_OutsetIsland_e;
     mPoint = 206;
+#if TARGET_PC
+    // Rando (wwrando tweaks.py set_new_game_starting_room / set_new_game_starting_spawn_id): a new game starts
+    // on the seed's starting island, at spawn 0 (the dock, without the wakeup event). The values are the
+    // immediates the randomizer wrote into this function's li instructions
+    if (pc_rando_active()) {
+        const unsigned char* room = pc_rando_dol_bytes(0x80058BA7, 1);
+        const unsigned char* point = pc_rando_dol_bytes(0x80058BAF, 1);
+        if (room != NULL && point != NULL) {
+            mRoomNo = (s8)room[0];
+            mPoint = point[0];
+        }
+    }
+#endif
 }
 
 /* 80058BC8-80058C60       .text set__25dSv_player_return_place_cFPCcScUc */

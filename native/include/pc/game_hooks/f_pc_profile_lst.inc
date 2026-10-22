@@ -518,6 +518,9 @@ process_profile_definition* g_fpcPfLst_ProfileList[] = {
     &g_profile_SCP.base.base,
     &g_profile_PB.base.base,
     &g_profile_GAMEOVER.base.base,
+    // Rando custom actors (game/src/d/actor/d_a_switch_op.cpp, d_a_dungeon_flag_sw.cpp)
+    &g_profile_SWITCH_OP.base.base,
+    &g_profile_DUNGEON_FLAG_SW.base.base,
     NULL,
 };
 

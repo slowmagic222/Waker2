@@ -10645,3 +10645,128 @@ u16 dItem_data::getSpecialEffect(u8 no) {
     JUT_ASSERT(9700, effect_info[no].m_sp_effect != dPa_name::ID_SCENE_END);
     return effect_info[no].m_sp_effect;
 }
+
+#if TARGET_PC
+#include "pc/pc_rando.h"
+
+// Rando (wwrando tweaks.py allow_all_items_to_be_field_items): most items have no field model, so a seed that
+// puts them on the ground (or in a pot, a stone head, Gohdan's nose...) needs the item get model copied over.
+// Swords, songs, the magic meter and Hurricane Spin also get a usable item get model. Also gives every item a
+// pickup cylinder. Runs once, the first time a scene is created with the rando disc. wwrando's nops of the
+// __sinit arc name stores (0x800C1970-0x800C1BA8, 0x800C1EF8) are not needed: static init runs before this
+static bool dItem_randoHasNoFieldModel(int no) {
+    return no == 0x1A || (no >= 0x20 && no <= 0x33) || no == 0x35 || no == 0x36 || no == 0x39 || no == 0x3A || no == 0x3C ||
+           no == 0x3E || no == 0x3F || no == 0x42 || no == 0x43 || (no >= 0x4C && no <= 0x4E) ||
+           (no >= 0x50 && no <= 0x59) || (no >= 0x61 && no <= 0x72) || (no >= 0x78 && no <= 0x80) ||
+           (no >= 0x98 && no <= 0xA7) || (no >= 0xAA && no <= 0xFE);
+}
+
+void dItem_data::randoAllowAllFieldItems() {
+    static bool s_done = false;
+    if (s_done || !pc_rando_active()) {
+        return;
+    }
+    s_done = true;
+
+    for (int no = 0; no < 0x100; no++) {
+        if (!dItem_randoHasNoFieldModel(no)) {
+            continue;
+        }
+        int src = no;
+        bool fixGetModel = false;
+        if (no == 0x39 || no == 0x3A || no == 0x3E) {
+            src = 0x38; // Master Swords use the Hero's Sword model
+            fixGetModel = true;
+        } else if (no >= 0x6D && no <= 0x72) {
+            src = 0x22; // songs use the Wind Waker model instead of the Pirate's Charm
+            fixGetModel = true;
+        } else if (no == 0xB1 || no == 0xB2) {
+            src = 0x52; // the magic meters have no model, use the Green Potion
+            fixGetModel = true;
+        }
+        const char* arc = item_resource[src].mArcname;
+        if (no == 0xAA) {
+            arc = "Vscroll"; // Hurricane Spin: wwrando's scroll model, added to the disc as Object/Vscroll.arc
+            fixGetModel = true;
+        }
+
+        const dItem_data_item_resource from = item_resource[src];
+        dItem_data_field_item_res& field = field_item_res[no];
+        field.mArc = arc;
+        field.mBmdIdx = from.mBmdIdx;
+        field.mSrtIdx = from.mSrtIdx;
+        field.mSrtIdx2 = from.mSrtIdx2;
+        field.mTevIdx = from.mTevIdx;
+        field.mTevIdx2 = from.mTevIdx2;
+        field.mBckIdx = from.mBckIdx;
+        field.mTevFrm = from.mTevFrm;
+        field.mUnknown = from.mUnknown;
+        if (fixGetModel) {
+            dItem_data_item_resource& res = item_resource[no];
+            res.mArcname = arc;
+            res.mBmdIdx = from.mBmdIdx;
+            res.mSrtIdx = from.mSrtIdx;
+            res.mSrtIdx2 = from.mSrtIdx2;
+            res.mTevIdx = from.mTevIdx;
+            res.mTevIdx2 = from.mTevIdx2;
+            res.mBckIdx = from.mBckIdx;
+            res.mTevFrm = from.mTevFrm;
+            res.mUnknown = from.mUnknown;
+        }
+    }
+
+    // A cylinder of 0 height or radius can only be picked up with a spin attack from on top of the item
+    for (int no = 0; no < 0x100; no++) {
+        if (item_info[no].mCollisionH == 0) {
+            item_info[no].mCollisionH = 0x28;
+        }
+        if (item_info[no].mCollisionR == 0) {
+            item_info[no].mCollisionR = 0x28;
+        }
+    }
+
+    // Rando (wwrando tweaks.py allow_dungeon_items_to_appear_anywhere): the dungeon-specific keys, maps and
+    // compasses (d_item.cpp dItem_randoDungeonItemGet) look like the plain ones. wwrando copies the field heap
+    // size from a misindexed entry (base*0x24 into a 0x1C table); this takes the base item's own
+    static const u8 l_smallKeys[] = {0x13, 0x1D, 0x5B, 0x73, 0x77};
+    static const u8 l_bigKeys[] = {0x14, 0x40, 0x5C, 0x74, 0x81};
+    static const u8 l_maps[] = {0x1B, 0x41, 0x5D, 0x5F, 0x75, 0x84};
+    static const u8 l_compasses[] = {0x1C, 0x5A, 0x5E, 0x60, 0x76, 0x85};
+    static const struct {
+        const u8* items;
+        int num;
+        u8 base;
+        u8 shadowSize, collisionH, collisionR, flag;
+    } l_dungeonItems[] = {
+        {l_smallKeys, ARRAY_SIZE(l_smallKeys), dItemNo_SMALL_KEY_e, 0x14, 0x28, 0x1E, 0x05},
+        {l_bigKeys, ARRAY_SIZE(l_bigKeys), dItemNo_BOSS_KEY_e, 0x00, 0x28, 0x28, 0x05},
+        {l_maps, ARRAY_SIZE(l_maps), dItemNo_MAP_e, 0x00, 0x28, 0x28, 0x00},
+        {l_compasses, ARRAY_SIZE(l_compasses), dItemNo_COMPASS_e, 0x00, 0x28, 0x28, 0x00},
+    };
+    for (int k = 0; k < (int)ARRAY_SIZE(l_dungeonItems); k++) {
+        u8 base = l_dungeonItems[k].base;
+        for (int i = 0; i < l_dungeonItems[k].num; i++) {
+            u8 no = l_dungeonItems[k].items[i];
+            item_resource[no] = item_resource[base];
+
+            dItem_data_field_item_res& field = field_item_res[no];
+            const dItem_data_item_resource& from = item_resource[base];
+            field.mArc = from.mArcname;
+            field.mBmdIdx = from.mBmdIdx;
+            field.mSrtIdx = from.mSrtIdx;
+            field.mSrtIdx2 = from.mSrtIdx2;
+            field.mTevIdx = from.mTevIdx;
+            field.mTevIdx2 = from.mTevIdx2;
+            field.mBckIdx = from.mBckIdx;
+            field.mTevFrm = from.mTevFrm;
+            field.mUnknown = from.mUnknown;
+            field.mHeapSize = field_item_res[base].mHeapSize;
+
+            item_info[no].mShadowSize = l_dungeonItems[k].shadowSize;
+            item_info[no].mCollisionH = l_dungeonItems[k].collisionH;
+            item_info[no].mCollisionR = l_dungeonItems[k].collisionR;
+            item_info[no].mFlag = l_dungeonItems[k].flag;
+        }
+    }
+}
+#endif

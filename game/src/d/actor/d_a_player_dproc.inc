@@ -580,6 +580,15 @@ void daPy_lk_c::setGetItemSound(u16 param_1, BOOL param_2) {
         seStartSystem(JA_SE_ME_ITEM_GET_S);
         dComIfGp_setMesgBgmOn2();
     } else {
+#if TARGET_PC
+        // Rando (wwrando flexible_item_locations.asm, 0x8012E3E8 check_play_special_item_get_music): pearls and
+        // songs got through the normal item get play their own music, which vanilla left to their cutscenes
+        if (pc_rando_active() && param_1 >= dItemNo_PEARL_NAYRU_e && param_1 <= dItemNo_PEARL_FARORE_e) {
+            mDoAud_subBgmStart(JA_BGM_GET_PEARL);
+        } else if (pc_rando_active() && param_1 >= 0x6D && param_1 <= 0x72) {
+            mDoAud_subBgmStart(JA_BGM_GET_SONG);
+        } else
+#endif
         mDoAud_subBgmStart(JA_BGM_ITEM_GET);
         dComIfGp_setMesgBgmOn();
     }
