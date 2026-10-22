@@ -53,6 +53,12 @@ package has it in `tracker/` and its launcher sets this up ([STEAM_DECK.md](STEA
 tracker"); its launcher opens it in the browser when the game starts, and
 `scripts/steamdeck/waker2-tracker.sh` opens it again.
 
+`http://127.0.0.1:6544/open` goes straight into the tracker for the seed being played: the game
+redirects to `/#/tracker/new/<permalink>`, the permalink read from the text files next to the rando disc
+(`<disc> - Permalink.txt` from the in-game seed generator, or the `Permalink:` line of wwrando's
+`<disc> - Non-Spoiler Log.txt` / `- Spoiler Log.txt`), or to `/` when none has it. The launchers open
+that address.
+
 **The tracker, elsewhere:** the patched tracker reads any game's address with `?autotrack=1` (the game
 on 127.0.0.1:6544) or `?autotrack=http://<address>:6544` after its URL
 (`http://localhost:8080/#/tracker/new/<permalink>?autotrack=1` from `npm start` in a patched checkout);
@@ -123,6 +129,8 @@ start a seed's file over.
   `build_tracker.sh`'s output, served the tracker at `/`; opened there in headless Chromium with no
   parameter, it found the state by itself and showed the same items and checks.
 - `pc_tracker_overlay.cpp` compiles against the game's, Aurora's ImGui and SDL 3 headers (syntax only).
+- `/open`: the server on its own redirected to the permalink of a `Permalink.txt` and of a non-spoiler
+  log next to the disc (and to `/` without one), and headless Chromium followed it into the tracker.
 - Not yet: a real game. First test: `COS_TRACKER_SERVER=1`, a seed, `curl http://127.0.0.1:6544/state`
   after opening a chest and picking up an item.
 
