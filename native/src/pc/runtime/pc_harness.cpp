@@ -3,6 +3,7 @@
 #include "pc_internal.h"
 #include "pc/pc_settings.h"
 #include "pc/pc_aspect.h"
+#include "pc/pc_seedgen.h"
 
 #include <atomic>
 #include <cerrno>
@@ -151,6 +152,8 @@ void pc_harness_init(int argc, char* argv[]) {
     // or crash exit must not lose the last lines in a full buffer.
     setvbuf(stdout, nullptr, _IOLBF, 0);
 
+    // The options menu's "Seed to play" (pc_seedgen.h, docs/SEEDGEN.md) sets or clears COS_RANDO_DISC.
+    pc_seedgen_boot();
     gConfig.disc = envString("COS_DISC");
     gConfig.randoDisc = envString("COS_RANDO_DISC");
     gConfig.smoke = envString("COS_SMOKE");
