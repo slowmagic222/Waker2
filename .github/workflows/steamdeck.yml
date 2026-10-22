@@ -6,6 +6,8 @@
 #   waker2/switchwaker                  the game
 #   waker2/waker2.sh                    launcher: COS_DISC / COS_RANDO_DISC from the .isos next to it
 #   waker2/initial_pipeline_cache.db    the pipeline list (as in the Switch download)
+#   waker2/tracker/                     the randomizer tracker with autotracking, served by the game at
+#                                       http://127.0.0.1:6544/ (docs/TRACKER.md)
 # Steps for the Deck: docs/STEAM_DECK.md.
 #
 # Runs by hand (Actions tab, "Run workflow") or on a push to a claude/* test branch that touches the
@@ -19,6 +21,8 @@ on:
     paths:
       - '.github/workflows/steamdeck.yml'
       - 'scripts/steamdeck/**'
+      - 'scripts/tracker/**'
+      - 'native/src/pc/features/pc_tracker*'
 
 permissions:
   contents: read
@@ -70,13 +74,20 @@ jobs:
             echo "== shared libraries"; ldd build/deck/switchwaker || true
             echo "== newest glibc symbol version needed (SteamOS 3.7 has 2.41)"
             objdump -T build/deck/switchwaker | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build the tracker (patched for autotracking)
+        run: scripts/tracker/build_tracker.sh out/tracker build/tww-rando-tracker
       - name: Package
         run: |
           sha=$(git rev-parse --short HEAD)
           mkdir -p out/waker2
           cp build/deck/switchwaker scripts/steamdeck/waker2.sh native/data/initial_pipeline_cache.db out/waker2/
           cp docs/STEAM_DECK.md out/waker2/README.md
-          chmod +x out/waker2/switchwaker out/waker2/waker2.sh
+          cp scripts/steamdeck/waker2-tracker.sh out/waker2/
+          cp -R out/tracker out/waker2/tracker
+          chmod +x out/waker2/switchwaker out/waker2/waker2.sh out/waker2/waker2-tracker.sh
           strip out/waker2/switchwaker || true
           tar -C out -czf "out/waker2-steamdeck-$sha.tar.gz" waker2
           echo "NAME=waker2-steamdeck-$sha" >> "$GITHUB_ENV"

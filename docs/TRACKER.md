@@ -35,18 +35,18 @@ settings file on the Switch). The log says `[cos] tracker: state at http://127.0
 A number other than 1 is the port. It listens on 127.0.0.1 on a computer and on every address on the
 Switch (the tracker runs elsewhere); `COS_TRACKER_BIND=<ipv4>` overrides that.
 
-**The tracker:** the patch `scripts/tracker/tww-rando-tracker-autotrack.patch` (made against
-wooferzfg/tww-rando-tracker `1c6d5a0`, 2026-07-26; the tracker is GPL-3.0):
+**The tracker, served by the game:** with `COS_TRACKER_WEB=<dir>` the same server also serves the
+files of that directory, so `http://127.0.0.1:6544/` is the tracker itself and it autotracks with no
+setup (it finds the state next to the page). `scripts/tracker/build_tracker.sh <dir>` makes that
+directory: wooferzfg/tww-rando-tracker at `1c6d5a0` (GPL-3.0) with
+`scripts/tracker/tww-rando-tracker-autotrack.patch`, its tests, its production build. The Steam Deck
+package has it in `tracker/` and its launcher sets this up ([STEAM_DECK.md](STEAM_DECK.md), "The
+tracker"); `scripts/steamdeck/waker2-tracker.sh` opens it in the browser.
 
-```sh
-git clone https://github.com/wooferzfg/tww-rando-tracker && cd tww-rando-tracker
-git checkout 1c6d5a0 && git am /path/to/waker2/scripts/tracker/tww-rando-tracker-autotrack.patch
-npm ci && npm start          # http://localhost:8080
-```
-
-Then open the tracker for the seed as usual and add `?autotrack=1` to its address
-(`http://localhost:8080/#/tracker/new/<permalink>?autotrack=1`), or `?autotrack=http://<switch ip>:6544`
-for the Switch. A toast says when it connects. The tracker polls once a second and merges:
+**The tracker, elsewhere:** the patched tracker reads any game's address with `?autotrack=1` (the game
+on 127.0.0.1:6544) or `?autotrack=http://<address>:6544` after its URL
+(`http://localhost:8080/#/tracker/new/<permalink>?autotrack=1` from `npm start` in a patched checkout);
+`?autotrack=0` turns autotracking off. A toast says when it connects. It polls once a second and merges:
 
 - an item is set when the game's count changed since the last poll (the first poll keeps the higher
   of the tracker's and the game's count), so a mark made by hand stays until the game's count moves;
@@ -54,9 +54,9 @@ for the Switch. A toast says when it connects. The tracker polls once a second a
 - locations are only ever checked, never unchecked;
 - another save slot starts over.
 
-The hosted tracker (https) cannot read the Switch's plain-http address (mixed content). It could read
-127.0.0.1, which browsers allow from an https page (Chrome may ask for local network access first),
-once the patch is in it. Until then the patched tracker runs locally as above.
+The hosted tracker (https) cannot read the Switch's plain-http address (mixed content); the tracker
+the game serves can (`COS_TRACKER_BIND=0.0.0.0`, then `http://<address>:6544/`), and so can the
+hosted one for 127.0.0.1 once the patch is upstream.
 
 `scripts/tracker/fake_game.py [state.json]` serves a state the way the game does, to try the tracker
 side without the game.
@@ -97,6 +97,9 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
   coverage as the tracker requires), eslint is clean, webpack builds. In headless Chromium the
   patched tracker, opened on a 1.10.0 permalink with `?autotrack=`, read a sample state from the
   server above and showed the items, the checked locations and the salvaged chart's sunken treasure.
+- The tracker served by the game: the server, built on its own with `COS_TRACKER_WEB` pointing at
+  `build_tracker.sh`'s output, served the tracker at `/`; opened there in headless Chromium with no
+  parameter, it found the state by itself and showed the same items and checks.
 - Not yet: a real game. First test: `COS_TRACKER_SERVER=1`, a seed, `curl http://127.0.0.1:6544/state`
   after opening a chest and picking up an item.
 
@@ -117,4 +120,6 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
 - `native/src/pc/features/pc_tracker_tables.inc`, `native/tools/gen_tracker_tables.py`: the location and
   chart tables and their generator (`--ap <Archipelago>/worlds/tww --ap-rev <commit> --wwrando <wwrando>`;
   `--check` compares with the committed file). Made from Archipelago `4036a35` and wwrando `9775811`.
-- `scripts/tracker/`: the tracker patch and `fake_game.py`.
+- `scripts/tracker/`: the tracker patch, `build_tracker.sh` (the patched tracker's build, for
+  `COS_TRACKER_WEB`) and `fake_game.py`.
+- `scripts/steamdeck/waker2-tracker.sh`, `.github/workflows/steamdeck.yml`: the Deck package's tracker.

@@ -20,6 +20,15 @@ if [ -z "${COS_RANDO_DISC+x}" ]; then
 fi
 export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
 export COS_TRACKER_SERVER="${COS_TRACKER_SERVER:-1}"   # only does something in builds with the tracker
+# The randomizer tracker, served by the game at http://127.0.0.1:6544/ while it runs (docs/TRACKER.md);
+# it autotracks by itself. COS_TRACKER_BIND=0.0.0.0 opens it to a phone or PC on the same network.
+if [ -z "${COS_TRACKER_WEB:-}" ] && [ -f "$here/tracker/index.html" ]; then
+    export COS_TRACKER_WEB="$here/tracker"
+fi
+# COS_TRACKER_OPEN=1: also open the tracker in the browser once the game answers (waker2-tracker.sh)
+if [ "${COS_TRACKER_OPEN:-0}" = "1" ] && [ -x "$here/waker2-tracker.sh" ]; then
+    "$here/waker2-tracker.sh" --wait >/dev/null 2>&1 &
+fi
 
 # The game's output also goes to waker2.log next to it (the last run), to read after a Game Mode start.
 exec > >(tee "$here/waker2.log") 2>&1

@@ -41,6 +41,26 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 | `COS_DISC` | `~/waker2/GZLE01.iso` | the clean disc |
 | `COS_RANDO_DISC` | the other `.iso` in the folder, if any | the seed; set it empty (`COS_RANDO_DISC= %command%`) to ignore one |
 | `COS_FULLSCREEN` | `1` | |
-| `COS_TRACKER_SERVER` | `1` | serves the tracker state on port 6544, in builds that have the built-in tracker |
+| `COS_TRACKER_SERVER` | `1` | serves the tracker and its state on port 6544 |
+| `COS_TRACKER_WEB` | `~/waker2/tracker` | the tracker's files the game serves |
+| `COS_TRACKER_OPEN` | `0` | `1`: open the tracker in the browser once the game runs |
+| `COS_TRACKER_BIND` | `127.0.0.1` | `0.0.0.0`: the tracker can be opened from a phone or PC on the same network |
 
 Saves, settings and caches go in `~/waker2/user/`.
+
+## The tracker
+
+While the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
+with autotracking ([TRACKER.md](TRACKER.md)): open **http://127.0.0.1:6544/** in a browser, paste the seed's
+permalink and launch as usual. Items and checked locations follow the game by themselves, about once a
+second; marks made by hand stay. The tracker downloads the seed's logic from GitHub, so the Deck needs the
+network the first time for each wwrando version.
+
+- **Desktop Mode:** `~/waker2/waker2-tracker.sh` opens it in the default browser (or start the game
+  with `COS_TRACKER_OPEN=1`). Put the two windows side by side, or switch with Alt+Tab.
+- **Game Mode** shows one window at a time. Start the game with `COS_TRACKER_OPEN=1 %command%` (launch
+  options) so the browser opens as a window of the game, then switch with the **STEAM** button: the
+  game's entry lists its windows. Not yet tried on a Deck.
+- **Another screen:** `COS_TRACKER_BIND=0.0.0.0 %command%`, then open `http://<the Deck's address>:6544/`
+  on a phone or PC on the same network (the Deck's address: *Settings*, *Internet*, the network's
+  details).

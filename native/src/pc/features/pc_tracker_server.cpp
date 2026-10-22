@@ -1,7 +1,9 @@
 // COS_TRACKER_SERVER (pc_tracker.h, docs/TRACKER.md): the tracker's state over HTTP, for the tracker's
 // autotracking. One thread accepts and answers one request per connection:
 //   GET /state   the state's JSON (pc_tracker.cpp)
-//   GET /        a line saying what this is
+//   GET /...     with COS_TRACKER_WEB, the files of that directory (the patched tracker's build,
+//                scripts/tracker/build_tracker.sh), / being its index.html: the tracker then comes from
+//                the game itself and finds the state next to it. Without: a line saying what this is
 //   OPTIONS      the CORS preflight
 // Every reply allows any origin (the tracker page is served from elsewhere) and private-network access
 // (Chrome asks a page on a public origin before it reads 127.0.0.1). No password: the state is
@@ -15,7 +17,10 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <netinet/in.h>
 #include <string>
 #include <sys/socket.h>
@@ -31,6 +36,7 @@ namespace pc::tracker {
 namespace {
 
 int sListen = -1;
+std::string sWebDir; // COS_TRACKER_WEB, empty: no files
 int sPort = 0;
 in_addr sBind{};
 
@@ -84,6 +90,46 @@ void reply(int fd, const char* status, const char* type, const std::string& body
     sendAll(fd, head + body);
 }
 
+const char* contentType(const std::string& path) {
+    const size_t dot = path.rfind('.');
+    const std::string ext = dot == std::string::npos ? "" : path.substr(dot + 1);
+    const struct {
+        const char* ext;
+        const char* type;
+    } kTypes[] = {
+        {"html", "text/html; charset=utf-8"},   {"js", "text/javascript; charset=utf-8"},
+        {"css", "text/css; charset=utf-8"},     {"json", "application/json"},
+        {"map", "application/json"},            {"webmanifest", "application/manifest+json"},
+        {"png", "image/png"},                   {"svg", "image/svg+xml"},
+        {"ico", "image/x-icon"},                {"woff2", "font/woff2"},
+        {"woff", "font/woff"},                  {"ttf", "font/ttf"},
+        {"txt", "text/plain; charset=utf-8"},
+    };
+    for (const auto& t : kTypes) {
+        if (ext == t.ext) {
+            return t.type;
+        }
+    }
+    return "application/octet-stream";
+}
+
+// A file of COS_TRACKER_WEB; false if there is none (or the path tries to leave the directory)
+bool webFile(int fd, std::string path) {
+    if (sWebDir.empty() || path.find("..") != std::string::npos || path.find('\\') != std::string::npos) {
+        return false;
+    }
+    if (path == "/") {
+        path = "/index.html";
+    }
+    std::ifstream in(sWebDir + path, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    const std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    reply(fd, "200 OK", contentType(path), body);
+    return true;
+}
+
 void answer(int fd) {
     // the request line and headers; the requests here have no body
     std::string req;
@@ -112,6 +158,7 @@ void answer(int fd) {
         reply(fd, "405 Method Not Allowed", "text/plain", "GET only\n");
     } else if (path == "/state") {
         reply(fd, "200 OK", "application/json", stateJson());
+    } else if (webFile(fd, path)) {
     } else if (path == "/") {
         reply(fd, "200 OK", "text/plain", "switchwaker tracker state: GET /state (docs/TRACKER.md)\n");
     } else {
@@ -163,6 +210,12 @@ bool startServer(const char* bindAddress, int port) {
         return false;
     }
     sPort = port;
+    if (const char* web = getenv("COS_TRACKER_WEB"); web != nullptr && *web != '\0') {
+        sWebDir = web;
+        while (!sWebDir.empty() && sWebDir.back() == '/') {
+            sWebDir.pop_back();
+        }
+    }
 #if defined(__SWITCH__)
     // the debug server may have started the socket service already; a second start then fails harmlessly
     socketInitializeDefault();
@@ -174,6 +227,10 @@ bool startServer(const char* bindAddress, int port) {
     }
     std::thread(serve).detach();
     writef(STDERR_FILENO, "[cos] tracker: state at http://%s:%d/state\n", bindAddress, port);
+    if (!sWebDir.empty()) {
+        writef(STDERR_FILENO, "[cos] tracker: the tracker at http://%s:%d/ (from %s)\n",
+               strcmp(bindAddress, "0.0.0.0") == 0 ? "127.0.0.1" : bindAddress, port, sWebDir.c_str());
+    }
     return true;
 }
 

@@ -1,4 +1,4 @@
-From a44b3e22301bbbe8b9340c35cbf1759f0ba98b3c Mon Sep 17 00:00:00 2001
+From ba67270a93019a2db1492b548307a82c0237c0c3 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 22 Oct 2026 02:31:56 +0000
 Subject: [PATCH] Autotracking from SwitchWaker (?autotrack=)
@@ -6,21 +6,23 @@ Subject: [PATCH] Autotracking from SwitchWaker (?autotrack=)
 The tracker polls the game's state (SwitchWaker's COS_TRACKER_SERVER, GET /state) once a
 second and merges it in: items set when the game's count changes, small keys gained added,
 locations and salvaged charts' sunken treasures checked, never unchecked. Turned on with
-?autotrack=1 (the game on 127.0.0.1:6544) or ?autotrack=<address> after the tracker's URL.
+?autotrack=1 (the game on 127.0.0.1:6544) or ?autotrack=<address> after the tracker's URL,
+and on its own when the game serves the tracker itself (the state next to the page);
+?autotrack=0 turns it off.
 ---
- src/services/autotracker.js      | 143 +++++++++++++++++++
- src/services/autotracker.test.js | 228 +++++++++++++++++++++++++++++++
- src/ui/tracker.jsx               |  58 ++++++++
- 3 files changed, 429 insertions(+)
+ src/services/autotracker.js      | 154 ++++++++++++++++++++
+ src/services/autotracker.test.js | 241 +++++++++++++++++++++++++++++++
+ src/ui/tracker.jsx               |  80 ++++++++++
+ 3 files changed, 475 insertions(+)
  create mode 100644 src/services/autotracker.js
  create mode 100644 src/services/autotracker.test.js
 
 diff --git a/src/services/autotracker.js b/src/services/autotracker.js
 new file mode 100644
-index 0000000..e0303ce
+index 0000000..cc6f046
 --- /dev/null
 +++ b/src/services/autotracker.js
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,154 @@
 +import _ from 'lodash';
 +
 +import LogicHelper from './logic-helper';
@@ -161,15 +163,26 @@ index 0000000..e0303ce
 +    const base = value === '1' ? 'http://127.0.0.1:6544' : value;
 +    return `${_.trimEnd(base, '/')}/state`;
 +  }
++
++  // ?autotrack=0: no autotracking, not even from the page's own server
++  static isDisabledInSearch(search) {
++    return new URLSearchParams(search).get('autotrack') === '0';
++  }
++
++  // The state's address when the game itself serves the tracker (COS_TRACKER_WEB): next to the
++  // page
++  static sameOriginUrl(pageHref) {
++    return new URL('state', _.head(_.split(pageHref, '#'))).href;
++  }
 +}
 +
 +export default Autotracker;
 diff --git a/src/services/autotracker.test.js b/src/services/autotracker.test.js
 new file mode 100644
-index 0000000..ed28be6
+index 0000000..6330996
 --- /dev/null
 +++ b/src/services/autotracker.test.js
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,241 @@
 +import Autotracker from './autotracker';
 +import LogicHelper from './logic-helper';
 +import TrackerState from './tracker-state';
@@ -397,9 +410,22 @@ index 0000000..ed28be6
 +    expect(Autotracker.urlFromSearch('&autotrack=http://192.168.1.20:6544/'))
 +      .toBe('http://192.168.1.20:6544/state');
 +  });
++
++  test('turns autotracking off with autotrack=0', () => {
++    expect(Autotracker.isDisabledInSearch('?autotrack=0')).toBe(true);
++    expect(Autotracker.isDisabledInSearch('?autotrack=1')).toBe(false);
++    expect(Autotracker.isDisabledInSearch('')).toBe(false);
++  });
++
++  test('finds the state next to a page the game serves', () => {
++    expect(Autotracker.sameOriginUrl('http://127.0.0.1:6544/#/tracker/new/abc'))
++      .toBe('http://127.0.0.1:6544/state');
++    expect(Autotracker.sameOriginUrl('http://192.168.1.20:6544/index.html#/'))
++      .toBe('http://192.168.1.20:6544/state');
++  });
 +});
 diff --git a/src/ui/tracker.jsx b/src/ui/tracker.jsx
-index c225697..de715df 100644
+index c225697..ac09a4c 100644
 --- a/src/ui/tracker.jsx
 +++ b/src/ui/tracker.jsx
 @@ -4,6 +4,7 @@ import React from 'react';
@@ -410,26 +436,27 @@ index c225697..de715df 100644
  import LogicHelper from '../services/logic-helper';
  import TrackerController from '../services/tracker-controller';
  
-@@ -45,6 +46,12 @@ class Tracker extends React.PureComponent {
+@@ -45,6 +46,11 @@ class Tracker extends React.PureComponent {
  
      this.initialize();
  
-+    this.autotrackUrl = Autotracker.urlFromSearch(
-+      `${window.location.search}&${_.last(_.split(window.location.hash, '?', 2)) || ''}`,
-+    );
++    this.autotrackSearch = `${window.location.search}&${_.last(_.split(window.location.hash, '?', 2)) || ''}`;
++    this.autotrackUrl = Autotracker.urlFromSearch(this.autotrackSearch);
 +    this.autotrackConnected = false;
 +    this.lastGameState = null;
 +
      this.clearOpenedMenus = this.clearOpenedMenus.bind(this);
      this.clearRaceModeBannedLocations = this.clearRaceModeBannedLocations.bind(this);
      this.decrementItem = this.decrementItem.bind(this);
-@@ -67,6 +74,16 @@ class Tracker extends React.PureComponent {
+@@ -67,6 +73,18 @@ class Tracker extends React.PureComponent {
      this.updateOpenedLocation = this.updateOpenedLocation.bind(this);
    }
  
 +  componentDidMount() {
 +    if (!_.isNil(this.autotrackUrl)) {
-+      this.autotrackTimer = setInterval(() => this.pollAutotracker(), 1000);
++      this.startAutotracker();
++    } else if (!Autotracker.isDisabledInSearch(this.autotrackSearch)) {
++      this.probeAutotracker();
 +    }
 +  }
 +
@@ -440,10 +467,31 @@ index c225697..de715df 100644
    async initialize() {
      await Images.importImages();
  
-@@ -125,6 +142,47 @@ class Tracker extends React.PureComponent {
+@@ -125,6 +143,68 @@ class Tracker extends React.PureComponent {
      });
    }
  
++  startAutotracker() {
++    this.autotrackTimer = setInterval(() => this.pollAutotracker(), 1000);
++  }
++
++  // Served by the game itself: its state is next to the page
++  async probeAutotracker() {
++    const url = Autotracker.sameOriginUrl(window.location.href);
++
++    try {
++      const response = await fetch(url, { cache: 'no-store' });
++      const gameState = await response.json();
++
++      if (gameState.version === Autotracker.VERSION) {
++        this.autotrackUrl = url;
++        this.startAutotracker();
++      }
++    } catch (err) {
++      // not the game's server: no autotracking
++    }
++  }
++
 +  async pollAutotracker() {
 +    if (this.autotrackPolling) {
 +      return;
