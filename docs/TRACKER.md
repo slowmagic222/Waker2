@@ -1,18 +1,18 @@
-# Randomizer tracker (autotracking)
+# Randomizer tracker (in the game)
 
-Status: **step 1 of the plan below, and the start of step 3** (written 2026-10-22). The game reads its
-own save and serves what [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
-tracks; a patch for the tracker reads it. The game also draws a small tracker over itself (L3+R3 or F2).
-Not yet run in the game with a real seed (see "Checked so far").
+Status (2026-10-22): the game reads its own save, and on a rando disc runs [wooferzfg's TWW Randomizer
+Tracker](https://www.wooferzfg.me/tww-rando-tracker/)'s own logic on it; L3+R3 (or F2) shows the tracker
+screen in the game, in the tracker's art. No browser, no server: it works the same on the Switch. Not yet
+run in the game with a real seed (see "Checked so far").
 
-Goes with rando mode ([RANDO.md](RANDO.md)), but works with the original game too (the item counts and
-most locations mean the same there).
+Goes with rando mode ([RANDO.md](RANDO.md)), but the screen works with the original game too (items and
+checks, no logic).
 
 ## The idea
 
 The tracker stays the tracker: its logic (wwrando's `logic/` files for the seed's permalink), its
-layout and its manual marks. What the game adds is the part a player does by hand: clicking each item
-picked up and each location checked. So the game reads its save every half second and writes the
+colours, its art and its manual marks. What the game adds is the part a player does by hand: clicking
+each item picked up and each location checked. So the game reads its save every 15 frames and writes the
 tracker's own data model, in the tracker's names:
 
 | Tracker field | From the save |
@@ -31,7 +31,7 @@ against the chart's collect-map number in `game/src/d/d_item.cpp` (all 49 agree)
 
 ## Use
 
-**In the game:** press both sticks in together (L3+R3, on any controller; the Switch's too) or F2.
+Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2.
 
 1. The tracker screen: the game pauses, and the screen shows the tracker's items, its sea chart with each
    island's checks "in logic / not checked", and the dungeons (keys, map, compass, big key, counts), in
@@ -43,54 +43,33 @@ against the chart's collect-map number in `game/src/d/d_item.cpp` (all 49 agree)
 3. A third press hides it.
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
-open it is hidden. Which checks are in logic is the tracker's own answer: the game runs the tracker's
-logic code (its `src/services`, bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of
-its own, on the seed's settings (its permalink, read from the text next to the rando disc, see "The
-tracker, served by the game") and wwrando's logic files, and feeds it the game's state the way the
-tracker's autotracking does. That needs the `tracker-logic/` folder next to the game (on the Switch,
-next to `user/`; `COS_TRACKER_LOGIC=<dir>` elsewhere) and the permalink; without them the screen says
-which is missing and shows the items only. Marks made by hand last until the game is closed.
+open it is hidden. Marks made by hand last until the game is closed.
 
-**The game's server:** `COS_TRACKER_SERVER=1` (environment on Linux and the Mac, the `[dev]` section of the
-settings file on the Switch). The log says `[cos] tracker: state at http://127.0.0.1:6544/state`.
-A number other than 1 is the port. It listens on 127.0.0.1 on a computer and on every address on the
-Switch (the tracker runs elsewhere); `COS_TRACKER_BIND=<ipv4>` overrides that.
+**The logic** is the tracker's own answer: the game runs the tracker's logic code (its `src/services`,
+bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of its own, on the seed's settings and
+wwrando's logic files, and merges the game's state into the tracker's (`scripts/tracker/logic/autotracker.js`):
 
-**The tracker, served by the game:** with `COS_TRACKER_WEB=<dir>` the same server also serves the
-files of that directory, so `http://127.0.0.1:6544/` is the tracker itself and it autotracks with no
-setup (it finds the state next to the page). `scripts/tracker/build_tracker.sh <dir>` makes that
-directory: wooferzfg/tww-rando-tracker at `dd48285` (its next-rando-version branch, which reads the permalinks
-of the wwrando rando mode is pinned to; its main branch reads only 1.10.0's; GPL-3.0) with
-`scripts/tracker/tww-rando-tracker-autotrack.patch`, its tests, its production build. The Steam Deck
-package has it in `tracker/` and its launcher sets this up ([STEAM_DECK.md](STEAM_DECK.md), "The
-tracker"); its launcher opens it in the browser when the game starts, and
-`scripts/steamdeck/waker2-tracker.sh` opens it again.
-
-`http://127.0.0.1:6544/open` goes straight into the tracker for the seed being played: the game
-redirects to `/#/tracker/new/<permalink>`, the permalink read from the text files next to the rando disc
-(`<disc> - Permalink.txt` from the in-game seed generator, or the `Permalink:` line of wwrando's
-`<disc> - Non-Spoiler Log.txt` / `- Spoiler Log.txt`), or to `/` when none has it. The launchers open
-that address.
-
-**The tracker, elsewhere:** the patched tracker reads any game's address with `?autotrack=1` (the game
-on 127.0.0.1:6544) or `?autotrack=http://<address>:6544` after its URL
-(`http://localhost:8080/#/tracker/new/<permalink>?autotrack=1` from `npm start` in a patched checkout);
-`?autotrack=0` turns autotracking off. A toast says when it connects. It polls once a second and merges:
-
-- an item is set when the game's count changed since the last poll (the first poll keeps the higher
+- an item is set when the game's count changed since the last state (the first state keeps the higher
   of the tracker's and the game's count), so a mark made by hand stays until the game's count moves;
 - a small key count gains what the game's held count gains;
 - locations are only ever checked, never unchecked;
 - another save slot starts over.
 
-The hosted tracker (https) cannot read the Switch's plain-http address (mixed content); the tracker
-the game serves can (`COS_TRACKER_BIND=0.0.0.0`, then `http://<address>:6544/`), and so can the
-hosted one for 127.0.0.1 once the patch is upstream.
+It needs:
 
-`scripts/tracker/fake_game.py [state.json]` serves a state the way the game does, to try the tracker
-side without the game.
+- the `tracker-logic/` folder next to the game (on the Switch, next to `user/`; `COS_TRACKER_LOGIC=<dir>`
+  elsewhere), which `scripts/tracker/build_logic.sh <dir>` makes: the tracker's logic bundle, its art in
+  one atlas, wwrando's `item_locations.txt` and `macros.txt` at `9775811`. The tracker is pinned to
+  `dd48285`, its next-rando-version branch: its main branch reads only wwrando 1.10.0 permalinks.
+- the seed's permalink, from the text next to the rando disc: `<disc> - Permalink.txt` (the in-game seed
+  generator writes it) or the `Permalink:` line of wwrando's `<disc> - Non-Spoiler Log.txt` /
+  `- Spoiler Log.txt`, `<disc>` being the disc's path without `.iso`.
 
-## The state (GET /state, version 1)
+Without either, the screen says which is missing and shows the items and checks only.
+
+## The state (version 1)
+
+What the game hands the logic, as JSON (`pc_tracker.cpp`):
 
 ```json
 {"version": 1, "game": "GZLE99", "rando": true, "frame": 1234, "playing": true, "saveSlot": 0,
@@ -107,7 +86,7 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
 ## Limits
 
 - **Small keys:** the save holds the keys held, not the keys found, so the tracker adds what the held
-  count gains. Keys picked up while the tracker is not polling are missed.
+  count gains between two states (every 15 frames on a rando disc).
 - **Untracked locations:** Orca's 500 hits and Beedle's two membership letters (no flag known; listed at
   the end of `pc_tracker_tables.inc`). Kane's four gate rewards use flags Archipelago left unverified.
 - **Names:** the table uses wwrando's current names; a tracker on an older wwrando version that names a
@@ -119,45 +98,35 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
 
 ## Checked so far
 
-- `pc_tracker.cpp` and `pc_tracker_server.cpp` compile against the game's headers (clang, syntax only;
-  the cloud machine cannot build or run the game). The server was built on its own and answered
-  `curl` (GET /state, the CORS preflight, 404).
-- The tracker patch: the tracker's 549 tests pass (the new `autotracker.test.js` included, 100%
-  coverage as the tracker requires), eslint is clean, webpack builds. In headless Chromium the
-  patched tracker, opened on a 1.10.0 permalink with `?autotrack=`, read a sample state from the
-  server above and showed the items, the checked locations and the salvaged chart's sunken treasure.
-- The tracker served by the game: the server, built on its own with `COS_TRACKER_WEB` pointing at
-  `build_tracker.sh`'s output, served the tracker at `/`; opened there in headless Chromium with no
-  parameter, it found the state by itself and showed the same items and checks.
-- `pc_tracker_overlay.cpp` compiles against the game's, Aurora's ImGui and SDL 3 headers (syntax only).
-- `/open`: the server on its own redirected to the permalink of a `Permalink.txt` and of a non-spoiler
-  log next to the disc (and to `/` without one), and headless Chromium followed it into the tracker.
-- Not yet: a real game. First test: `COS_TRACKER_SERVER=1`, a seed, `curl http://127.0.0.1:6544/state`
-  after opening a chest and picking up an item.
+- `pc_tracker.cpp`, `pc_tracker_logic.cpp` and `pc_tracker_overlay.cpp` compile against the game's,
+  Aurora's ImGui and SDL 3 headers (clang, syntax only; the cloud machine cannot build the whole game).
+- The logic: `pc_tracker_logic.cpp` with QuickJS, built on its own with `build_logic.sh`'s folder and a
+  9775811 permalink, worked out a sample state (19 in logic of 118 left) in about 0.6 s the first time,
+  and a check marked by hand moved the totals. The merge's tests (`autotracker.test.js`) pass in the
+  tracker's jest.
+- The screen: drawn with Aurora's ImGui in a small SDL harness from the same code (screenshots of the
+  items, the sea chart, a dungeon, the list and a mark by hand).
+- Not yet: the whole game, on the Deck or the Switch, with a real seed.
 
 ## Plan
 
-1. The state from the save, served over HTTP; the tracker's autotracking patch. (This step.)
-2. Run it with a seed; send the autotracking upstream to wooferzfg's tracker (or keep a fork) so the
-   hosted tracker can use it; read the chart mapping and entrances from the randomizer's disc.
-3. A tracker inside the game (`pc_tracker_overlay.cpp`, `pc_tracker_logic.cpp`): items, the sea chart and
-   the dungeons with what is in logic, in the tracker's art, marks by hand. Next: keep the marks made by
-   hand with the save, the chart mapping and entrances for randomized charts and entrances, a nicer font.
+1. The state from the save. (Done.)
+2. The tracker inside the game, with its logic and art, marks by hand. (Done; untested in the game.)
+3. Next: keep the marks made by hand with the save; the chart mapping and entrances for randomized
+   charts and entrances; a nicer font; the `tracker-logic/` folder in the Switch package.
 
 ## Files
 
 - `native/include/pc/pc_tracker.h`, `native/src/pc/features/pc_tracker.cpp`: the state, built after each
-  15th game frame (`pc_frame.cpp`) while the server runs or the overlay is shown.
+  15th game frame (`pc_frame.cpp`) on a rando disc or while the screen is shown.
 - `native/src/pc/features/pc_tracker_overlay.cpp`: the tracker screen and the small panel (ImGui) and
   their toggle.
 - `native/src/pc/features/pc_tracker_logic.cpp`, `native/cmake/quickjs.cmake`: the tracker's logic in
-  QuickJS (quickjs-ng, MIT) on its own thread.
+  QuickJS (quickjs-ng, MIT) on its own thread; the seed's permalink.
 - `scripts/tracker/build_logic.sh`, `scripts/tracker/logic/`: the `tracker-logic/` folder: the logic
-  bundle (`entry.js`), the art atlas (`pack_art.js`, `images_map.js`), wwrando's logic files.
-- `native/src/pc/features/pc_tracker_server.cpp`: the HTTP server (one thread, host memory).
+  bundle (`entry.js`), the merge of the game's state (`autotracker.js` and its tests), the art atlas
+  (`pack_art.js`, `images_map.js`), wwrando's logic files.
 - `native/src/pc/features/pc_tracker_tables.inc`, `native/tools/gen_tracker_tables.py`: the location and
   chart tables and their generator (`--ap <Archipelago>/worlds/tww --ap-rev <commit> --wwrando <wwrando>`;
   `--check` compares with the committed file). Made from Archipelago `4036a35` and wwrando `9775811`.
-- `scripts/tracker/`: the tracker patch, `build_tracker.sh` (the patched tracker's build, for
-  `COS_TRACKER_WEB`) and `fake_game.py`.
-- `scripts/steamdeck/waker2-tracker.sh`, `.github/workflows/steamdeck.yml`: the Deck package's tracker.
+- `.github/workflows/steamdeck.yml`: puts `tracker-logic/` in the Deck package.

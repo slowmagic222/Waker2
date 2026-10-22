@@ -1,8 +1,7 @@
 // The randomizer tracker's state, read from the save (pc_tracker.h, docs/TRACKER.md): what wooferzfg's
-// TWW Randomizer Tracker tracks, in its own names, rebuilt every 15 frames on the game thread while the
-// tracker server runs, and kept as JSON for the server's thread.
-//
-// The overlay (pc_tracker_overlay.cpp) shows the same state inside the game; it is built while either runs.
+// TWW Randomizer Tracker tracks, in its own names, rebuilt every 15 frames on the game thread on a rando
+// disc (for the tracker's logic, pc_tracker_logic.cpp, which takes it as JSON) or while the tracker
+// screen (pc_tracker_overlay.cpp) is shown.
 //
 // The JSON (version 1):
 //   {"version": 1, "game": "GZLE99", "rando": true, "playing": true, "frame": 1234, "saveSlot": 0,
@@ -31,7 +30,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -89,10 +87,6 @@ constexpr unsigned kEveryFrames = 15;
 
 // The last state for the overlay (game thread only)
 Snapshot sSnapshot;
-
-std::mutex sMu;
-std::string sJson = "{\"version\": 1, \"playing\": false}";
-bool sServing = false;
 
 // The save stage the current stage keeps its bits for in dSv_info_c::mMemory (put back into the save at
 // the next stage change), -1 outside play
@@ -405,16 +399,6 @@ std::string build(unsigned int frame) {
     return out;
 }
 
-// COS_TRACKER_SERVER: 0/unset off, 1 the default port, else that port
-int serverPort() {
-    const char* v = getenv("COS_TRACKER_SERVER");
-    if (v == nullptr || *v == '\0') {
-        return 0;
-    }
-    const int n = atoi(v);
-    return n == 1 ? 6544 : (n > 0 && n < 65536 ? n : 0);
-}
-
 } // namespace
 
 void holdGame(bool first) {
@@ -433,34 +417,16 @@ const Snapshot& snapshot() {
     return sSnapshot;
 }
 
-std::string stateJson() {
-    std::lock_guard<std::mutex> lk(sMu);
-    return sJson;
-}
-
 } // namespace pc::tracker
 
 extern "C" void pc_tracker_frame_end(unsigned int frame) {
     using namespace pc::tracker;
-    // the JSON and the server thread are the host's memory, not the game's current heap
+    // the JSON is the host's memory, not the game's current heap
     JKRPcHostAllocScope hostAlloc;
-    static bool sTried = false;
-    if (!sTried) {
-        sTried = true;
-        if (const int port = serverPort(); port != 0) {
-            const char* bind = getenv("COS_TRACKER_BIND");
-#if defined(__SWITCH__)
-            const char* defaultBind = "0.0.0.0"; // the tracker runs on another machine
-#else
-            const char* defaultBind = "127.0.0.1";
-#endif
-            sServing = startServer(bind != nullptr && *bind != '\0' ? bind : defaultBind, port);
-        }
-    }
     // a rando disc: always, for the logic (pc_tracker_logic.cpp), which follows the game's state the way
     // the tracker's autotracking does (small keys gained between two states, ...)
     const bool logic = pc::gConfig.randoDisc != nullptr;
-    if ((!sServing && !overlayShown() && !logic) || frame % kEveryFrames != 0) {
+    if ((!overlayShown() && !logic) || frame % kEveryFrames != 0) {
         return;
     }
     std::string json = build(frame);
@@ -476,6 +442,4 @@ extern "C" void pc_tracker_frame_end(unsigned int frame) {
             logicSubmit(json);
         }
     }
-    std::lock_guard<std::mutex> lk(sMu);
-    sJson.swap(json);
 }

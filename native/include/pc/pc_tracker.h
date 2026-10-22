@@ -7,17 +7,12 @@
  * "Underneath Link's House"), the charts owned and salvaged. The location flags come from Archipelago's
  * Wind Waker client (native/tools/gen_tracker_tables.py, pc_tracker_tables.inc).
  *
- * COS_TRACKER_SERVER=1       serves that state as JSON over HTTP (GET /state) on port 6544, for the
- *                            tracker's autotracking (scripts/tracker/); a number other than 1 is the port
- * COS_TRACKER_BIND=<ipv4>    the address it listens on: 127.0.0.1 by default, 0.0.0.0 on the Switch
- *                            (the tracker runs on another machine)
- * COS_TRACKER_WEB=<dir>      also serves the files of <dir> (the patched tracker's build,
- *                            scripts/tracker/build_tracker.sh): http://127.0.0.1:6544/ is then the tracker
+ * The tracker screen: L3+R3 (both sticks pressed together) or F2 pauses the game and shows the tracker
+ * (items, sea chart, dungeons, which checks are in logic), a second press a small panel over the game,
+ * a third hides it. Nothing to turn on. Which checks are in logic: the tracker's own logic, run in the
+ * game (pc_tracker_logic.cpp).
  *
- * The overlay: L3+R3 (both sticks pressed together) or F2 shows the tracker over the game, a second press
- * its locations page, a third hides it. Nothing to turn on.
- *
- * The server is off by default. The state is built only while something reads it (the server, the overlay).
+ * The state is built only while something reads it (a rando disc's logic, the screen).
  */
 #ifndef PC_TRACKER_H
 #define PC_TRACKER_H
@@ -26,8 +21,8 @@
 extern "C" {
 #endif
 
-/* After each game frame, on the game thread (pc_frame.cpp): starts the server the first time if asked,
- * and rebuilds the state every 15 frames while it or the overlay runs. */
+/* After each game frame, on the game thread (pc_frame.cpp): rebuilds the state every 15 frames on a
+ * rando disc or while the tracker screen is shown. */
 void pc_tracker_frame_end(unsigned int frame);
 /* In each frame's ImGui frame, on the game thread (pc_frame.cpp): the overlay's toggle and window
  * (pc_tracker_overlay.cpp). */
@@ -90,17 +85,13 @@ void logicSubmit(const std::string& stateJson);
 void logicToggle(const std::string& generalLocation, const std::string& detailedLocation);
 // Game thread: the newest result
 const LogicResult& logicResult();
-// pc_tracker_server.cpp: the rando disc's permalink from the text next to it; empty if none
+// pc_tracker_logic.cpp: the rando disc's permalink from the text next to it; empty if none
 std::string seedPermalink();
 // pc_tracker.cpp: keeps the PLAY scene paused while the tracker screen is open (call each frame;
 // first: the frame it opened)
 void holdGame(bool first);
-// pc_tracker_overlay.cpp: the overlay is on screen (the state is then built even without the server)
+// pc_tracker_overlay.cpp: the tracker is on screen (the state is then built even without a rando disc)
 bool overlayShown();
-// The last state as JSON (any thread); before the first build, {"version": 1, "playing": false}.
-std::string stateJson();
-// pc_tracker_server.cpp: starts the HTTP server on its own thread; false (and a log line) if it cannot.
-bool startServer(const char* bindAddress, int port);
 } // namespace pc::tracker
 #endif
 

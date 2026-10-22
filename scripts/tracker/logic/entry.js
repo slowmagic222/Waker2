@@ -1,7 +1,7 @@
 // The tracker's logic for the game itself (docs/TRACKER.md, "In the game"): wooferzfg's tracker's own
 // services, bundled by scripts/tracker/build_logic.sh into one script the game runs in QuickJS. No UI,
 // no network: the game passes the seed's permalink, wwrando's logic files (bundled with the game) and
-// its state (GET /state's JSON); this answers which locations are checked, in logic or not.
+// its state (pc_tracker.cpp's JSON); this answers which locations are checked, in logic or not.
 //
 //   cosTracker.init(permalink, itemLocationsText, macrosText) -> JSON {version, error?}
 //   cosTracker.update(gameStateJson) -> JSON {areas (the 49 islands in sea chart order, the 7 dungeons,
