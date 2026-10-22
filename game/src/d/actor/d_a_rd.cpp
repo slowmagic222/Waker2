@@ -18,6 +18,9 @@
 #include "d/d_s_play.h"
 #include "d/d_item_data.h"
 #include "m_Do/m_Do_controller_pad.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daRd_HIO_c : public mDoHIO_entry_c {
 public:
@@ -60,6 +63,18 @@ public:
 };
 
 static daRd_HIO_c l_HIO;
+
+#if TARGET_PC
+// Rando (wwrando flexible_enemies.asm): the enemy randomizer's "disable spawn on death" switch, params 0x00FF0000
+// (unused by the game); 0 for none (0 or 0xFF), and always 0 without a randomizer disc
+static u8 daRd_randoDeathSwitch(fopAc_ac_c* i_this) {
+    if (!pc_rando_active()) {
+        return 0;
+    }
+    u8 sw = (fopAcM_GetParam(i_this) >> 16) & 0xFF;
+    return sw == 0xFF ? 0 : sw;
+}
+#endif
 
 const u32 daRd_c::m_heapsize = 0x2520;
 const char daRd_c::m_arc_name[] = "Rd";
@@ -844,6 +859,14 @@ void daRd_c::modeDeath() {
     
     fopAcM_onActor(this);
     
+#if TARGET_PC
+    // Rando (wwrando flexible_enemies.asm, REL 0x1FBC): the randomizer's "disable spawn on death" switch (params
+    // 0x00FF0000) is set once the ReDead is dead
+    u8 randoDeathSwitch = daRd_randoDeathSwitch(this);
+    if (randoDeathSwitch != 0) {
+        dComIfGs_onSwitch(randoDeathSwitch, fopAcM_GetRoomNo(this));
+    }
+#endif
     // Do not consider the ReDead to be a living enemy while its death animation is playing out.
     fopAcM_SetGroup(this, fopAc_ENV_e);
     
@@ -1907,6 +1930,17 @@ cPhs_State daRd_c::_create() {
     cPhs_State phase_state = dComIfG_resLoad(&mPhs, m_arc_name);
     
     if (phase_state == cPhs_COMPLEATE_e) {
+#if TARGET_PC
+        // Rando (wwrando flexible_enemies.asm, REL 0x4874): a ReDead whose "disable spawn on death" switch is set
+        // does not spawn; the switch is also its enemyice's death switch, for a death by Light Arrows
+        u8 randoDeathSwitch = daRd_randoDeathSwitch(this);
+        if (randoDeathSwitch != 0) {
+            mEnemyIce.mDeathSwitch = randoDeathSwitch;
+            if (dComIfGs_isSwitch(randoDeathSwitch, fopAcM_GetRoomNo(this))) {
+                return cPhs_ERROR_e;
+            }
+        }
+#endif
         getArg();
         
         if (!fopAcM_entrySolidHeap(this, createHeap_CB, m_heapsize)) {

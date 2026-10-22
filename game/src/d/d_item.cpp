@@ -3171,7 +3171,12 @@ u8 getItemNoByLife(u8 itemNo) {
     int max = dComIfGs_getMaxLife() & 0xFC;
 #endif
     u8 lifePercent = (100 * life) / max;
+#if TARGET_PC
+    // Rando (wwrando hero_mode.asm, 0x800C7D4C): with hero mode, hearts are always rupees
+    if (lifePercent != 100 && !pc_rando_option(PC_RANDO_HERO_MODE)) {
+#else
     if (lifePercent != 100) {
+#endif
         return itemNo;
     }
     if (itemNo == dItemNo_HEART_e) {

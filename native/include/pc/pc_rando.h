@@ -26,6 +26,23 @@ unsigned char pc_rando_dol_item(unsigned int address, unsigned char vanilla);
  * custom_symbols), or NULL without a randomizer disc or if main.dol has no such bytes. */
 const unsigned char* pc_rando_dol_bytes(unsigned int address, unsigned int size);
 
+/* The seed's options that change the game's code (step 5). The randomizer writes an option as an asm
+ * patch, so an option is on when its patch is in the randomizer's main.dol or REL (the first
+ * instruction or value the patch writes). 0 without a randomizer disc. */
+typedef enum PcRandoOption {
+    PC_RANDO_REMOVE_MUSIC = 0, /* remove_music.asm: no background, battle or boss music, no jingles */
+    PC_RANDO_INVERT_CAMERA,    /* invert_camera_x_axis.asm */
+    PC_RANDO_INVERT_COMPASS,   /* invert_sea_compass_x_axis.asm */
+    PC_RANDO_REVEAL_CHART,     /* reveal_sea_chart.asm */
+    PC_RANDO_SWIFT_SAIL,       /* swift_sail.asm */
+    PC_RANDO_HERO_MODE,        /* hero_mode.asm */
+    PC_RANDO_SWORDLESS,        /* swordless.asm */
+    PC_RANDO_OPTIONS
+} PcRandoOption;
+int pc_rando_option(PcRandoOption which);
+/* Hero mode's damage multiplier (the randomizer's damage_multiplier, 4.0), 1.0 without hero mode. */
+float pc_rando_damage_multiplier(void);
+
 #ifdef __cplusplus
 }
 #endif

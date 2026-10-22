@@ -34,6 +34,9 @@
 #include "d/d_timer.h"
 #include "m_Do/m_Do_lib.h"
 #include "stdio.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 dMeter_info_c dMeter_Info;
 fopMsgM_pane_class item_parts;
@@ -5579,7 +5582,12 @@ void dMeter_compassGetOnProc(sub_meter_class* i_Meter) {
         break;
     }
     s16 angle = fopAcM_SearchByName(fpcNm_SHIP_e)->shape_angle.y + 0x8000;
+#if TARGET_PC
+    // Rando (wwrando invert_sea_compass_x_axis.asm, 0x801FD37C): with the option, the angle is not negated
+    f32 dVar3 = ((pc_rando_option(PC_RANDO_INVERT_COMPASS) ? angle : -angle) * 180.0f) / 0x8000;
+#else
     f32 dVar3 = (-angle * 180.0f) / 0x8000;
+#endif
     f32 time = -dComIfGs_getTime() - 90.0f;
     dMeter_compassRotate(&i_Meter->field_0x1670, &i_Meter->field_0x16a8, time);
     dMeter_compassRotate(&i_Meter->field_0x1248, &i_Meter->field_0x12f0, dVar3);
