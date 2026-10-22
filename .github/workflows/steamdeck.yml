@@ -68,12 +68,18 @@ jobs:
             native/tools/fetch_recompcore.sh /work/ref/recompcore
             native/tools/gen_assets.sh --version GZLE01 --stubs --decomp /work/build/decomp-ci \
                 --out /work/build/ci-stubs/GZLE01
+            # libstdc++ and libgcc linked in: SteamOS can ship an older libstdc++ than Debian 13 builds
+            # against (GLIBCXX_3.4.33), and then the game would not start at all.
             cmake -S native -B build/deck -G Ninja -DCOS_RUNTIME_ASSETS=ON \
+                -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" \
                 -DCOS_VERSION=2 -DCOS_ASSETS_DIR=/work/build/ci-stubs/GZLE01
             ninja -C build/deck switchwaker
             echo "== shared libraries"; ldd build/deck/switchwaker || true
             echo "== newest glibc symbol version needed (SteamOS 3.7 has 2.41)"
-            objdump -T build/deck/switchwaker | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1'
+            objdump -T build/deck/switchwaker | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1
+            if objdump -T build/deck/switchwaker | grep -q GLIBCXX_; then
+              echo "libstdc++ is still linked dynamically"; exit 1
+            fi'
       - uses: actions/setup-node@v4
         with:
           node-version: 20

@@ -39,6 +39,16 @@ if [ "$COS_TRACKER_OPEN" = "1" ] && [ -n "${COS_TRACKER_WEB:-}" ] && [ -x "$here
     "$here/waker2-tracker.sh" --wait >/dev/null 2>&1 &
 fi
 
+# Say so in a window when the clean disc is missing (a Game Mode start shows no terminal).
+if [ ! -f "$COS_DISC" ]; then
+    msg="Waker2 needs your clean USA disc of The Wind Waker as $COS_DISC (named exactly GZLE01.iso)."
+    echo "[waker2] $msg" > "$here/waker2.log"
+    if command -v kdialog >/dev/null 2>&1; then kdialog --error "$msg"
+    elif command -v zenity >/dev/null 2>&1; then zenity --error --text="$msg"; fi
+    echo "[waker2] $msg" >&2
+    exit 1
+fi
+
 # The game's output also goes to waker2.log next to it (the last run), to read after a Game Mode start.
 exec > >(tee "$here/waker2.log") 2>&1
 echo "[waker2] COS_DISC=$COS_DISC"
