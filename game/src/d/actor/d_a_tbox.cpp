@@ -21,6 +21,7 @@
 #include "m_Do/m_Do_mtx.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "d/actor/d_a_player_main.h"
 #endif
 
 #define FUNC_TYPE_NORMAL 0
@@ -397,8 +398,23 @@ s32 daTbox_c::getShapeType() {
 
 /* 00000FE4-00000FF0       .text getFuncType__8daTbox_cFv */
 s32 daTbox_c::getFuncType() {
+#if TARGET_PC
+    // Rando (wwrando asm/actors/d_a_tbox.cpp getFuncType, getIsTrap): the game only uses types 0 to 8, so the
+    // randomizer's chest takes bit 0x40 as the trap chest flag (daTbox_randoIsTrap)
+    if (pc_rando_active()) {
+        return fopAcM_GetParam(this) & 0x3F;
+    }
+#endif
     return fopAcM_GetParam(this) & 0x7F;
 }
+
+#if TARGET_PC
+// Rando (wwrando trap_chests): a trap chest gives no item; it opens with the event DEFAULT_TREASURE_TRAP (the
+// randomizer adds it to the stage), whose SPRING_TRAP action freezes the player (demoProcSpringTrap)
+static BOOL daTbox_randoIsTrap(fopAc_ac_c* i_this) {
+    return pc_rando_active() && (fopAcM_GetParam(i_this) & 0x40) != 0;
+}
+#endif
 
 /* 00000FF0-0000108C       .text checkNormal__8daTbox_cFv */
 BOOL daTbox_c::checkNormal() {
@@ -756,12 +772,18 @@ s32 daTbox_c::demoProc() {
         "OPEN",
         "APPEAR",
         "OPEN_SHORT",
+#if TARGET_PC
+        "SPRING_TRAP",
+#endif
     };
     enum {
         ACT_WAIT,
         ACT_OPEN,
         ACT_APPEAR,
         ACT_OPEN_SHORT,
+#if TARGET_PC
+        ACT_SPRING_TRAP,
+#endif
     };
 
     int actionIdx = dComIfGp_evmng_getMyActIdx(mStaffId, action_table, ARRAY_SIZE(action_table), FALSE, 0);
@@ -796,6 +818,17 @@ s32 daTbox_c::demoProc() {
             case ACT_OPEN_SHORT:
                 OpenInit_com();
                 break;
+#if TARGET_PC
+            case ACT_SPRING_TRAP: {
+                mOpenTimer = 0; // the trap's timer, as in wwrando
+
+                cXyz ptcPos = current.pos + cXyz(0.0f, 5.0f, 0.0f);
+                cXyz ptcScale(1.5f, 2.0f, 1.5f);
+                csXyz ptcAngle(0x4000, 0, 0);
+                mSmokeEmitter = dComIfGp_particle_set(dPa_name::ID_IT_JN_ARWI_REIKI00, &ptcPos, &ptcAngle, &ptcScale);
+                break;
+            }
+#endif
         }
     }
 
@@ -834,6 +867,11 @@ s32 daTbox_c::demoProc() {
                 }
             }
             break;
+#if TARGET_PC
+        case ACT_SPRING_TRAP:
+            demoProcSpringTrap();
+            break;
+#endif
         default:
             dComIfGp_evmng_cutEnd(mStaffId);
             break;
@@ -849,6 +887,47 @@ s32 daTbox_c::demoProc() {
 
     return 0;
 }
+
+#if TARGET_PC
+// Rando (wwrando asm/actors/d_a_tbox.cpp demoProcSpringTrap): the trap chest's ice mist freezes the player for a
+// moment and takes half a heart
+void daTbox_c::demoProcSpringTrap() {
+    enum {
+        TRAP_TIME_FREEZE = 0x05,
+        TRAP_TIME_MIST_STOP = 0x30,
+        TRAP_TIME_UNFREEZE = 0x60,
+        TRAP_TIME_END = 0x64,
+    };
+    if (mOpenTimer < TRAP_TIME_END) {
+        mOpenTimer++;
+    }
+
+    daPy_lk_c* player = daPy_getPlayerLinkActorClass();
+    switch (mOpenTimer) {
+    case TRAP_TIME_FREEZE:
+        player->onNoResetFlg1(daPy_py_c::daPyFlg1_FREEZE_STATE);
+        player->setDamagePoint(-2.0f);
+        fopAcM_seStart(this, JA_SE_LK_FREEZE, 0);
+        dComIfGp_particle_set(dPa_name::ID_AK_JN_ENEMYFREEZE01, &player->current.pos);
+        break;
+    case TRAP_TIME_MIST_STOP:
+        if (mSmokeEmitter != NULL) {
+            mSmokeEmitter->becomeInvalidEmitter();
+            mSmokeEmitter = NULL;
+        }
+        break;
+    case TRAP_TIME_UNFREEZE:
+        player->offNoResetFlg1(daPy_py_c::daPyFlg1_FREEZE_STATE);
+        fopAcM_seStart(this, JA_SE_CM_ICE_BREAK, 0);
+        dComIfGp_particle_set(dPa_name::ID_AK_JN_ENEMYFREEZE02, &player->current.pos);
+        break;
+    case TRAP_TIME_END:
+        player->randoTrapChestEnd();
+        dComIfGp_evmng_cutEnd(mStaffId);
+        break;
+    }
+}
+#endif
 
 /* 0000210C-00002250       .text OpenInit_com__8daTbox_cFv */
 void daTbox_c::OpenInit_com() {
@@ -958,12 +1037,18 @@ BOOL daTbox_c::actionOpenWait() {
     if (eventInfo.checkCommandDoor()) {
         dComIfGp_event_onEventFlag(0x04);
 
+#if TARGET_PC
+        if (!daTbox_randoIsTrap(this)) {
+#endif
         u8 itemNo = getItemNo();
         fpc_ProcID itemPID = fopAcM_createItemForTrBoxDemo(&current.pos, itemNo);
 
         if (itemPID != fpcM_ERROR_PROCESS_ID_e) {
             dComIfGp_event_setItemPartnerId(itemPID);
         }
+#if TARGET_PC
+        }
+#endif
 
 #if TARGET_PC
         // Rando (wwrando asm/actors/d_a_tbox.cpp): every chest opens with the short cutscene, so big chests
@@ -995,7 +1080,9 @@ BOOL daTbox_c::actionOpenWait() {
         eventInfo.onCondition(dEvtCnd_CANDOOR_e);
 
 #if TARGET_PC
-        if (getShapeType() == 0 || pc_rando_active()) {
+        if (daTbox_randoIsTrap(this)) {
+            eventInfo.setEventName("DEFAULT_TREASURE_TRAP");
+        } else if (getShapeType() == 0 || pc_rando_active()) {
 #else
         if (getShapeType() == 0) {
 #endif

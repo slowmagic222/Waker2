@@ -1148,6 +1148,11 @@ public:
     int debugCurProc() const;
     int debugEquipItem() const;
     void debugPlace(const cXyz& pos, s16 angleY);
+    // Rando (d_a_tbox.cpp, a trap chest's end; wwrando asm/actors/d_a_tbox.cpp demoProcSpringTrap)
+    void randoTrapChestEnd() {
+        mAcch.ClrWallNone();
+        mAcch.m_flags |= dBgS_Acch::LINE_CHECK;
+    }
 #endif
     BOOL procSlip_init();
     BOOL procSlip();

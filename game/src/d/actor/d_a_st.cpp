@@ -14,6 +14,9 @@
 #if TARGET_PC
 #include "pc/pc_qol.h"
 #endif
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 enum BehaviorType {
     BEHAVIOR_NORMAL = 0,
@@ -2514,6 +2517,25 @@ static BOOL daSt_Execute(st_class* i_this) {
         return TRUE;
     }
     if ((i_this->m02FA != 0) || (actor->home.pos.y - actor->current.pos.y > 4000.0f)) {
+#if TARGET_PC
+        // Rando (wwrando flexible_enemies.asm, REL 0x845C): a Stalfos that fell far (4000 units) counts as dead too.
+        // It goes after 5 frames (mCountdownToDeath) instead of now, so a lower body sees its upper body go; the full
+        // body or upper body sets its actor flag and death switch, as for its other deaths, and drops its mace
+        if (pc_rando_active()) {
+            i_this->mCountdownToDeath = 5;
+            if (i_this->mActionState != 0x21) { // not a lower body without its upper body (sita_move)
+                fopAcM_onActor(actor);
+                if (i_this->mDeathSwitch != 0) {
+                    dComIfGs_onSwitch(i_this->mDeathSwitch, fopAcM_GetRoomNo(actor));
+                }
+                fopAc_ac_c* weapon = fopAcM_SearchByID(i_this->mHeldWeaponEntityId);
+                if (weapon != NULL) {
+                    fopAcM_cancelCarryNow(weapon);
+                }
+            }
+            return TRUE;
+        }
+#endif
         fopAcM_delete(actor);
         return TRUE;
     }

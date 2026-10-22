@@ -19,6 +19,9 @@
 #include "d/d_cc_uty.h"
 #include "d/d_bg_s_lin_chk.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class kiHIO_c : public JORReflexible {
 public:
@@ -834,6 +837,10 @@ void ki_fail_move(ki_class* i_this) {
         if (a_this->health != -10) {
 #if VERSION == VERSION_DEMO
             if (dComIfGs_getLife() <= 4) {
+#elif TARGET_PC
+            // Rando (wwrando hero_mode.asm, REL 0x326C): with hero mode, low health no longer forces a heart (the
+            // heart is a rupee now), so the magic and arrow drops still come
+            if (dComIfGs_getLife() <= 8 && !pc_rando_option(PC_RANDO_HERO_MODE)) {
 #else
             if (dComIfGs_getLife() <= 8) {
 #endif

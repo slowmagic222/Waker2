@@ -26,6 +26,9 @@
 #include "SSystem/SComponent/c_lib.h"
 #include "SSystem/SComponent/c_math.h"
 #include "res/Object/Ph.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 // The demo's Ph archive has the *WA and *_CHAKU animations in swapped order.
 #if VERSION == VERSION_DEMO
@@ -108,9 +111,27 @@ static BOOL nodeCallBack_DW(J3DNode* node, int calcTiming) {
     return TRUE;
 }
 
+#if TARGET_PC
+// Rando (wwrando flexible_enemies.asm): the enemy randomizer's "enable spawn" switch, params 0xFF000000 (unused by
+// the game); 0 for none (0 or 0xFF), and always 0 without a randomizer disc
+static u8 daPH_randoSpawnSwitch(fopAc_ac_c* i_this) {
+    if (!pc_rando_active()) {
+        return 0;
+    }
+    u8 sw = fopAcM_GetParam(i_this) >> 24;
+    return sw == 0xFF ? 0 : sw;
+}
+#endif
+
 /* 0000025C-000003FC       .text daPH_Draw__FP8ph_class */
 static BOOL daPH_Draw(ph_class* i_this) {
     fopAc_ac_c* actor = i_this;
+#if TARGET_PC
+    // Rando (wwrando flexible_enemies.asm, REL 0x358): a Peahat waiting for its spawn switch is not drawn
+    if (daPH_randoSpawnSwitch(i_this) != 0) {
+        return TRUE;
+    }
+#endif
     J3DModel* bodyModel = i_this->mpBodyMorf->getModel();
     J3DModel* propModel = i_this->mpPropellerMorf->getModel();
 
@@ -1474,6 +1495,13 @@ void dead_item(ph_class* i_this) {
         dComIfGs_setEventReg(dSv_event_flag_c::UNK_7EFF, n);
     }
 
+#if TARGET_PC
+    // Rando (wwrando flexible_enemies.asm, REL 0x4118): the "disable spawn on death" switch (kept in the enemyice,
+    // daPH_Create) is set when the Peahat dies
+    if (pc_rando_active() && i_this->mEnemyIce.mDeathSwitch != 0 && i_this->mEnemyIce.mDeathSwitch != 0xFF) {
+        dComIfGs_onSwitch(i_this->mEnemyIce.mDeathSwitch, fopAcM_GetRoomNo(i_this));
+    }
+#endif
     fopAcM_onActor(i_this);
     fopAcM_delete(i_this);
 }
@@ -2088,6 +2116,20 @@ static BOOL daPH_Execute(ph_class* i_this) {
         return TRUE;
     }
 
+#if TARGET_PC
+    // Rando (wwrando flexible_enemies.asm, REL 0x5B2C): the enemy randomizer's "enable spawn" switch (params
+    // 0xFF000000, unused by the game). Until it is set, the Peahat does nothing and cannot be targeted; then it is
+    // targetable and the parameter is cleared (to 0xFF), so the draw shows it. (wwrando sets the targeting flag
+    // every frame; here only once, so a dying Peahat that cleared it stays untargetable)
+    if (daPH_randoSpawnSwitch(i_this) != 0) {
+        if (!dComIfGs_isSwitch(daPH_randoSpawnSwitch(i_this), fopAcM_GetRoomNo(actor))) {
+            actor->attention_info.flags = 0;
+            return TRUE;
+        }
+        actor->attention_info.flags = fopAc_Attn_LOCKON_BATTLE_e;
+        fopAcM_SetParam(actor, fopAcM_GetParam(actor) | 0xFF000000);
+    }
+#endif
     actor->eyePos.x = i_this->m02C0.x;
     actor->eyePos.y = i_this->m02C0.y;
     actor->eyePos.z = i_this->m02C0.z;
@@ -2551,6 +2593,22 @@ static cPhs_State daPH_Create(fopAc_ac_c* a_this) {
     if (phase == cPhs_COMPLEATE_e) {
         fopAcM_ct(i_this, ph_class);
 
+#if TARGET_PC
+        // Rando (wwrando flexible_enemies.asm, REL 0x68B0): the X rotation's low byte (unused by the game) is the
+        // enemy randomizer's "disable spawn on death" switch; the rotation itself is zeroed, as the Peahat turns
+        // with it. A Peahat whose switch is set does not spawn; the switch goes into its enemyice (also for a death
+        // by Light Arrows)
+        if (pc_rando_active()) {
+            u8 sw = a_this->shape_angle.x & 0xFF;
+            a_this->shape_angle.x = 0;
+            if (sw != 0 && sw != 0xFF) {
+                i_this->mEnemyIce.mDeathSwitch = sw;
+                if (dComIfGs_isSwitch(sw, fopAcM_GetRoomNo(a_this))) {
+                    return cPhs_ERROR_e;
+                }
+            }
+        }
+#endif
         if (!fopAcM_entrySolidHeap(a_this, useHeapInit, heapSize)) {
             return cPhs_ERROR_e;
         }

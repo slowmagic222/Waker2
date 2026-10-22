@@ -5016,6 +5016,12 @@ void daPy_lk_c::setDamagePoint(f32 amount) {
 #else
 /* 8011029C-80110338       .text setDamagePoint__9daPy_lk_cFf */
 BOOL daPy_lk_c::setDamagePoint(f32 amount) {
+#if TARGET_PC
+    // Rando (wwrando hero_mode.asm, 0x801102D0): with hero mode, damage is multiplied (by 4)
+    if (amount < 0.0f) {
+        amount *= pc_rando_damage_multiplier();
+    }
+#endif
     if (!checkNoDamageMode()) {
         dComIfGp_setItemLifeCount(amount);
         if (amount < 0.0f) {
