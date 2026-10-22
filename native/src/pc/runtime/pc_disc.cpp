@@ -6,6 +6,8 @@
 // magic 0xC2339F3D at 0x1C, all big-endian. Anything else exits 14 before the SDK starts.
 // Opening the disc for the game (aurora_dvd_open) is step 6.1; the SHA-1 check of the image on
 // first use is done by native/tools/run.sh (main.dol SHA-1 against the supported revision).
+// COS_RANDO_DISC (docs/RANDO.md): a Wind Waker Randomizer output (GZLE99 revision 0, USA build only)
+// the game reads its files from; COS_DISC must still be the clean disc.
 #include "pc_internal.h"
 
 #include "pc/pc_game_id.h"
@@ -123,20 +125,22 @@ void exitDisc() {
     __builtin_unreachable();
 }
 
-int checkDisc() {
-    const char* path = gConfig.disc;
+namespace {
+
+// The first 0x20 bytes of the image at `path` (game ID 0x00, version 0x07, magic 0x1C), with the size;
+// false after a discMessage (`what` names the variable in it).
+bool readHeader(const char* what, const char* path, unsigned char (&header)[0x20], long long& size) {
     if (path == nullptr) {
-        discMessage("COS_DISC is not set (path of the " COS_GAME_ID_STR " .iso)");
-        return PC_EXIT_DISC;
+        discMessage("%s is not set (path of the " COS_GAME_ID_STR " .iso)", what);
+        return false;
     }
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
-        sDiscMissing = errno == ENOENT;
-        discMessage("cannot open COS_DISC=%s: %s", path, strerror(errno));
-        return PC_EXIT_DISC;
+        sDiscMissing = errno == ENOENT && strcmp(what, "COS_DISC") == 0;
+        discMessage("cannot open %s=%s: %s", what, path, strerror(errno));
+        return false;
     }
     struct stat st;
-    unsigned char header[0x20];
     ssize_t got = -1;
     if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode)) {
 #if defined(__SWITCH__)
@@ -149,23 +153,69 @@ int checkDisc() {
     close(fd);
     if (got != (ssize_t)sizeof(header)) {
         discMessage("%s is not a regular file with a disc header", path);
-        return PC_EXIT_DISC;
+        return false;
     }
     if (memcmp(header, "CISO", 4) == 0) {
         discMessage("%s is a CISO image; convert it to a plain .iso (decision H9)", path);
-        return PC_EXIT_DISC;
+        return false;
     }
     const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                            ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
     if (magic != 0xC2339F3Du) {
         discMessage("%s is not a GameCube disc image (magic 0x%08x at 0x1C; compressed?)", path, magic);
-        return PC_EXIT_DISC;
+        return false;
     }
-    char id[7];
+    size = (long long)st.st_size;
+    return true;
+}
+
+void headerId(const unsigned char (&header)[0x20], char (&id)[7]) {
     for (int i = 0; i < 6; i++) {
         id[i] = (header[i] >= 0x20 && header[i] < 0x7F) ? (char)header[i] : '?';
     }
     id[6] = '\0';
+}
+
+// The Wind Waker Randomizer (wwrando) writes this game ID into its output's header
+// (tweaks.update_game_name_icon_and_banners); it only randomizes the USA disc.
+constexpr char kRandoGameId[] = "GZLE99";
+
+// COS_RANDO_DISC: a randomizer output, revision 0 (docs/RANDO.md)
+int checkRandoDisc() {
+    const char* path = gConfig.randoDisc;
+    if (PC_GAME_IS_EUR) {
+        discMessage("COS_RANDO_DISC is set, but the randomizer only supports the USA disc (" PC_GAME_ID_USA
+                    "); this build is for " COS_GAME_ID_STR);
+        return PC_EXIT_DISC;
+    }
+    unsigned char header[0x20];
+    long long size = 0;
+    if (!readHeader("COS_RANDO_DISC", path, header, size)) {
+        return PC_EXIT_DISC;
+    }
+    char id[7];
+    headerId(header, id);
+    if (strcmp(id, kRandoGameId) != 0 || header[7] != 0) {
+        discMessage("%s is %s revision %u; COS_RANDO_DISC must be a Wind Waker Randomizer output (%s revision 0)",
+                    path, id, (unsigned int)header[7], kRandoGameId);
+        return PC_EXIT_DISC;
+    }
+    writef(STDERR_FILENO, "[cos] disc: %s %s (randomizer) revision 0, %lld bytes; the game reads its files\n",
+           path, id, size);
+    return 0;
+}
+
+} // namespace
+
+int checkDisc() {
+    const char* path = gConfig.disc;
+    unsigned char header[0x20];
+    long long size = 0;
+    if (!readHeader("COS_DISC", path, header, size)) {
+        return PC_EXIT_DISC;
+    }
+    char id[7];
+    headerId(header, id);
     const unsigned int version = header[7];
     if (strcmp(id, COS_GAME_ID_STR) != 0 || version != 0) {
         // the other region's disc: name the build that runs it
@@ -176,15 +226,29 @@ int checkDisc() {
             discMessage("%s is %s revision 0, the %s disc: it runs with the %s build (%s); this build is for %s",
                         path, id, usa ? "USA" : "European", usa ? "USA" : "European",
                         usa ? PC_GAME_NRO_USA : PC_GAME_NRO_EUR, COS_GAME_ID_STR);
+        } else if (strcmp(id, kRandoGameId) == 0) {
+            discMessage("%s is a Wind Waker Randomizer output (%s): set it as COS_RANDO_DISC and COS_DISC to the "
+                        "clean %s revision 0 disc",
+                        path, id, COS_GAME_ID_STR);
         } else {
             discMessage("%s is %s revision %u; the supported disc is %s revision 0", path, id, version,
                         COS_GAME_ID_STR);
         }
         return PC_EXIT_DISC;
     }
-    writef(STDERR_FILENO, "[cos] disc: %s %s revision 0, %lld bytes\n", path, COS_GAME_ID_STR,
-           (long long)st.st_size);
+    writef(STDERR_FILENO, "[cos] disc: %s %s revision 0, %lld bytes\n", path, COS_GAME_ID_STR, size);
+    if (gConfig.randoDisc != nullptr) {
+        return checkRandoDisc();
+    }
     return 0;
+}
+
+const char* gameDisc() {
+    return gConfig.randoDisc != nullptr ? gConfig.randoDisc : gConfig.disc;
+}
+
+const char* gameDiscId() {
+    return gConfig.randoDisc != nullptr ? kRandoGameId : COS_GAME_ID_STR;
 }
 
 } // namespace pc

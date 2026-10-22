@@ -152,6 +152,7 @@ void pc_harness_init(int argc, char* argv[]) {
     setvbuf(stdout, nullptr, _IOLBF, 0);
 
     gConfig.disc = envString("COS_DISC");
+    gConfig.randoDisc = envString("COS_RANDO_DISC");
     gConfig.smoke = envString("COS_SMOKE");
     gConfig.milestone = envString("COS_MILESTONE");
     gConfig.trace = envString("COS_TRACE");
@@ -185,12 +186,12 @@ void pc_harness_init(int argc, char* argv[]) {
 
     writef(STDERR_FILENO,
            "[cos] harness: smoke=%s milestone=%s timeout=%gs stall=%gs frames=%u trace=%s "
-           "uncapped=%d audio=%s input=%s boot_stage=%s disc=%s\n",
+           "uncapped=%d audio=%s input=%s boot_stage=%s disc=%s rando_disc=%s\n",
            gConfig.smoke ? gConfig.smoke : "-", gConfig.milestone ? gConfig.milestone : "-",
            gConfig.timeoutS, gConfig.stallS, gConfig.frames, gConfig.trace ? gConfig.trace : "-",
            gConfig.uncapped ? 1 : 0, gConfig.audio ? "on" : "off",
            gConfig.input ? gConfig.input : "-", gConfig.bootStage ? gConfig.bootStage : "-",
-           gConfig.disc ? gConfig.disc : "-");
+           gConfig.disc ? gConfig.disc : "-", gConfig.randoDisc ? gConfig.randoDisc : "-");
 
     if (gConfig.perfEvery != 0) {
         writef(STDERR_FILENO, "[cos] perf: game-thread frame times every %u frames (COS_PERF_EVERY)\n",
