@@ -3703,7 +3703,12 @@ void fopMsgM_msgDataProc_c::stringSet() {
 #if VERSION > VERSION_JPN
                 if (mesgEntry->mMsgNo == 0x42 || mesgEntry->mMsgNo == 0x43 || mesgEntry->mMsgNo == 0x44 || mesgEntry->mMsgNo == 0x45 ||
                     mesgEntry->mMsgNo == 0x46 || mesgEntry->mMsgNo == 0x47 || mesgEntry->mMsgNo == 0x48 || mesgEntry->mMsgNo == 0x49 ||
-                    mesgEntry->mMsgNo == 0x4A || mesgEntry->mMsgNo == 0x4B)
+                    mesgEntry->mMsgNo == 0x4A || mesgEntry->mMsgNo == 0x4B
+#if TARGET_PC
+                    // Rando (wwrando misc_rando_features.asm, 0x80032590): the Forsaken Fortress warp's question
+                    || (pc_rando_active() && mesgEntry->mMsgNo == 848)
+#endif
+                    )
                 {
                     static const u32 colorTable[9] = {
                         0x000000FF,
