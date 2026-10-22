@@ -11,6 +11,9 @@
 #include "m_Do/m_Do_lib.h"
 #include "d/actor/d_a_npc_uk.h"
 #include "d/d_snap.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static fpc_ProcID l_msgId;
 static msg_class* l_msg;
@@ -817,7 +820,12 @@ bool daNpc_Mk_c::demoProc() {
                 fopAcM_OnStatus(this, fopAcStts_SHOWMAP_e);
                 break;
             case 13: {
+#if TARGET_PC
+                // Rando: wwrando's "Windfall Island - Ivan - Catch Killer Bees" (rels/d_a_npc_mk.rel@20CB)
+                fpc_ProcID itemID = fopAcM_createItemForPresentDemo(&current.pos, pc_rando_rel_item("d_a_npc_mk", 0x20CB, dItemNo_HEART_PIECE_e));
+#else
                 fpc_ProcID itemID = fopAcM_createItemForPresentDemo(&current.pos, dItemNo_HEART_PIECE_e);
+#endif
 
                 if (itemID != fpcM_ERROR_PROCESS_ID_e) {
                     dComIfGp_event_setItemPartnerId(itemID);
@@ -1098,7 +1106,14 @@ u8 daNpc_Mk_c::visitTalkInit() {
         dComIfGs_onEventBit(dSv_event_flag_c::UNK_1E04);
         return 12;
     }
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm): no Picto Box hint after talking to Lenzo
+    // without it; it is wrong in a seed, and it hid the hide-and-seek event until the player owned the
+    // Picto Box (a softlock if that event gives it)
+    if(!pc_rando_active() && dComIfGs_isEventBit(dSv_event_flag_c::UNK_1208) && !dComIfGs_checkGetItem(dItemNo_PICTO_BOX_e) && !dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)) {
+#else
     if(dComIfGs_isEventBit(dSv_event_flag_c::UNK_1208) && !dComIfGs_checkGetItem(dItemNo_PICTO_BOX_e) && !dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)) {
+#endif
         mEventIdx = eventInfo.getEventId();
         mState = STATE_DEMO03;
         demo03();
@@ -1117,7 +1132,14 @@ void daNpc_Mk_c::visitSetEvent() {
         }
     }
 
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm): no Picto Box hint after talking to Lenzo
+    // without it; it is wrong in a seed, and it hid the hide-and-seek event until the player owned the
+    // Picto Box (a softlock if that event gives it)
+    if(!pc_rando_active() && dComIfGs_isEventBit(dSv_event_flag_c::UNK_1208) && !dComIfGs_checkGetItem(dItemNo_PICTO_BOX_e) && !dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)) {
+#else
     if(dComIfGs_isEventBit(dSv_event_flag_c::UNK_1208) && !dComIfGs_checkGetItem(dItemNo_PICTO_BOX_e) && !dComIfGs_checkGetItem(dItemNo_DELUXE_PICTO_BOX_e)) {
+#endif
         eventInfo.setEventName("MK_TALK2");
         return;
     }

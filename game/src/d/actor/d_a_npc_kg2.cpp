@@ -19,6 +19,9 @@
 #include "JAZelAudio/JAIZelBasic.h"
 #include <math.h>
 #include "d/d_cc_d.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static dCcD_SrcCyl l_cyl_src = {
     // dCcD_SrcGObjInf
@@ -465,10 +468,21 @@ BOOL daNpc_Kg2_c::evn_createItem_init(int staff) {
     switch (dComIfGs_getEventReg(0xB703)) {
     case 0:
     case 1:
+#if TARGET_PC
+        // Rando (pc_rando.h): wwrando's "Spectacle Island - Barrel Shooting - First Prize"
+        // (rels/d_a_npc_kg2.rel@20FF)
+        item = pc_rando_rel_item("d_a_npc_kg2", 0x20FF, 7);
+#else
         item = 7;
+#endif
         break;
     case 2:
+#if TARGET_PC
+        // Rando: "Spectacle Island - Barrel Shooting - Second Prize" (rels/d_a_npc_kg2.rel@2107)
+        item = pc_rando_rel_item("d_a_npc_kg2", 0x2107, 0xD7);
+#else
         item = 0xD7;
+#endif
         break;
     case 3:
     default:

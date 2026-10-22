@@ -19,6 +19,9 @@
 #else
 #include "m_Do/m_Do_graphic.h"
 #endif
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 enum Actor_Type {
     ACTOR_TYPE_BODY = 0,
@@ -2861,7 +2864,12 @@ void action_bunri_dousa(bpw_class* i_this) {
         fopAcM_seStart(actor, JA_SE_CM_BOSS_EXPLODE, 0);
         sp70 = actor->current.pos;
         sp70.y += REG8_F(5) + 80.0f;
+#if TARGET_PC
+        // Rando (pc_rando.h): "Earth Temple - Jalhalla Heart Container" rels/d_a_bpw.rel@877E
+        fopAcM_createDisappear(actor, &sp70, 0xF, daDisItem_HEART_CONTAINER_e, 0xFF, pc_rando_rel_item("d_a_bpw", 0x877E, dItemNo_HEART_CONTAINER_e));
+#else
         fopAcM_createDisappear(actor, &sp70, 0xF, daDisItem_HEART_CONTAINER_e, 0xFF);
+#endif
         fopAcM_seStart(actor, JA_SE_CM_BPW_MASK_BREAK, 0);
         actor->scale.setall(0.0f);
         i_this->mActionState++;

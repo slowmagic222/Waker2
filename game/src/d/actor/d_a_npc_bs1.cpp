@@ -22,6 +22,7 @@
 #include "m_Do/m_Do_controller_pad.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/pc_rando.h"
 #endif
 
 class daNpc_Bs1_childHIO_c {
@@ -832,10 +833,23 @@ u16 daNpc_Bs1_c::next_msgStatus(u32* pMsgNo) {
                 fopAcM_seStart(this, JA_SE_SHOP_BOUGHT, 0);
                 mShopItems.hideSelectItem();
                 dComIfGp_setItemRupeeCount(-rupee);
+#if TARGET_PC
+                // Rando (pc_rando.h; wwrando flexible_item_locations.asm): the Bait Bag slot holds the
+                // seed's item (rels/d_a_npc_bs1.rel@1CDB), and its sale is event bit 6902 (unused in the
+                // original game), since the player owning the item says nothing about the slot
+                if(mShopItems.getSelectItemNo() == pc_rando_rel_item("d_a_npc_bs1", 0x1CDB, dItemNo_BAIT_BAG_e)) {
+                    mShopItems.SoldOutItem(mShopItems.mSelectedItemIdx);
+                    m76C[mShopItems.mSelectedItemIdx] = 1;
+                    if(pc_rando_active()) {
+                        dComIfGs_onEventBit(0x6902);
+                    }
+                }
+#else
                 if(mShopItems.getSelectItemNo() == dItemNo_BAIT_BAG_e) {
                     mShopItems.SoldOutItem(mShopItems.mSelectedItemIdx);
                     m76C[mShopItems.mSelectedItemIdx] = 1;
                 }
+#endif
 
                 int itemNo = mShopItems.getSelectItemNo();
                 if(!checkItemGet(itemNo, FALSE)) {
@@ -895,6 +909,27 @@ u16 daNpc_Bs1_c::next_msgStatus(u32* pMsgNo) {
                 mShopItems.hideSelectItem();
                 dComIfGp_setItemRupeeCount(-rupee);
                 u8 itemNo = mShopItems.getSelectItemNo();
+#if TARGET_PC
+                // Rando (pc_rando.h): the Rock Spire Isle shop's three slots hold the seed's items
+                // (rels/d_a_npc_bs1.rel@1E9B, 1EA3, 1EAB for the sale, 1ED3, 1EDF, 1EEB for its event bit),
+                // compared for equality only (wwrando removed the original's "greater or equal" tests)
+                if(pc_rando_active()) {
+                    const u8 bottleSlot = pc_rando_rel_item("d_a_npc_bs1", 0x1E9B, dItemNo_EMPTY_BOTTLE_e);
+                    const u8 heartSlot = pc_rando_rel_item("d_a_npc_bs1", 0x1EA3, dItemNo_HEART_PIECE_e);
+                    const u8 mapSlot = pc_rando_rel_item("d_a_npc_bs1", 0x1EAB, dItemNo_COLLECT_MAP_30_e);
+                    if(itemNo == bottleSlot || itemNo == heartSlot || itemNo == mapSlot) {
+                        mShopItems.SoldOutItem(mShopItems.mSelectedItemIdx);
+                        m76C[mShopItems.mSelectedItemIdx] = 1;
+                        if(itemNo == pc_rando_rel_item("d_a_npc_bs1", 0x1ED3, dItemNo_EMPTY_BOTTLE_e)) {
+                            dComIfGs_onEventBit(dSv_event_flag_c::UNK_2020);
+                        } else if(itemNo == pc_rando_rel_item("d_a_npc_bs1", 0x1EDF, dItemNo_HEART_PIECE_e)) {
+                            dComIfGs_onEventBit(dSv_event_flag_c::UNK_2010);
+                        } else if(itemNo == pc_rando_rel_item("d_a_npc_bs1", 0x1EEB, dItemNo_COLLECT_MAP_30_e)) {
+                            dComIfGs_onEventBit(dSv_event_flag_c::UNK_2008);
+                        }
+                    }
+                } else
+#endif
                 if(itemNo == dItemNo_EMPTY_BOTTLE_e || itemNo == dItemNo_HEART_PIECE_e || itemNo == dItemNo_COLLECT_MAP_30_e) {
                     mShopItems.SoldOutItem(mShopItems.mSelectedItemIdx);
                     m76C[mShopItems.mSelectedItemIdx] = 1;
@@ -1436,6 +1471,9 @@ u16 daNpc_Bs1_c::talk() {
 
 /* 00002C10-00003018       .text createShopList__11daNpc_Bs1_cFv */
 void daNpc_Bs1_c::createShopList() {
+#if TARGET_PC
+    dShop_randoItemData(); // Rando: the shop items of the seed (d_shop.cpp)
+#endif
     static __shop_items_set_data* Item_set_data3[] = {
         &shopItems_setData_Feedbag,
         &shopItems_setData_FoodAll,
@@ -1482,7 +1520,14 @@ void daNpc_Bs1_c::createShopList() {
         for(int i = 0; i < 3; i++) {
             u8 itemNo = pDataSet[i]->mpItemData->mItemNo;
             int idx = i;
+#if TARGET_PC
+            // Rando: the Bait Bag slot (rels/d_a_npc_bs1.rel@2DBB) is sold out by event bit 6902, see above
+            const bool baitSlotSold = pc_rando_active() ? itemNo == pc_rando_rel_item("d_a_npc_bs1", 0x2DBB, dItemNo_BAIT_BAG_e) && dComIfGs_isEventBit(0x6902)
+                                                        : itemNo == dItemNo_BAIT_BAG_e && dComIfGs_checkGetItem(itemNo);
+            if(baitSlotSold || (itemNo == dItemNo_HYOI_PEAR_e && dComIfGs_checkGetItem(dItemNo_BOMB_BAG_e))) {
+#else
             if((itemNo == dItemNo_BAIT_BAG_e && dComIfGs_checkGetItem(itemNo)) || (itemNo == dItemNo_HYOI_PEAR_e && dComIfGs_checkGetItem(dItemNo_BOMB_BAG_e))) {
+#endif
                 itemNo = pDataSet[i + 3][0].mpItemData->mItemNo;
                 idx += 3;
             }

@@ -107,6 +107,12 @@ void discMessage(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 // must hold) and exits PC_EXIT_DISC
 [[noreturn]] void exitDisc();
 
+// pc_assets.cpp, in every build: a file of the game's disc (Aurora's DVD layer), Yaz0 expanded; with
+// `arcFile` ("rels/mmem/x.rel", not empty), that file inside the RARC at `path`. False if missing.
+bool readDiscFile(const char* path, const char* arcFile, std::vector<uint8_t>& out);
+// pc_assets.cpp, in every build: the bytes of the game disc's main.dol at [addr, addr + size), or null
+const uint8_t* dolBytes(uint32_t addr, uint32_t size);
+
 // pc_assets.cpp (docs/RUNTIME_ASSETS.md): with COS_RUNTIME_ASSETS, reads the game's data arrays from
 // the disc and fills them (pc_main.cpp, after aurora_dvd_open, before OSInit); exits PC_EXIT_DISC if
 // the disc's main.dol or RELs are not the build's disc's (COS_GAME_ID_STR, revision 0). COS_SMOKE=assets dumps them and exits.

@@ -25,6 +25,7 @@
 #include "d/actor/d_a_ship.h"
 #if TARGET_PC
 #include "pc/pc_harness.h"
+#include "pc/pc_rando.h"
 #endif
 
 dComIfG_inf_c g_dComIfG_gameInfo;
@@ -720,6 +721,14 @@ BOOL dComIfGs_isStageTbox(int i_stageNo, int i_no) {
     stage_stag_info_class* stag_info = dComIfGp_getStageStagInfo();
 
 #if TARGET_PC
+    // Rando (pc_rando.h; wwrando check_tingle_statue_owned): chest 0xF of dungeons 3 to 7 is where the
+    // original game puts the Tingle Statues, and every (stage, 0xF) check asks "is this statue owned"
+    // (Tingle and his brothers, the statues on Tingle Island, the Tingle Tuner). In a seed the statues
+    // are anywhere, so these read the event bit the statue's item function sets (d_item.cpp)
+    if (i_no == 0xF && i_stageNo >= dSv_save_c::STAGE_DRC && i_stageNo <= dSv_save_c::STAGE_WT && pc_rando_active()) {
+        static const u16 statue_bits[] = {0x6A04, 0x6A08, 0x6A10, 0x6A20, 0x6A40};
+        return dComIfGs_isEventBit(statue_bits[i_stageNo - dSv_save_c::STAGE_DRC]);
+    }
     // On PC the REL units are linked into the executable (phase 3.5), so their static
     // constructors run before main, before any stage is loaded; daNpc_Tc_HIO_c's constructor
     // calls this then. With no stage, no stage is the current one: read the saved table.

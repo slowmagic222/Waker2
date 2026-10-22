@@ -19,6 +19,9 @@
 #include "d/d_cc_d.h"
 #include "f_op/f_op_camera.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 000000EC-000001C8       .text __ct__11daBtd_HIO_cFv */
 class daBtd_HIO_c : public JORReflexible {
@@ -1081,7 +1084,12 @@ static void end(btd_class* i_this) {
         if (i_this->m02EC[0] == 1) {
             i_this->m6E50.y = i_this->m6E50.y - 100.0f;
             fopAcM_seStart(actor, JA_SE_CM_BOSS_EXPLODE, 0);
+#if TARGET_PC
+            // Rando (pc_rando.h): "Dragon Roost Cavern - Gohma Heart Container" rels/d_a_btd.rel@36FE
+            fopAcM_createDisappear(actor, &i_this->m6E50, 15, daDisItem_HEART_CONTAINER_e, 0xFF, pc_rando_rel_item("d_a_btd", 0x36FE, dItemNo_HEART_CONTAINER_e));
+#else
             fopAcM_createDisappear(actor, &i_this->m6E50, 15, daDisItem_HEART_CONTAINER_e);
+#endif
             i_this->mGohmaState = 0x37;
             i_this->m6E50.y = -10000.0f;
             i_this->m02EC[0] = 0x96;

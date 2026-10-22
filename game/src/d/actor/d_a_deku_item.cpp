@@ -7,6 +7,9 @@
 #include "d/actor/d_a_deku_item.h"
 #include "res/Object/Deku.h"
 #include "d/d_com_inf_game.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 const char daDekuItem_c::m_arcname[] = "Deku";
 
@@ -200,7 +203,13 @@ void daDekuItem_c::mode_getdemo_init() {
 /* 00000CB8-00000D34       .text mode_getdemo_wait__12daDekuItem_cFv */
 void daDekuItem_c::mode_getdemo_wait() {
     if (!unk630) {
+#if TARGET_PC
+        // Rando (pc_rando.h): wwrando's "Forest Haven - On Tree Branch" (rels/d_a_deku_item.rel@0DC3)
+        mItemPID = fopAcM_createItemForTrBoxDemo(&current.pos, pc_rando_rel_item("d_a_deku_item", 0x0DC3, dItemNo_DEKU_LEAF_e), -1,
+                                                 fopAcM_GetRoomNo(this));
+#else
         mItemPID = fopAcM_createItemForTrBoxDemo(&current.pos, dItemNo_DEKU_LEAF_e, -1, fopAcM_GetRoomNo(this));
+#endif
 
         if (mItemPID != fpcM_ERROR_PROCESS_ID_e) {
             dComIfGp_event_setItemPartnerId(mItemPID);

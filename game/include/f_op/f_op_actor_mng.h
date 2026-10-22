@@ -636,7 +636,12 @@ void* fopAcM_createStealItem(cXyz* p_pos, int i_tblNo, int i_roomNo, csXyz* p_an
 
 fopAc_ac_c* fopAcM_myRoomSearchEnemy(s8 roomNo);
 
+#if TARGET_PC
+// i_bossItemNo: rando mode's item for a boss's heart container drop (pc_rando.h), kept in params bits 24-31
+fpc_ProcID fopAcM_createDisappear(fopAc_ac_c* i_actor, cXyz* p_pos, u8 i_scale, u8 i_dropType, u8 i_itemBitNo = -1, u8 i_bossItemNo = 0);
+#else
 fpc_ProcID fopAcM_createDisappear(fopAc_ac_c* i_actor, cXyz* p_pos, u8 i_scale, u8 i_dropType, u8 i_itemBitNo = -1);
+#endif
 void fopAcM_setCarryNow(fopAc_ac_c* i_this, BOOL stageLayer);
 void fopAcM_cancelCarryNow(fopAc_ac_c* i_this);
 s32 fopAcM_otoCheck(fopAc_ac_c*, f32);

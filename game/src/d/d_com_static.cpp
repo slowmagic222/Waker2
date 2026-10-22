@@ -39,6 +39,9 @@
 #include "d/actor/d_a_npc_ji1.h"
 #include "d/actor/d_a_npc_bs1.h"
 #include "SSystem/SComponent/c_counter.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 s32 daLodbg_c::sObjectCount;
 JKRExpHeap* daLodbg_c::sLocalHeap;
@@ -417,6 +420,15 @@ void daTagKbItem_c::dig_main() {
     ) {
         angle.y = cM_rndF((f32)0x7FFE);
         s8 roomNo = current.roomNo;
+#if TARGET_PC
+        // Rando (wwrando flexible_item_locations.asm, custom_createItem): the buried item is the seed's,
+        // and fopAcM_fastCreateItem expects its model already loaded, so create it with
+        // fopAcM_createItem, which loads it (its item action does what fopAcStts_UNK4000_e did)
+        if (pc_rando_active()) {
+            fopAcM_createItem(&mpActor->current.pos, mItemNo, mItemBitNo, roomNo, daItemType_3_e, &angle,
+                              daItemAct_BOSS_DISAPPEAR_e, &scale);
+        } else {
+#endif
         daItem_c* item = (daItem_c*)fopAcM_fastCreateItem(
             &mpActor->current.pos, mItemNo, roomNo, &angle,
             &scale, cM_rndF(5.0f), 60.0f + cM_rndFX(5.0f), -6.0f, mItemBitNo
@@ -424,6 +436,9 @@ void daTagKbItem_c::dig_main() {
         if (item) {
             fopAcM_OnStatus(item, fopAcStts_UNK4000_e);
         }
+#if TARGET_PC
+        }
+#endif
 #if VERSION <= VERSION_JPN
         fopAcM_delete(this);
 #else

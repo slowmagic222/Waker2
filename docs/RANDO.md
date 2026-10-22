@@ -1,6 +1,6 @@
 # Wind Waker Randomizer seeds (rando mode)
 
-Status: **step 1 of the plan below, in progress** (written 2026-10-22). This step only lets the port open a
+Status: **steps 1 and 2 of the plan below** (written 2026-10-22). This step only lets the port open a
 randomizer's output disc. It does not make a seed playable yet: see "What works".
 
 ## The idea
@@ -43,13 +43,54 @@ On the Switch, `COS_RANDO_DISC=sdmc:/switch/switchwaker/<file>.iso` in the `[dev
 
 - The checks and the disc switch above (built; checked with a syntax build of the changed units and a test of
   `CleanDisc` against a made-up disc image; **not yet run with a real seed**).
-- Nothing of the randomizer's code side: items given by code are the original ones, and stage data that
+- Items given by code (step 2, below). Nothing else of the randomizer's code side yet: stage data that
   expects wwrando's patches (custom actors, item IDs the original code does not handle, custom text commands)
   can misbehave. Expect a seed to be unplayable until the steps below land.
 
+## Items given by code (step 2)
+
+`pc_rando_rel_item("<rel>", offset, vanilla)` and `pc_rando_dol_item(address, vanilla)` (`pc_rando.h`) read the
+byte wwrando wrote at its `logic/item_locations.txt` path from the randomizer's disc (its REL in
+`files/rels/`, else in `RELS.arc`), so the offsets are the randomizer's own and the hunk names them. Without
+`COS_RANDO_DISC` they return the original item. The hunks are pinned to wwrando's paths at `9775811`
+(2026-07-20); another wwrando version with other paths reads the wrong bytes.
+
+All 73 are hooked (each hunk names its wwrando location and path):
+
+| Locations | File | Notes |
+|---|---|---|
+| 12 mailbox letters | `d_a_obj_toripost.cpp` | `m_letter`'s 13 entries, 12 bytes apart (Baito's mother twice) |
+| 4 Windfall auctions | `d_a_auction.cpp` | the shop item and the item given |
+| Battlesquid: first, second, under-20 prizes | `d_a_npc_kg1.cpp` | |
+| Barrel Shooting: first, second prizes | `d_a_npc_kg2.cpp` | |
+| Bird-Man Contest first prize | `d_a_npc_bmcon1.cpp` | |
+| Goron trading reward | `d_a_npc_roten.cpp` | |
+| Deku Leaf (Forest Haven, on the tree branch) | `d_a_deku_item.cpp` | |
+| Mrs. Marie: Killer Bees, 1, 21 and 40 Joy Pendants | `d_a_npc_ho.cpp` | |
+| 6 Great Fairies | `d_a_bigelf.cpp` | each gives one fixed item, not the next tier; the Big Octo fairy no longer doubles the magic meter herself, and the magic meter upgrade refills it (`d_item.cpp`) |
+| Windfall townspeople: Sam, Pompie and Vera, Minenco, Linda and Anton, Kreeb, Kamo; Kane's gate rewards | `d_a_npc_people.cpp` | photo rewards tracked by event bits 6904, 6908, 6910 |
+| Lenzo: Deluxe Picto Box, Forest Firefly, 2 photo rewards | `d_a_npc_photo.cpp` | Deluxe Picto Box slot tracked by event bit 6920 |
+| Zunari's Magic Armor slot | `d_a_npc_rsh1.cpp` | event bit 6940 |
+| Salvage Corp | `d_a_npc_sv.cpp` | event bit 6980 |
+| Maggie's two rewards | `d_a_npc_kp1.cpp` | event bit 6A01 |
+| Orca: 10 Knight's Crests, 500 hits | `d_a_npc_ji1.cpp` | Hurricane Spin is event bit 6901 (`d_item.cpp`, `procCutTurnMove_init`) |
+| Ivan: Catch Killer Bees | `d_a_npc_mk.cpp` | the Killer Bees (`mk`, `uk`) no longer give the Picto Box hint |
+| Beedle: Shop Ship 20 Rupee item, Rock Spire shop (3 items) | `d_a_npc_bs1.cpp`, `d_shop.cpp` | the bait slot is tracked by event bit 6902 |
+| Tingle's 2 gifts, Ankle's all-statues reward | `d_a_npc_tc_cut.inc` | the Tingle Statues set event bits 6A04 to 6A40, read by `dComIfGs_isStageTbox(3 to 7, 0xF)` |
+| 6 boss drops | the six boss actors, `f_op_actor_mng.cpp`, `d_a_disappear.cpp`, `d_a_boss_item.cpp` | the item travels in the disappear cloud's params; item flag 0x15 |
+| Doc Bandam's first Green and Blue Potions | `d_a_npc_ds1.cpp` | given even without an empty bottle |
+| Medli's Grappling Hook | `d_a_npc_md.cpp` | |
+| Withered trees | `d_a_obj_ftree.cpp` | created with `fopAcM_createItem` so the model is loaded |
+| Master Sword, Jabun, Mother Isle | `d_a_demo00.cpp` | `daDemo00_c`'s item table in `main.dol` |
+
+The pig's buried item is stage data, but it is also created with `fopAcM_createItem` in rando mode, for the
+same reason as the withered trees.
+
+None of this has run with a real seed yet (syntax build only).
+
 ## Plan
 
-1. Rando disc (this step).
+1. Rando disc.
 2. The 73 code-given item locations, read from the randomizer's patched files.
 3. `custom_funcs` / `custom_data` helpers as a C++ module, then `make_game_nonlinear` and
    `flexible_item_locations` (what a seed needs to be completable).

@@ -1698,7 +1698,13 @@ BOOL daPy_lk_c::procCutTurnMove_init() {
     m3598 = 1.0f;
     mDirection = DIR_FORWARD;
 
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm, main.dol 0x80158C08): the Hurricane Spin is
+    // usable once its item was got (event bit 6901), not once Orca's event was seen (0B20)
+    if (dComIfGs_isEventBit(pc_rando_active() ? 0x6901 : dSv_event_flag_c::UNK_0B20)) {
+#else
     if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_0B20)) {
+#endif
         bVar1 = true;
     } else if (dComIfGs_isTmpBit(dSv_event_tmp_flag_c::UNK_0402)) {
         bVar1 = true;

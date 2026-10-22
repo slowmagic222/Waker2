@@ -15,6 +15,9 @@
 #include "d/d_s_play.h"
 #include "m_Do/m_Do_mtx.h"
 #include "m_Do/m_Do_audio.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static fpc_ProcID l_msgId;
 
@@ -408,7 +411,13 @@ u16 daNpc_Ds1_c::next_msgStatus(u32* msg) {
     case 0x1DD8: case 0x1DD9: case 0x1DDA: *msg = 0x1DC0;
         break;
     case 0x1DCB:
+#if TARGET_PC
+        // Rando (wwrando flexible_item_locations.asm, d_a_npc_ds1.rel 0x1550): a new potion's item is the
+        // seed's, so it is given even without an empty bottle and cannot be missed
+        if (pc_rando_active() || dComIfGs_checkEmptyBottle()) {
+#else
         if (dComIfGs_checkEmptyBottle()) {
+#endif
             status = 16;
         } else {
             *msg = 0x1DCC;
@@ -833,6 +842,17 @@ int daNpc_Ds1_c::getdemo_action(void*) {
         ((daPy_py_c*)dComIfGp_getPlayer(0))->offPlayerNoDraw();
         mLookMode = m895;
         mShopCam.setCamAction(NULL);
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando doc_bandam_check_new_potion_and_give_free_item): the first Green and
+        // Blue Potions he makes (message 0x1DCB, a new potion) are "Windfall Island - Chu Jelly Juice Shop -
+        // Give 15 Green Chu Jelly" and "... Blue Chu Jelly" (wwrando custom symbols
+        // doc_bandam_green_potion_slot_item_id and _blue_, rels/d_a_npc_ds1.rel@6154 and 6155)
+        if (mCurrMsg == 0x1DCB && item == dItemNo_GREEN_POTION_e) {
+            item = pc_rando_rel_item("d_a_npc_ds1", 0x6154, item);
+        } else if (mCurrMsg == 0x1DCB && item == dItemNo_BLUE_POTION_e) {
+            item = pc_rando_rel_item("d_a_npc_ds1", 0x6155, item);
+        }
+#endif
         fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, item, 0, -1, DEMO_SELECT(-1, fopAcM_GetRoomNo(this)), NULL, NULL);
         if (id != fpcM_ERROR_PROCESS_ID_e) {
             dComIfGp_event_setItemPartnerId(id);

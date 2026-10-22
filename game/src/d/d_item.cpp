@@ -10,6 +10,7 @@
 #include "d/d_item_data.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/pc_rando.h"
 #endif
 
 typedef void (ItemGetFunc)();
@@ -535,6 +536,14 @@ ItemGetCheckFunc* item_getcheck_func_ptr[0x100] = {
 
 /* 800C2DFC-800C2E30       .text execItemGet__FUc */
 void execItemGet(u8 itemNo) {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando hurricane_spin_item_func): the Hurricane Spin item sets event bit 6901
+    // (unused in the original game), which then lets the player use it (procCutTurnMove_init), apart
+    // from the event where Orca teaches it
+    if (itemNo == dItemNo_HURRICANE_SPIN_e && pc_rando_active()) {
+        dComIfGs_onEventBit(0x6901);
+    }
+#endif
     item_func_ptr[itemNo]();
 }
 
@@ -592,6 +601,13 @@ void item_func_utuwa_heart() {
     dComIfGp_setItemMaxLifeCount(4);
     dComIfGp_setItemLifeCount(dComIfGs_getMaxLife());
     
+#if TARGET_PC
+    // Rando (wwrando flexible_item_locations.asm): a Heart Container found elsewhere in a dungeon must not
+    // mark the boss's item as taken; the boss's item keeps track with its item flag (createItemForBoss)
+    if (pc_rando_active()) {
+        return;
+    }
+#endif
 #if VERSION == VERSION_DEMO
     dComIfGs_onStageLife();
 #else
@@ -1347,22 +1363,50 @@ void item_func_xxx_039() {
 
 /* 800C4C68-800C4C6C       .text item_func_tincle_statue01__Fv */
 void item_func_tincle_statue01() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando dragon_tingle_statue_item_get_func and the next four): each Tingle
+    // Statue sets an event bit unused in the original game (6A04, 6A08, 6A10, 6A20, 6A40), as owning
+    // one can no longer mean having opened its dungeon's chest 0xF (dComIfGs_isStageTbox)
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A04);
+    }
+#endif
 }
 
 /* 800C4C6C-800C4C70       .text item_func_tincle_statue02__Fv */
 void item_func_tincle_statue02() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A08);
+    }
+#endif
 }
 
 /* 800C4C70-800C4C74       .text item_func_tincle_statue03__Fv */
 void item_func_tincle_statue03() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A10);
+    }
+#endif
 }
 
 /* 800C4C74-800C4C78       .text item_func_tincle_statue04__Fv */
 void item_func_tincle_statue04() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A20);
+    }
+#endif
 }
 
 /* 800C4C78-800C4C7C       .text item_func_tincle_statue05__Fv */
 void item_func_tincle_statue05() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A40);
+    }
+#endif
 }
 
 /* 800C4C7C-800C4C80       .text item_func_tincle_statue06__Fv */
@@ -1410,6 +1454,13 @@ void item_func_magic_power() {
 /* 800C4D0C-800C4D24       .text item_func_max_mp_up1__Fv */
 void item_func_max_mp_up1() {
     dComIfGp_setItemMaxMagicCount(32);
+#if TARGET_PC
+    // Rando (wwrando flexible_item_locations.asm): the Great Fairy refilled the meter in the original game;
+    // the upgrade can now come from anywhere, so it refills it itself
+    if (pc_rando_active()) {
+        dComIfGp_setItemMagicCount(32);
+    }
+#endif
 }
 
 /* 800C4D24-800C4D3C       .text item_func_tincle_rupee1__Fv */

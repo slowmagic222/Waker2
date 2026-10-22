@@ -24,6 +24,7 @@
 #include "string.h"
 #if TARGET_PC
 #include <cstdio>
+#include "pc/pc_rando.h"
 #endif
 
 struct light_data_s {
@@ -793,9 +794,20 @@ BOOL daDemo00_c::execute() {
                     TValueIterator_raw<u8> it = spB8.begin();
                     int argID = *it;
                     JUT_ASSERT(VERSION_SELECT(797, 844, 858, 858), argID < (sizeof(l_itemNo)/sizeof(u8)));
+#if TARGET_PC
+                    // Rando (pc_rando.h): this table is l_itemNo$localstatic4$execute__10daDemo00_cFv at
+                    // 0x8035BD34 in main.dol, where the seed writes "Hyrule - Master Sword Chamber"
+                    // (main.dol@8035BD34), "Outset Island - Jabun's Cave" (@8035BD39) and "Mother and Child
+                    // Isles - Inside Mother Isle" (@8035BD3C)
+                    const u8 itemNo = pc_rando_dol_item(0x8035BD34 + argID, l_itemNo[argID]);
+                    if (itemNo != dItemNo_NONE_e) {
+                        execItemGet(itemNo);
+                    }
+#else
                     if (l_itemNo[argID] != dItemNo_NONE_e) {
                         execItemGet(l_itemNo[argID]);
                     }
+#endif
                 }
             } else if (field_0x29c == 6) {
                 dDemo_prm_data* data = demo_actor->getPrm()->getData();

@@ -25,6 +25,9 @@
 #include "SSystem/SComponent/c_lib.h"
 #include "dolphin/mtx/vec.h"
 #include "res/Object/Vmr.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 namespace daObjFtree {
 namespace {
@@ -124,6 +127,18 @@ void daObjFtree::Act_c::search_heart_part() {
             dComIfGs_onEventBit(dSv_event_flag_c::UNK_2E20);
             mSpawnedHeartPieceProcessId = fpcM_ERROR_PROCESS_ID_e;
         }
+#if TARGET_PC
+        // Rando (wwrando withered_tree_item_try_give_momentum): the item from launch_heart_part exists
+        // some frames after fopAcM_createItem; on its first frame, give it the launch that
+        // fopAcM_fastCreateItem gave the Piece of Heart. m64A[0] (padding) says it was done
+        else if (pc_rando_active() && actor != NULL && m64A[0] == 0) {
+            actor->speedF = 1.75f;
+            actor->speed.y = 30.0f;
+            actor->gravity = -2.1f;
+            actor->actor_status |= 0x40;
+            m64A[0] = 1;
+        }
+#endif
     }
 }
 
@@ -134,6 +149,23 @@ BOOL daObjFtree::Act_c::launch_heart_part() {
     cXyz pos = current.pos;
     angle.y += 0x2328;
     pos.y += 860.0f;
+#if TARGET_PC
+    // Rando (pc_rando.h): "The Great Sea - Withered Trees" (rels/d_a_obj_ftree.rel@0237). Created with
+    // fopAcM_createItem, which loads the item's model (fopAcM_fastCreateItem expects it loaded, true only
+    // of the Piece of Heart; wwrando custom_createItem); search_heart_part launches it once it exists
+    if (pc_rando_active()) {
+        fpc_ProcID itemId = fopAcM_createItem(&pos, pc_rando_rel_item("d_a_obj_ftree", 0x237, dItemNo_HEART_PIECE_e), -1,
+                                              fopAcM_GetRoomNo(this), daItemType_3_e, &angle, daItemAct_BOSS_DISAPPEAR_e, &scale);
+        if (itemId != fpcM_ERROR_PROCESS_ID_e) {
+            mSpawnedHeartPieceProcessId = itemId;
+            dComIfGs_setEventReg(dSv_event_flag_c::UNK_9B07, param_get_tree_idx());
+            m64A[0] = 0;
+            mHeartPlaced = 1;
+            return TRUE;
+        }
+        return FALSE;
+    }
+#endif
     fopAc_ac_c* item = (fopAc_ac_c*)fopAcM_fastCreateItem(
         &pos, dItemNo_HEART_PIECE_e, fopAcM_GetRoomNo(this), &angle, &scale, 1.75f, 30.0f, -2.1f, -1, NULL);
     if (item != NULL) {
@@ -162,6 +194,20 @@ BOOL daObjFtree::Act_c::place_heart_part() {
         mDoMtx_multVec(mtx, &offset, &dest);
         cXyz scale(1.0f, 1.0f, 1.0f);
         csXyz angle(0, 0, 0);
+#if TARGET_PC
+        // Rando: the same item, placed again after a reload (rels/d_a_obj_ftree.rel@03F3); not launched
+        if (pc_rando_active()) {
+            fpc_ProcID itemId = fopAcM_createItem(&dest, pc_rando_rel_item("d_a_obj_ftree", 0x3F3, dItemNo_HEART_PIECE_e), -1,
+                                                  fopAcM_GetRoomNo(this), daItemType_3_e, &angle, daItemAct_BOSS_DISAPPEAR_e, &scale);
+            if (itemId != fpcM_ERROR_PROCESS_ID_e) {
+                mSpawnedHeartPieceProcessId = itemId;
+                dComIfGs_setEventReg(dSv_event_flag_c::UNK_9B07, param_get_tree_idx());
+                m64A[0] = 1;
+                return TRUE;
+            }
+            return FALSE;
+        }
+#endif
         fopAc_ac_c* item = (fopAc_ac_c*)fopAcM_fastCreateItem(
             &dest, dItemNo_HEART_PIECE_e, fopAcM_GetRoomNo(this), &angle, &scale, 0.0f, 0.0f, -2.1f, -1, NULL);
         if (item != NULL) {

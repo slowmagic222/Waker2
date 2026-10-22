@@ -11,6 +11,9 @@
 #include "d/actor/d_a_player_main.h"
 #include "m_Do/m_Do_lib.h"
 #include "d/d_snap.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 static fpc_ProcID l_msgId;
 
@@ -1085,7 +1088,12 @@ u8 daNpc_Uk_c::visitTalkInit() {
         return 4;
     }
 
+#if TARGET_PC
+    // Rando (pc_rando.h): no Picto Box hint, as for Ivan (d_a_npc_mk.cpp)
+    if (!pc_rando_active() && dComIfGs_isEventBit(0x1208) && !dComIfGs_checkGetItem(0x23) && !dComIfGs_checkGetItem(0x26)) {
+#else
     if (dComIfGs_isEventBit(0x1208) && !dComIfGs_checkGetItem(0x23) && !dComIfGs_checkGetItem(0x26)) {
+#endif
         mEventIdx = eventInfo.getEventId();
 
         daNpc_Mk_c* leader = (daNpc_Mk_c*)fopAcM_SearchByID(mLeaderID);
@@ -1104,7 +1112,11 @@ u8 daNpc_Uk_c::visitTalkInit() {
 void daNpc_Uk_c::visitSetEvent() {
     if (dComIfGs_isEventBit(0x1F80) && !dComIfGs_isEventBit(0x1E02)) {
         eventInfo.setEventName("MK_TALK3");
+#if TARGET_PC
+    } else if (!pc_rando_active() && dComIfGs_isEventBit(0x1208) && !dComIfGs_checkGetItem(0x23) && !dComIfGs_checkGetItem(0x26)) {
+#else
     } else if (dComIfGs_isEventBit(0x1208) && !dComIfGs_checkGetItem(0x23) && !dComIfGs_checkGetItem(0x26)) {
+#endif
         eventInfo.setEventName("MK_TALK2");
     } else {
         eventInfo.setEventName("MK_TALK");

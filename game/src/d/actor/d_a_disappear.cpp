@@ -9,6 +9,9 @@
 #include "f_op/f_op_actor_mng.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_s_play.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 /* 800E79C0-800E79C8       .text daDisappear_Draw__FP15disappear_class */
 static BOOL daDisappear_Draw(disappear_class*) {
@@ -25,7 +28,12 @@ static BOOL daDisappear_Execute(disappear_class* i_this) {
 
             if (dropType != daDisItem_NONE1_e && dropType != daDisItem_NONE3_e) {
                 if (dropType == daDisItem_HEART_CONTAINER_e) {
+#if TARGET_PC
+                    // Rando: the boss's item, which it put in params bits 24-31 (fopAcM_createDisappear)
+                    fopAcM_createItemForBoss(&i_this->current.pos, fopAcM_GetParam(i_this) >> 24, fopAcM_GetRoomNo(i_this), &i_this->current.angle, NULL, 0);
+#else
                     fopAcM_createItemForBoss(&i_this->current.pos, 0, fopAcM_GetRoomNo(i_this), &i_this->current.angle, NULL, 0);
+#endif
                 }
                 else if (dropType >= daDisItem_HEART_e && dropType <= daDisItem_NONE13_e) {
                     // Special type for Keese (ki) spawned in the Puppet Ganon fight.

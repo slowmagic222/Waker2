@@ -17,6 +17,9 @@
 #include "m_Do/m_Do_mtx.h"
 #include "d/actor/d_a_player.h"
 #include "d/d_item.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 u32 default_select_msg[] = {
     0x1DC1,
@@ -127,6 +130,34 @@ ShopItems_c__ItemData shopItemData_map = {
     /* mMustOwnItemNo    */ dItemNo_COLLECT_MAP_30_e,
     /* mBuyConditions    */ Shop_BuyCond_RUPEES_e | Shop_BuyCond_MUST_NOT_OWN_ITEM_e,
 };
+
+#if TARGET_PC
+// Rando (pc_rando.h): wwrando's "The Great Sea - Beedle's Shop Ship - 20 Rupee Item" and the three Rock Spire
+// Isle shop items, the item of each record (main.dol@80375E1F, 80375ECF, 80375EDF, 80375EEF), without the
+// "must not own it" condition (wwrando remove_shop_item_forced_uniqueness_bit: Beedle has no message for it
+// and the item may be one the player owns). Once, from Beedle's createShopList; nothing without a randomizer disc.
+void dShop_randoItemData() {
+    static bool sDone = false;
+    if (sDone || !pc_rando_active()) {
+        return;
+    }
+    sDone = true;
+    struct Slot {
+        ShopItems_c__ItemData* data;
+        u32 address;
+    };
+    static const Slot slots[] = {
+        {&shopItemData_Feedbag, 0x80375E1F},
+        {&shopItemData_emptybottle, 0x80375ECF},
+        {&shopItemData_kakera_heart, 0x80375EDF},
+        {&shopItemData_map, 0x80375EEF},
+    };
+    for (const Slot& slot : slots) {
+        slot.data->mItemNo = pc_rando_dol_item(slot.address, (u8)slot.data->mItemNo);
+        slot.data->mBuyConditions &= ~Shop_BuyCond_MUST_NOT_OWN_ITEM_e;
+    }
+}
+#endif
 
 ShopItems_c__ItemData shopItemData_RotenItem0 = {
     /* mItemNo           */ dItemNo_TOWN_FLOWER_e,

@@ -18,6 +18,9 @@
 #include "f_op/f_op_camera.h"
 #include "m_Do/m_Do_graphic.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daBwd_HIO_c : public JORReflexible {
 public:
@@ -1701,7 +1704,12 @@ static void demo_camera(bwd_class* i_this) {
             local_b0.x = 1.0f;
             local_b0.y = 1.0f;
             local_b0.z = 1.0f;
+#if TARGET_PC
+            // Rando (pc_rando.h): "Wind Temple - Molgera Heart Container" rels/d_a_bwd.rel@6D83
+            i_this->m18E0 = fopAcM_createItemForBoss(&i_this->m18E4, pc_rando_rel_item("d_a_bwd", 0x6D83, dItemNo_HEART_CONTAINER_e), fopAcM_GetRoomNo(actor), NULL, &local_b0, 1);
+#else
             i_this->m18E0 = fopAcM_createItemForBoss(&i_this->m18E4, 0, fopAcM_GetRoomNo(actor), NULL, &local_b0, 1);
+#endif
         }
         if (i_this->m3C20 >= 0x2C) {
             i_this->m3C1E = 0x69;

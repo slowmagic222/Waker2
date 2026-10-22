@@ -14,6 +14,9 @@
 #include "f_op/f_op_msg_mng.h"
 #include "m_Do/m_Do_audio.h"
 #include "res/Object/Sv.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 const char daNpcSv_c::m_arcname[] = "Sv";
 static char* l_npc_staff_id[] = {"Sv0", "Sv1", "Sv2", "Sv3"};
@@ -104,7 +107,13 @@ daNpcSv_c::daNpcSv_c() {
     mAnmIndex = 0;
     mTalkFlags = 0;
     mCraneFrame = 0;
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando flexible_item_locations.asm): whether the Salvage Corp gave their item is
+    // event bit 6980 (unused in the original game), not the player owning their treasure chart
+    if (pc_rando_active() ? dComIfGs_isEventBit(0x6980) : dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_26_e)) {
+#else
     if (dComIfGs_checkGetItem(dItemNo_COLLECT_MAP_26_e)) {
+#endif
         mTalkFlags |= 0x20;
     }
 }
@@ -562,8 +571,18 @@ BOOL daNpcSv_c::eventMesSet() {
 /* 0000184C-000018F0       .text eventGetItemInit__9daNpcSv_cFi */
 void daNpcSv_c::eventGetItemInit(int staff) {
     int* item = dComIfGp_evmng_getMyIntegerP(staff, "ItemNo");
+#if TARGET_PC
+    // Rando: wwrando's "The Great Sea - Salvage Corp Gift", l_get_item_no[0] (rels/d_a_npc_sv.rel@3327),
+    // and the bit that says they gave it (6980, set on every gift as wwrando does)
+    int itemNo = item != NULL ? (*item == 0 ? pc_rando_rel_item("d_a_npc_sv", 0x3327, l_get_item_no[0]) : l_get_item_no[*item]) : mItem;
+    fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, fopAcM_GetRoomNo(this), NULL, NULL);
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6980);
+    }
+#else
     int itemNo = item != NULL ? l_get_item_no[*item] : mItem;
     fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, fopAcM_GetRoomNo(this), NULL, NULL);
+#endif
     if (id != fpcM_ERROR_PROCESS_ID_e) {
         dComIfGp_event_setItemPartnerId(id);
     }

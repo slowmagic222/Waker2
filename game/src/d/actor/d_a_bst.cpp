@@ -26,6 +26,9 @@
 #include "m_Do/m_Do_graphic.h"
 #include "d/d_cc_d.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daBst_HIO_c : public JORReflexible {
 public:
@@ -2506,7 +2509,12 @@ void demo_camera(bst_class* i_this) {
             cXyz item_scale(1.0f, 1.0f, 1.0f);
             csXyz item_angle = actor->shape_angle;
             item_angle.y += (s16)(REG0_S(7) + -300);
+#if TARGET_PC
+            // Rando (pc_rando.h): "Tower of the Gods - Gohdan Heart Container" rels/d_a_bst.rel@9D43
+            i_this->mCreatedItemId = fopAcM_createItemForBoss(&spA4, pc_rando_rel_item("d_a_bst", 0x9D43, dItemNo_HEART_CONTAINER_e), fopAcM_GetRoomNo(actor), &item_angle, &item_scale, 1);
+#else
             i_this->mCreatedItemId = fopAcM_createItemForBoss(&spA4, 0, fopAcM_GetRoomNo(actor), &item_angle, &item_scale, 1);
+#endif
             mDoAud_seStart(JA_SE_CM_BST_ITEM_OUT_NOSE, &actor->eyePos, 0, dComIfGp_getReverb(fopAcM_GetRoomNo(actor)));
             MtxP mtx2 = i_this->m02B8->getModel()->getAnmMtx(BST_JNT_HEAD_e);
             cMtx_copy(mtx2, *calc_mtx);

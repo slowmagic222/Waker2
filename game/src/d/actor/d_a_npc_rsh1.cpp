@@ -14,6 +14,9 @@
 #include "m_Do/m_Do_controller_pad.h"
 #include "m_Do/m_Do_ext.h"
 #include "d/d_cc_d.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_Rsh1_HIO_c : public JORReflexible {
 public:
@@ -704,7 +707,14 @@ u32 daNpc_Rsh1_c::getMsg() {
         msg_no = m780;
         m780 = 0;
     } else {
+#if TARGET_PC
+        // Rando (pc_rando.h; wwrando flexible_item_locations.asm): whether Zunari gave the item of the Magic
+        // Armor slot is event bit 6940 (unused in the original game), not the player owning the Magic Armor
+        const BOOL gaveArmorSlot = pc_rando_active() ? dComIfGs_isEventBit(0x6940) : checkItemGet(dItemNo_MAGIC_ARMOR_e, TRUE);
+        if (!gaveArmorSlot && daNpc_Rsh1_countShop() >= 3) {
+#else
         if (!checkItemGet(dItemNo_MAGIC_ARMOR_e, TRUE) && daNpc_Rsh1_countShop() >= 3) {
+#endif
             return 0x285D;
         }
 
@@ -1331,7 +1341,13 @@ bool daNpc_Rsh1_c::talk01() {
             mItemNo = dItemNo_SAIL_e;
         } else if (m778 == 0x285F) {
             m95B = 4;
+#if TARGET_PC
+            // Rando: wwrando's "Windfall Island - Zunari - Stock Exotic Flower in Zunari's Shop"
+            // (rels/d_a_npc_rsh1.rel@3117)
+            mItemNo = pc_rando_rel_item("d_a_npc_rsh1", 0x3117, dItemNo_MAGIC_ARMOR_e);
+#else
             mItemNo = dItemNo_MAGIC_ARMOR_e;
+#endif
         } else if (m778 == 0x2883 && m793 == true) {
             setAction(&daNpc_Rsh1_c::pl_shop_out_action, NULL);
         } 
@@ -1362,6 +1378,13 @@ BOOL daNpc_Rsh1_c::getdemo_action(void* i_unusedP) {
         if (pid != fpcM_ERROR_PROCESS_ID_e) {
             dComIfGp_event_setItemPartnerId(pid);
         }
+#if TARGET_PC
+        // Rando: the Magic Armor slot's item was given (event bit 6940, wwrando
+        // zunari_give_item_and_set_magic_armor_event_bit)
+        if (pc_rando_active() && mItemNo == pc_rando_rel_item("d_a_npc_rsh1", 0x3117, dItemNo_MAGIC_ARMOR_e)) {
+            dComIfGs_onEventBit(0x6940);
+        }
+#endif
 
         dComIfGp_evmng_cutEnd(staff_idx);
         mActionStatus++;
@@ -1375,7 +1398,12 @@ BOOL daNpc_Rsh1_c::getdemo_action(void* i_unusedP) {
                 m780 = 0x2857;
             } else if (mItemNo == dItemNo_SAIL_e) {
                 m780 = 0x288F;
+#if TARGET_PC
+            // Rando: the Magic Armor slot's message (rels/d_a_npc_rsh1.rel@338F)
+            } else if (mItemNo == pc_rando_rel_item("d_a_npc_rsh1", 0x338F, dItemNo_MAGIC_ARMOR_e)) {
+#else
             } else if (mItemNo == dItemNo_MAGIC_ARMOR_e) {
+#endif
                 m780 = 0x2860;
             }
 
