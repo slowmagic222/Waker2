@@ -1,6 +1,8 @@
 // COS_TRACKER_SERVER (pc_tracker.h, docs/TRACKER.md): the tracker's state over HTTP, for the tracker's
 // autotracking. One thread accepts and answers one request per connection:
 //   GET /state   the state's JSON (pc_tracker.cpp)
+//   GET /open    a redirect into the tracker for the seed being played (seedPermalink): the
+//                launchers open this, so the tracker starts on the seed and not on its first page
 //   GET /...     with COS_TRACKER_WEB, the files of that directory (the patched tracker's build,
 //                scripts/tracker/build_tracker.sh), / being its index.html: the tracker then comes from
 //                the game itself and finds the state next to it. Without: a line saying what this is
@@ -15,6 +17,7 @@
 #include "JSystem/JKernel/JKRHeap.h"
 
 #include <arpa/inet.h>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -75,8 +78,8 @@ void sendAll(int fd, const std::string& data) {
     }
 }
 
-void reply(int fd, const char* status, const char* type, const std::string& body) {
-    std::string head = std::string("HTTP/1.1 ") + status +
+void reply(int fd, const char* status, const char* type, const std::string& body, const std::string& extra = "") {
+    std::string head = std::string("HTTP/1.1 ") + status + extra +
                        "\r\nAccess-Control-Allow-Origin: *"
                        "\r\nAccess-Control-Allow-Methods: GET, OPTIONS"
                        "\r\nAccess-Control-Allow-Headers: *"
@@ -130,6 +133,55 @@ bool webFile(int fd, std::string path) {
     return true;
 }
 
+// The rando disc's permalink, from the text files next to it: "<disc> - Permalink.txt" (the game's own
+// seed generator) or wwrando's "<disc> - Non-Spoiler Log.txt" / "<disc> - Spoiler Log.txt"
+// ("Permalink: ..." line), <disc> being the disc's path without ".iso". Empty if none says.
+std::string seedPermalink() {
+    if (gConfig.randoDisc == nullptr) {
+        return "";
+    }
+    std::string base = gConfig.randoDisc;
+    if (const size_t dot = base.rfind('.'); dot != std::string::npos && base.find('/', dot) == std::string::npos) {
+        base.resize(dot);
+    }
+    const auto trim = [](std::string v) {
+        while (!v.empty() && (v.back() == '\r' || v.back() == '\n' || v.back() == ' ')) {
+            v.pop_back();
+        }
+        while (!v.empty() && v.front() == ' ') {
+            v.erase(0, 1);
+        }
+        return v;
+    };
+    std::string line;
+    if (std::ifstream in(base + " - Permalink.txt"); in && std::getline(in, line) && !trim(line).empty()) {
+        return trim(line);
+    }
+    for (const char* log : {" - Non-Spoiler Log.txt", " - Spoiler Log.txt"}) {
+        std::ifstream in(base + log);
+        for (int i = 0; in && i < 40 && std::getline(in, line); i++) {
+            if (line.rfind("Permalink:", 0) == 0) {
+                return trim(line.substr(10));
+            }
+        }
+    }
+    return "";
+}
+
+std::string urlEncode(const std::string& s) {
+    std::string out;
+    for (const unsigned char c : s) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out += char(c);
+        } else {
+            char hex[4];
+            snprintf(hex, sizeof hex, "%%%02X", c);
+            out += hex;
+        }
+    }
+    return out;
+}
+
 void answer(int fd) {
     // the request line and headers; the requests here have no body
     std::string req;
@@ -158,6 +210,10 @@ void answer(int fd) {
         reply(fd, "405 Method Not Allowed", "text/plain", "GET only\n");
     } else if (path == "/state") {
         reply(fd, "200 OK", "application/json", stateJson());
+    } else if (path == "/open") {
+        const std::string permalink = seedPermalink();
+        const std::string to = permalink.empty() ? "/" : "/#/tracker/new/" + urlEncode(permalink);
+        reply(fd, "302 Found", "text/plain", to + "\n", "\r\nLocation: " + to);
     } else if (webFile(fd, path)) {
     } else if (path == "/") {
         reply(fd, "200 OK", "text/plain", "switchwaker tracker state: GET /state (docs/TRACKER.md)\n");

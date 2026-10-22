@@ -55,8 +55,10 @@ each dungeon's keys and checks. Again for the checks per island, a third time to
 Mode with nothing to set up; F2 does the same on a keyboard.
 
 **The full tracker, in its own window:** while the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
-with autotracking ([TRACKER.md](TRACKER.md)): open **http://127.0.0.1:6544/** in a browser, paste the seed's
-permalink and launch as usual. Items and checked locations follow the game by themselves, about once a
+with autotracking ([TRACKER.md](TRACKER.md)): the launcher opens it in the browser on the seed being played, as long as the seed's permalink is next
+to its disc: the in-game seed generator writes `<disc> - Permalink.txt`, and wwrando's
+`WW Random <seed> - Non-Spoiler Log.txt` (or the spoiler log) works too, so copy it next to the `.iso`.
+Without one it opens on the tracker's first page: paste the permalink and launch as usual. Items and checked locations follow the game by themselves, about once a
 second; marks made by hand stay. The tracker downloads the seed's logic from GitHub, so the Deck needs the
 network the first time for each wwrando version.
 
