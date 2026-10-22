@@ -18,6 +18,16 @@ if [ -z "${COS_RANDO_DISC+x}" ]; then
         break
     done
 fi
+# Say so in a window when the clean disc is missing (a Game Mode start shows no terminal).
+if [ ! -f "$COS_DISC" ]; then
+    msg="Waker2 needs your clean USA disc of The Wind Waker as $COS_DISC (named exactly GZLE01.iso)."
+    echo "[waker2] $msg" > "$here/waker2.log"
+    if command -v kdialog >/dev/null 2>&1; then kdialog --error "$msg"
+    elif command -v zenity >/dev/null 2>&1; then zenity --error --text="$msg"; fi
+    echo "[waker2] $msg" >&2
+    exit 1
+fi
+
 export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
 export COS_TRACKER_SERVER="${COS_TRACKER_SERVER:-1}"   # only does something in builds with the tracker
 # The randomizer tracker, served by the game at http://127.0.0.1:6544/ while it runs (docs/TRACKER.md);
@@ -37,16 +47,6 @@ if [ -z "${COS_TRACKER_OPEN:-}" ]; then
 fi
 if [ "$COS_TRACKER_OPEN" = "1" ] && [ -n "${COS_TRACKER_WEB:-}" ] && [ -x "$here/waker2-tracker.sh" ]; then
     "$here/waker2-tracker.sh" --wait >/dev/null 2>&1 &
-fi
-
-# Say so in a window when the clean disc is missing (a Game Mode start shows no terminal).
-if [ ! -f "$COS_DISC" ]; then
-    msg="Waker2 needs your clean USA disc of The Wind Waker as $COS_DISC (named exactly GZLE01.iso)."
-    echo "[waker2] $msg" > "$here/waker2.log"
-    if command -v kdialog >/dev/null 2>&1; then kdialog --error "$msg"
-    elif command -v zenity >/dev/null 2>&1; then zenity --error --text="$msg"; fi
-    echo "[waker2] $msg" >&2
-    exit 1
 fi
 
 # The game's output also goes to waker2.log next to it (the last run), to read after a Game Mode start.
