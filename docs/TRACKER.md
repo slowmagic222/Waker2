@@ -1,8 +1,9 @@
 # Randomizer tracker (autotracking)
 
-Status: **step 1 of the plan below** (written 2026-10-22). The game reads its own save and serves what
-[wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/) tracks; a patch for
-the tracker reads it. Not yet run in the game with a real seed (see "Checked so far").
+Status: **step 1 of the plan below, and the start of step 3** (written 2026-10-22). The game reads its
+own save and serves what [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
+tracks; a patch for the tracker reads it. The game also draws a small tracker over itself (L3+R3 or F2).
+Not yet run in the game with a real seed (see "Checked so far").
 
 Goes with rando mode ([RANDO.md](RANDO.md)), but works with the original game too (the item counts and
 most locations mean the same there).
@@ -30,7 +31,14 @@ against the chart's collect-map number in `game/src/d/d_item.cpp` (all 49 agree)
 
 ## Use
 
-**The game:** `COS_TRACKER_SERVER=1` (environment on Linux and the Mac, the `[dev]` section of the
+**The overlay, in the game:** press both sticks in together (L3+R3, on any controller) or F2. The first
+press shows the items page (items with their counts, each dungeon's map, compass, big key, keys held and
+checks), the second the locations page (checks per island and dungeon, sunken treasures), the third hides
+it. Nothing to turn on, and the game keeps its input (the default button map gives neither stick click
+to the game). It shows what the game knows, not the tracker's logic (what is in logic needs the seed's
+settings; plan step 3). With the options menu open it is hidden.
+
+**The game's server:** `COS_TRACKER_SERVER=1` (environment on Linux and the Mac, the `[dev]` section of the
 settings file on the Switch). The log says `[cos] tracker: state at http://127.0.0.1:6544/state`.
 A number other than 1 is the port. It listens on 127.0.0.1 on a computer and on every address on the
 Switch (the tracker runs elsewhere); `COS_TRACKER_BIND=<ipv4>` overrides that.
@@ -100,6 +108,7 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
 - The tracker served by the game: the server, built on its own with `COS_TRACKER_WEB` pointing at
   `build_tracker.sh`'s output, served the tracker at `/`; opened there in headless Chromium with no
   parameter, it found the state by itself and showed the same items and checks.
+- `pc_tracker_overlay.cpp` compiles against the game's, Aurora's ImGui and SDL 3 headers (syntax only).
 - Not yet: a real game. First test: `COS_TRACKER_SERVER=1`, a seed, `curl http://127.0.0.1:6544/state`
   after opening a chest and picking up an item.
 
@@ -109,13 +118,15 @@ location the game can tell is listed, false and 0 included; what it cannot tell 
 2. Run it with a seed; send the autotracking upstream to wooferzfg's tracker (or keep a fork) so the
    hosted tracker can use it; read the chart mapping and entrances from the randomizer's disc.
 3. A tracker inside the game: an overlay drawn with the ImGui the options menu already uses
-   (`pc_menu.cpp`), from the same state: items, checked counts per area, then the tracker's logic
-   (which locations are in logic) once the permalink's settings can be read from the seed.
+   (`pc_menu.cpp`), from the same state. Items and checked counts per area are in
+   (`pc_tracker_overlay.cpp`); next, the tracker's logic (which locations are in logic) once the
+   permalink's settings can be read from the seed.
 
 ## Files
 
 - `native/include/pc/pc_tracker.h`, `native/src/pc/features/pc_tracker.cpp`: the state, built after each
-  15th game frame (`pc_frame.cpp`) while the server runs.
+  15th game frame (`pc_frame.cpp`) while the server runs or the overlay is shown.
+- `native/src/pc/features/pc_tracker_overlay.cpp`: the overlay (ImGui) and its toggle.
 - `native/src/pc/features/pc_tracker_server.cpp`: the HTTP server (one thread, host memory).
 - `native/src/pc/features/pc_tracker_tables.inc`, `native/tools/gen_tracker_tables.py`: the location and
   chart tables and their generator (`--ap <Archipelago>/worlds/tww --ap-rev <commit> --wwrando <wwrando>`;
