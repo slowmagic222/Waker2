@@ -59,6 +59,23 @@ byte wwrando wrote at its `logic/item_locations.txt` path from the randomizer's 
 `COS_RANDO_DISC` they return the original item. The hunks are pinned to wwrando's paths at `9775811`
 (2026-07-20); another wwrando version with other paths reads the wrong bytes.
 
+### wwrando versions
+
+Two versions are read: the **1.10.0 release** (2023-01-06, what wwrando's download page offers) and the
+development version at **9775811**. `pc_rando_version()` tells them apart by the target of the
+`bl init_save_with_tweaks` wwrando writes at 0x8005D618 (0x803FD850 in 1.10.0, 0x803FD87C at 9775811);
+`pc_disc.cpp` reads it from the image at startup and refuses any other version with a message, as reading
+another version's data gives wrong values (a 1.10.0 seed read at 9775811's addresses started with every
+Triforce shard and a garbage heart count).
+
+- The 66 code-given locations both versions have are at the same paths. 9775811 adds 5 (Kane's four gate
+  rewards, the Dragon Roost Cavern miniboss); a 1.10.0 seed has the original bytes there, so the original
+  items stay.
+- The new-game settings (`d_save.cpp dSv_randoGetSettings`) are at 0x803FDC2C in 1.10.0, with room for 70
+  starting items (86 at 9775811) and no targeting option.
+- Hero mode is 9775811 only. The behaviour hunks follow 9775811; where 1.10.0's patches differ, a 1.10.0 seed
+  plays with 9775811's behaviour.
+
 All 73 are hooked (each hunk names its wwrando location and path):
 
 | Locations | File | Notes |

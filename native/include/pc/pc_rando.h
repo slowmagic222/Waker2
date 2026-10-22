@@ -17,6 +17,14 @@ extern "C" {
 
 /* 1 with COS_RANDO_DISC (a randomizer's disc is the game's disc), else 0. */
 int pc_rando_active(void);
+
+/* The wwrando versions the port reads. Their item locations given by code are at the same places (the newer one
+ * has 5 more), but the data wwrando adds to main.dol (custom_symbols: the new-game settings) moved. Another version
+ * is refused when the game starts (pc_disc.cpp). */
+#define PC_RANDO_VERSION_1_10_0 1 /* the 1.10.0 release (ec39074, 2023-01-06) */
+#define PC_RANDO_VERSION_9775811 2 /* the development version at 9775811 (2026-07-20) */
+/* The randomizer disc's version, or 0 without a randomizer disc. */
+int pc_rando_version(void);
 /* The item at `offset` of rels/<rel>.rel ("d_a_auction") on the randomizer's disc; `vanilla` (the
  * original game's item) without one, or if that byte cannot be read. */
 unsigned char pc_rando_rel_item(const char* rel, unsigned int offset, unsigned char vanilla);

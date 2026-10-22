@@ -101,6 +101,10 @@ const char* gameDisc();
 // pc_disc.cpp: the game ID the game's disc must report (DVDGetCurrentDiskID): the randomizer's
 // GZLE99 with COS_RANDO_DISC, else COS_GAME_ID_STR
 const char* gameDiscId();
+// pc_rando.cpp: the wwrando version (pc_rando.h PC_RANDO_VERSION_*) whose main.dol has `word` at
+// kRandoVersionAddress (its "bl init_save_with_tweaks" in dSv_info_c::init), or 0 for another version
+constexpr uint32_t kRandoVersionAddress = 0x8005D618;
+int randoVersionOf(uint32_t word);
 // pc_disc.cpp: a disc problem: logged as "[cos] DISC: ...", kept for exitDisc
 void discMessage(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 // pc_disc.cpp: shows the last discMessage to the player (the Switch's error applet, with what the card

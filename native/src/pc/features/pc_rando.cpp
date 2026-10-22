@@ -99,10 +99,45 @@ bool sOptionsRead = false;
 
 } // namespace
 
+namespace pc {
+
+int randoVersionOf(uint32_t word) {
+    // bl (opcode 18 with LK): its target, the version's init_save_with_tweaks
+    if ((word >> 26) != 18 || (word & 3) != 1) {
+        return 0;
+    }
+    int32_t offset = (int32_t)(word & 0x03FFFFFC);
+    if (offset & 0x02000000) {
+        offset -= 0x04000000;
+    }
+    switch (kRandoVersionAddress + (uint32_t)offset) {
+    case 0x803FD850:
+        return PC_RANDO_VERSION_1_10_0;
+    case 0x803FD87C:
+        return PC_RANDO_VERSION_9775811;
+    default:
+        return 0;
+    }
+}
+
+} // namespace pc
+
 extern "C" {
 
 int pc_rando_active(void) {
     return pc::gConfig.randoDisc != nullptr ? 1 : 0;
+}
+
+int pc_rando_version(void) {
+    static int sVersion = -1;
+    if (!pc_rando_active()) {
+        return 0;
+    }
+    if (sVersion < 0) {
+        const int64_t word = dolWord(pc::kRandoVersionAddress);
+        sVersion = word >= 0 ? pc::randoVersionOf((uint32_t)word) : 0;
+    }
+    return sVersion;
 }
 
 unsigned char pc_rando_rel_item(const char* name, unsigned int offset, unsigned char vanilla) {
@@ -150,6 +185,9 @@ int pc_rando_option(PcRandoOption which) {
 
 float pc_rando_damage_multiplier(void) {
     if (!pc_rando_option(PC_RANDO_HERO_MODE)) {
+        return 1.0f;
+    }
+    if (pc_rando_version() != PC_RANDO_VERSION_9775811) { // hero mode came after 1.10.0
         return 1.0f;
     }
     const int64_t word = dolWord(0x803FE974); // damage_multiplier
