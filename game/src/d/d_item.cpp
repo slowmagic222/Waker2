@@ -1356,22 +1356,50 @@ void item_func_xxx_039() {
 
 /* 800C4C68-800C4C6C       .text item_func_tincle_statue01__Fv */
 void item_func_tincle_statue01() {
+#if TARGET_PC
+    // Rando (pc_rando.h; wwrando dragon_tingle_statue_item_get_func and the next four): each Tingle
+    // Statue sets an event bit unused in the original game (6A04, 6A08, 6A10, 6A20, 6A40), as owning
+    // one can no longer mean having opened its dungeon's chest 0xF (dComIfGs_isStageTbox)
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A04);
+    }
+#endif
 }
 
 /* 800C4C6C-800C4C70       .text item_func_tincle_statue02__Fv */
 void item_func_tincle_statue02() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A08);
+    }
+#endif
 }
 
 /* 800C4C70-800C4C74       .text item_func_tincle_statue03__Fv */
 void item_func_tincle_statue03() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A10);
+    }
+#endif
 }
 
 /* 800C4C74-800C4C78       .text item_func_tincle_statue04__Fv */
 void item_func_tincle_statue04() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A20);
+    }
+#endif
 }
 
 /* 800C4C78-800C4C7C       .text item_func_tincle_statue05__Fv */
 void item_func_tincle_statue05() {
+#if TARGET_PC
+    if (pc_rando_active()) {
+        dComIfGs_onEventBit(0x6A40);
+    }
+#endif
 }
 
 /* 800C4C7C-800C4C80       .text item_func_tincle_statue06__Fv */

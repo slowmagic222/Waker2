@@ -11,6 +11,9 @@
 #include "d/d_snap.h"
 #include "d/actor/d_a_obj_smplbg.h"
 #include "d/d_lib.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_Tc_HIO_c : public mDoHIO_entry_c{
 public:

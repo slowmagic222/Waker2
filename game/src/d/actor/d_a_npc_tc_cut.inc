@@ -195,6 +195,18 @@ void daNpc_Tc_c::cutPresentProc(int i_staffIdx) {
             }
             break;
     }
+#if TARGET_PC
+    // Rando (pc_rando.h): Tingle's two gifts in the Windfall jail ("Windfall Island - Jail - Tingle -
+    // First Gift" rels/d_a_npc_tc.rel@6117, "Second Gift" @611F) and Ankle's reward for all Tingle Statues
+    // ("Tingle Island - Ankle - Reward for All Tingle Statues" @6143)
+    if (itemNo == dItemNo_TINGLE_TUNER_e) {
+        itemNo = pc_rando_rel_item("d_a_npc_tc", 0x6117, itemNo);
+    } else if (itemNo == dItemNo_COLLECT_MAP_35_e) {
+        itemNo = pc_rando_rel_item("d_a_npc_tc", 0x611F, itemNo);
+    } else if (itemNo == dItemNo_TINGLE_RUPEE_6_e) {
+        itemNo = pc_rando_rel_item("d_a_npc_tc", 0x6143, itemNo);
+    }
+#endif
 #if VERSION == VERSION_DEMO
     fpc_ProcID itemPID = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1);
 #else
