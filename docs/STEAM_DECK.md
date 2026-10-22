@@ -22,7 +22,7 @@ far; the Linux build has only run in a container with software Vulkan (README.md
 3. For a seed, copy the randomizer's `.iso` into the same folder. `waker2.sh` uses the first `.iso` that
    is not `GZLE01.iso` as `COS_RANDO_DISC`; keep only one seed there. Take it out to play the plain game.
 4. Try it once from Konsole: `~/waker2/waker2.sh`. If it closes at once, the output (also saved
-   as `~/waker2/waker2.log`, the last run) says why.
+   as `~/waker2/waker2.log`, the last run; the run before it is `~/waker2/waker2.prev.log`) says why.
 
 ## Add it to Steam (for Game Mode)
 
@@ -53,7 +53,8 @@ Saves, settings and caches go in `~/waker2/user/`.
 
 **In the game:** click both sticks in together (L3+R3) to show a small tracker over the game: items,
 each dungeon's keys and checks. Again for the checks per island, a third time to hide it. Works in Game
-Mode with nothing to set up; F2 does the same on a keyboard.
+Mode with nothing to set up; F2 does the same on a keyboard. With a seed, what it has seen is also kept
+in `~/waker2/user/tracker/`, so a crash or an older save does not take checks off it ([TRACKER.md](TRACKER.md)).
 
 **The full tracker, in its own window:** while the game runs it serves [wooferzfg's TWW Randomizer Tracker](https://www.wooferzfg.me/tww-rando-tracker/)
 with autotracking ([TRACKER.md](TRACKER.md)): open **http://127.0.0.1:6544/** in a browser, paste the seed's
