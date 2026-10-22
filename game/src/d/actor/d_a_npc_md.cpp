@@ -16,6 +16,9 @@
 #include "d/d_kankyo_wether.h"
 #include "d/d_camera.h"
 #include "d/d_detect.h"
+#if TARGET_PC
+#include "pc/pc_rando.h"
+#endif
 
 class daNpc_Md_HIO2_c : public JORReflexible {
 public:
@@ -3540,7 +3543,13 @@ void daNpc_Md_c::initialLetterEvent(int staffIdx) {
     if (mCurEvent == 0) {
         itemNo = 0x98;
     } else if (mCurEvent == 1) {
+#if TARGET_PC
+        // Rando (pc_rando.h): "Dragon Roost Cavern - Miniboss", the Grappling Hook Medli gives
+        // (rels/d_a_npc_md.rel@AF2F)
+        itemNo = pc_rando_rel_item("d_a_npc_md", 0xAF2F, 0x25);
+#else
         itemNo = 0x25;
+#endif
     } else if (mCurEvent == 2) {
         itemNo = 0x50;
     } else {
