@@ -52,11 +52,12 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
    left, and the place Link is in (checked of its checks).
 3. A third press hides it.
 
-Pop-ups: while the game runs (panel or not), a pop-up at the top says what the last checks did: "1
-location checked!" with the check's name, and "4 checks opened up!" when an item puts new checks in
-logic, each with the game's sound (the pause menu's select sound, or the secret-solved chime when checks
-opened up). Not for the burst of checks when a file loads. The options menu's Quality of life tab turns
-them off ("Tracker pop-ups", `COS_TRACKER_POPUPS`; on by default).
+Pop-ups: while the game runs (panel or not), a pop-up on the left, under the hearts, says what the last
+checks did: "1 location checked!" with the check's name, and "4 checks opened up!" when an item puts new
+checks in logic, each with the game's sound (the pause menu's select sound, or the secret-solved chime
+when checks opened up). Not for the burst of checks when a file loads. The options menu's Quality of life
+tab moves them to the top centre or turns them off ("Tracker pop-ups", `COS_TRACKER_POPUPS`: 1 left, the
+default; 2 top centre; 0 off).
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
 open it is hidden.
