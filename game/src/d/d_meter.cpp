@@ -7615,6 +7615,13 @@ static BOOL dMeter_Draw(sub_meter_class* i_Meter) {
 #else
     if (!fopOvlpM_IsDoingReq()) {
 #endif
+#if TARGET_PC
+        // QoL "Botón para ocultar el HUD" (pc_qol.h): the HUD's screens are not drawn at all while it is
+        // hidden. The alpha of dMeter_alphaControl/dMeter_statusCheck fades most panes, but a few the
+        // game only shows or hides (the camera icon) keep theirs; a screen fade hides them by not drawing
+        // the meter (fopOvlpM_IsDoingReq), as this does. The metronome below stays.
+        if (!pc_qol_hud_hidden()) {
+#endif
         dComIfGd_set2DOpa(&meter1);
         for (s32 i = 0; i < 3; i++) {
             dComIfGd_set2DOpa(&clock[i]);
@@ -7623,6 +7630,9 @@ static BOOL dMeter_Draw(sub_meter_class* i_Meter) {
             dComIfGd_set2DOpa(&tekari);
         }
         dComIfGd_set2DOpaTop(&meter2);
+#if TARGET_PC
+        }
+#endif
         dMeter_moveItemDraw(i_Meter);
         if (
 #if VERSION == VERSION_DEMO
