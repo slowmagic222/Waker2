@@ -509,6 +509,9 @@ const PcSettingChoice kSeaMapPos[] = {{"bottom-right", "Abajo a la derecha", "Bo
                                       {"top-left", "Arriba a la izquierda", "Top left"},
                                       {"left", "Izquierda, en medio", "Left, middle"},
                                       {"bottom-left", "Abajo a la izquierda", "Bottom left"}};
+const PcSettingChoice kSeaMapWhen[] = {{"always", "Siempre", "Always"},
+                                       {"sea", "En el mar", "On the sea"},
+                                       {"boat", "Solo en el barco", "Only in the boat"}};
 const PcSettingChoice kSeaMapOpacity[] = {{"100", "100%"}, {"75", "75%"}, {"50", "50%"}, {"25", "25%"}};
 const PcSettingChoice kQolAutosave[] = {{"0", "Desactivado", "Off"},
                                         {"items", "Al conseguir objetos", "After new items"},
@@ -723,10 +726,14 @@ const PcSettingDesc kBuiltins[] = {
     {"COS_QOL_SEA_MAP", "Mapa del mar en la esquina",
      "En el Gran Mar, una carta pequeña abajo a la derecha: las cuadrículas visitadas, dónde estás y hacia "
      "dónde miras, y el nombre de la isla. Se oculta con el HUD.",
-     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", applyQol, nullptr, 170,
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", applyQol, nullptr, 165,
      "Sea map in the corner",
      "On the Great Sea, a small chart in the bottom-right corner: the sectors you reached, where you are "
      "and which way you face, and the island's name. Hidden with the HUD."},
+    {"COS_QOL_SEA_MAP_WHEN", "Mapa del mar: cuándo",
+     "Siempre mientras juegas, solo en el mar (islas incluidas) o solo navegando en el barco.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapWhen), "always", nullptr, nullptr, 170,
+     "Sea map: when", "Always while you play, only on the sea (islands included), or only sailing in the boat."},
     {"COS_QOL_SEA_MAP_SIZE", "Mapa del mar: tamaño", "El tamaño del mapa del mar de la esquina.",
      PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapSize), "1", nullptr, nullptr, 171,
      "Sea map: size", "The size of the corner sea map."},
