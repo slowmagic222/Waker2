@@ -38,10 +38,9 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
    wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the items, the islands and
    the dungeons. On a place, the list on the right says how many of its checks are checked and names
    them, coloured as the tracker colours them: blue in logic, red not yet, and checked ones grey, ticked
-   and struck out. A moves into the list, and A there marks a check by hand (or unmarks it). On an item,
-   A gives one more and X one less, cycling as a click on the tracker's item does, for what the game
-   cannot tell (the game's own count wins again once it changes). B goes back, and B again closes the
-   screen.
+   and struck out. A moves into the list, and A there marks a check by hand (or unmarks it). On an item
+   it shows its name and count; items come from the game only and cannot be changed. B goes back, and B
+   again closes the screen.
    The screen is drawn over the paused game, which shows through, in the game's own font (its message
    font, read from the game; ImGui's until the game has loaded it), with the pause menu's own item and
    dungeon item icons (read from the game's `itemicon.arc`; the tracker's art where the game has none,
@@ -53,7 +52,7 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
 3. A third press hides it.
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
-open it is hidden. What is set by hand (checks and items) is kept per seed and save slot in
+open it is hidden. The checks marked by hand are kept per seed and save slot in
 `user/tracker/<disc>-<size>-file<N>-tracker.json`, next to the progress file, as soon as it is set.
 
 **The logic** is the tracker's own answer: the game runs the tracker's logic code (its `src/services`,
@@ -61,7 +60,7 @@ bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of its own, 
 wwrando's logic files, and merges the game's state into the tracker's (`scripts/tracker/logic/autotracker.js`):
 
 - an item is set when the game's count changed since the last state (the first state keeps the higher
-  of the tracker's and the game's count), so a mark made by hand stays until the game's count moves;
+  of the tracker's and the game's count);
 - a small key count gains what the game's held count gains;
 - locations are only ever checked, never unchecked;
 - another save slot starts over.

@@ -117,7 +117,7 @@ struct LogicResult {
     std::string error; // why there is no logic (no permalink, no files ...); empty while it starts
     int checked = 0, available = 0, remaining = 0;
     std::vector<LogicArea> areas; // the 49 islands (sea chart order), the 7 dungeons, the 3 others
-    std::vector<NamedCount> items; // the tracker's item counts: the game's, and the ones set by hand
+    std::vector<NamedCount> items; // the tracker's item counts (from the game)
     int millis = 0;               // how long the last one took
 };
 // The logic's folder: COS_TRACKER_LOGIC, else tracker-logic/ next to the game (the Switch: next to user/)
@@ -129,8 +129,6 @@ void logicToggle(const std::string& generalLocation, const std::string& detailed
 // Game thread: the file that keeps what was set by hand for the save slot being played (pc_tracker.cpp,
 // next to its progress file); a new one loads it (or starts over without one), "" keeps nothing
 void logicSaveFile(const std::string& path);
-// Game thread: an item set by hand, one more (delta > 0) or one less, cycling as the tracker's click does
-void logicItem(const std::string& item, int delta);
 // Game thread: the newest result
 const LogicResult& logicResult();
 // pc_tracker_logic.cpp: the rando disc's permalink from the text next to it; empty if none

@@ -44,8 +44,7 @@ std::mutex& sLock = *new std::mutex;
 std::condition_variable& sWake = *new std::condition_variable;
 bool sStarted = false;
 std::string sPending; // the newest state not yet worked out (empty: none)
-// what was set by hand, not yet applied: a check ("toggle", general, detailed) or an item ("item",
-// name, "1" / "-1")
+// what was set by hand, not yet applied: a check ("toggle", general, detailed)
 struct Command {
     const char* fn;
     std::string a, b;
@@ -233,10 +232,6 @@ void* run(void*) {
         for (const Command& c : commands) {
             JSValue args[2] = {JS_NewStringLen(ctx, c.a.data(), c.a.size()),
                                JS_NewStringLen(ctx, c.b.data(), c.b.size())};
-            if (strcmp(c.fn, "item") == 0) {
-                JS_FreeValue(ctx, args[1]);
-                args[1] = JS_NewInt32(ctx, atoi(c.b.c_str()));
-            }
             std::string ignored;
             callString(ctx, api, c.fn, 2, args, ignored);
             JS_FreeValue(ctx, args[0]);
@@ -362,15 +357,6 @@ void logicSaveFile(const std::string& path) {
     }
     sSaveFile = path;
     sSaveFileNew = true;
-    sWake.notify_one();
-}
-
-void logicItem(const std::string& item, int delta) {
-    std::lock_guard<std::mutex> g(sLock);
-    if (!sStarted) {
-        return;
-    }
-    sCommands.push_back({"item", item, delta < 0 ? "-1" : "1"});
     sWake.notify_one();
 }
 

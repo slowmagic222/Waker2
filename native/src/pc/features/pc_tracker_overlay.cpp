@@ -6,8 +6,8 @@
 //      (tracker-logic/art.rgba); the stick or the D-pad moves the cursor over the items, the islands and
 //      the dungeons. On a place the list on the right names its checks, each coloured as the tracker
 //      colours it (blue: in logic, red: not yet, grey, ticked and struck out: checked); A goes into the
-//      list, where A marks a check by hand. On an item A gives one more, X one less (the tracker's
-//      click), for what the game cannot tell. B goes back, then closes it.
+//      list, where A marks a check by hand. On an item, its name and count (the game's: items are
+//      only shown). B goes back, then closes it.
 //   2. a small panel in a corner while the game runs: the counts.
 //   3. hidden.
 // The default button map gives neither stick click to the game. With the options menu open it is hidden.
@@ -136,7 +136,7 @@ const Sprite* sprite(const std::string& key) {
 
 // ---- input -----------------------------------------------------------------------------------------
 
-enum Key : uint32_t { kUp = 1, kDown = 2, kLeft = 4, kRight = 8, kBack = 16, kToggle = 32, kConfirm = 64, kLess = 128 };
+enum Key : uint32_t { kUp = 1, kDown = 2, kLeft = 4, kRight = 8, kBack = 16, kToggle = 32, kConfirm = 64 };
 
 // The buttons down now, of every controller and the keyboard
 uint32_t keysDown() {
@@ -157,7 +157,6 @@ uint32_t keysDown() {
         // B: east on an Xbox-style pad, and the Switch's B (Aurora's shim maps it to east)
         keys |= button(SDL_GAMEPAD_BUTTON_EAST) ? kBack : 0;
         keys |= button(SDL_GAMEPAD_BUTTON_SOUTH) ? kConfirm : 0; // A, the same way
-        keys |= button(SDL_GAMEPAD_BUTTON_WEST) ? kLess : 0;     // X on an Xbox-style pad (the Deck)
         keys |= button(SDL_GAMEPAD_BUTTON_LEFT_STICK) && button(SDL_GAMEPAD_BUTTON_RIGHT_STICK) ? kToggle : 0;
     }
     int count = 0;
@@ -169,7 +168,6 @@ uint32_t keysDown() {
     keys |= key(SDL_SCANCODE_RIGHT) ? kRight : 0;
     keys |= key(SDL_SCANCODE_ESCAPE) ? kBack : 0;
     keys |= key(SDL_SCANCODE_RETURN) ? kConfirm : 0;
-    keys |= key(SDL_SCANCODE_BACKSPACE) ? kLess : 0;
     keys |= key(SDL_SCANCODE_F2) ? kToggle : 0;
     return keys;
 }
@@ -674,12 +672,6 @@ void drawItemInfo(const Canvas& c, const Snapshot& s, const LogicResult& logic, 
     char t[32];
     snprintf(t, sizeof t, n > 0 ? "Have: %d" : "Not yet", n);
     c.text(t, x0 + w / 2, y0 + 164, kText, 20, 0.5f);
-    if (logic.ready) {
-        c.text("A: one more   X: one less", x0 + w / 2, y0 + 200, kDimText, 0, 0.5f);
-        c.text("(the game's count wins when it changes)", x0 + w / 2, y0 + 224, kDimText, 14, 0.5f);
-    } else {
-        c.text("Set by hand once the logic runs.", x0 + w / 2, y0 + 200, kDimText, 0, 0.5f);
-    }
 }
 
 void drawScreen() {
@@ -727,7 +719,7 @@ void drawScreen() {
     drawExtras(c, s, logic);
 
     c.text(sInList    ? "Stick / D-pad: move     A: mark checked / not     B: back"
-           : sItem >= 0 ? "Stick / D-pad: move     A: one more     X: one less     B: close"
+           : sItem >= 0 ? "Stick / D-pad: move     B: close"
                         : "Stick / D-pad: move     A: its checks     B: close     L3+R3: small panel",
            40, 680, kDimText, 16);
     c.text("Art and logic: wooferzfg's TWW Randomizer Tracker", 1240, 680, kDimText, 14, 1);
@@ -780,10 +772,7 @@ void handleScreenKeys(uint32_t pressed) {
     if (!sInList) {
         moveCursor(pressed);
         if (sItem >= 0) {
-            if (logic.ready && (pressed & (kConfirm | kLess)) != 0) {
-                logicItem(itemSlots()[sItem].name, (pressed & kConfirm) != 0 ? 1 : -1);
-            }
-            return;
+            return; // items are only shown
         }
         if ((pressed & kConfirm) != 0 && area != nullptr && !area->locations.empty()) {
             sInList = true;
