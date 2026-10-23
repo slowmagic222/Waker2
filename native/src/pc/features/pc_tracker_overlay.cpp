@@ -46,7 +46,8 @@ Page sPage = HIDDEN;
 
 struct Sprite {
     ImVec2 uv0, uv1;
-    ImVec2 size; // pixels
+    ImVec2 size;            // pixels
+    ImTextureID texture{};  // its own texture (the game's icons), else the atlas'
 };
 
 struct Art {
@@ -79,7 +80,7 @@ void loadArt() {
         }
         sArt.sprites[line.substr(0, tab)] = {ImVec2(float(x) / wh[0], float(y) / wh[1]),
                                              ImVec2(float(x + w) / wh[0], float(y + h) / wh[1]),
-                                             ImVec2(float(w), float(h))};
+                                             ImVec2(float(w), float(h)), {}};
     }
     sArt.texture = aurora_imgui_add_texture(wh[0], wh[1], pixels.data());
 }
@@ -101,6 +102,31 @@ void loadFont() {
     }
     sFont.ready = true;
     writef(STDERR_FILENO, "[cos] tracker: the game's font, %d page(s)\n", int(sFont.pages.size()));
+}
+
+// The game's own icons (pc_tracker.cpp's gameItemIcon) as sprites "GAME/<item>/<count>", over the
+// tracker's art where the game has one; tried each time the screen opens until the game has them
+bool sIconsReady = false;
+
+void loadGameIcons(const std::vector<std::string>& items) {
+    if (sIconsReady) {
+        return;
+    }
+    int n = 0;
+    for (const std::string& item : items) {
+        for (int count = 1; count <= 4; count++) {
+            GameImage image;
+            if (!gameItemIcon(item, count, image)) {
+                break;
+            }
+            sArt.sprites["GAME/" + item + "/" + std::to_string(count)] = {
+                ImVec2(0, 0), ImVec2(1, 1), ImVec2(float(image.width), float(image.height)),
+                aurora_imgui_add_texture(image.width, image.height, image.rgba.data())};
+            n++;
+        }
+    }
+    sIconsReady = n > 0;
+    writef(STDERR_FILENO, "[cos] tracker: %d of the game's icons\n", n);
 }
 
 const Sprite* sprite(const std::string& key) {
@@ -319,14 +345,15 @@ struct Canvas {
 
     void image(const std::string& key, float x, float y, float w = 0, float h = 0, ImU32 tint = IM_COL32_WHITE) const {
         const Sprite* s = sprite(key);
-        if (s == nullptr || sArt.texture == ImTextureID{}) {
+        const ImTextureID texture = s != nullptr && s->texture != ImTextureID{} ? s->texture : sArt.texture;
+        if (s == nullptr || texture == ImTextureID{}) {
             return;
         }
         if (w <= 0) {
             w = s->size.x;
             h = s->size.y;
         }
-        dl->AddImage(sArt.texture, at(x, y), at(x + w, y + h), s->uv0, s->uv1, tint);
+        dl->AddImage(texture, at(x, y), at(x + w, y + h), s->uv0, s->uv1, tint);
     }
 
     void rect(float x, float y, float w, float h, ImU32 color, float rounding = 0) const {
@@ -451,6 +478,23 @@ int itemCount(const Snapshot& s, const LogicResult& logic, const std::string& na
     return countOf(s.items, name);
 }
 
+// The game's icon for count n (the highest it has at most n), the first one dimmed for none; else the
+// tracker's art
+void drawItemIcon(const Canvas& c, const std::string& item, int n, float x, float y, float size) {
+    for (int k = std::max(n, 1); k >= 1; k--) {
+        const std::string key = "GAME/" + item + "/" + std::to_string(k);
+        if (const Sprite* sp = sprite(key)) {
+            // the game's icons are square, drawn at their own proportions inside the cell
+            const float scale = size / std::max(sp->size.x, sp->size.y);
+            const float w = sp->size.x * scale, h = sp->size.y * scale;
+            c.image(key, x + (size - w) / 2, y + (size - h) / 2, w, h,
+                    n > 0 ? IM_COL32_WHITE : IM_COL32(40, 40, 50, 150));
+            return;
+        }
+    }
+    c.image(itemKey(item, n), x, y, size, size);
+}
+
 void drawItems(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     c.image("ITEMS_TABLE_BACKGROUND", kItemsX, kItemsY);
     c.image("PEARL_HOLDER", kItemsX + 14, kItemsY + 13 + 4 * kItemCell + 2, 100, 100);
@@ -458,7 +502,7 @@ void drawItems(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     for (size_t i = 0; i < slots.size(); i++) {
         const ItemSlot& slot = slots[i];
         const int n = itemCount(s, logic, slot.name);
-        c.image(itemKey(slot.name, n), slot.x, slot.y, slot.size, slot.size);
+        drawItemIcon(c, slot.name, n, slot.x, slot.y, slot.size);
         if (n > 1 && (strcmp(slot.name, "Empty Bottle") == 0 || strcmp(slot.name, "Tingle Statue") == 0)) {
             char t[8];
             snprintf(t, sizeof t, "%d", n);
@@ -492,6 +536,21 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
     }
 }
 
+// A dungeon item in a 20x20 cell: the game's icon (dimmed without it, the small keys' count over it), else
+// the tracker's art
+void dungeonIcon(const Canvas& c, const char* kind, int n, const std::string& trackerKey, float x, float y) {
+    if (sprite(std::string("GAME/") + kind + "/1") == nullptr) {
+        c.image(trackerKey, x, y, 20, 20);
+        return;
+    }
+    drawItemIcon(c, kind, n > 0 ? 1 : 0, x, y, 20);
+    if (n > 1 || (n == 1 && strcmp(kind, "Small Key") == 0)) {
+        char t[8];
+        snprintf(t, sizeof t, "%d", n);
+        c.text(t, x + 21, y + 6, kText, 14, 1);
+    }
+}
+
 // The dungeons, each with its map, compass, big key and small keys held, and the three other places
 void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     const float x0 = kExtrasX, y0 = kExtrasY;
@@ -511,12 +570,15 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
                 // found (the tracker's count) once the logic runs, else held now
                 const int held = logic.ready ? countOf(logic.items, prefix + " Small Key")
                                              : countOf(s.smallKeysHeld, prefix + " Small Key");
-                c.image("SMALL_KEYS/" + std::to_string(std::min(held, 4)), x + 2, y0, 20, 20);
-                c.image("BIG_KEYS/" + std::to_string(itemCount(s, logic, prefix + " Big Key") > 0 ? 1 : 0), x + 22, y0, 20, 20);
+                dungeonIcon(c, "Small Key", held, "SMALL_KEYS/" + std::to_string(std::min(held, 4)), x + 2, y0);
+                const int big = itemCount(s, logic, prefix + " Big Key") > 0 ? 1 : 0;
+                dungeonIcon(c, "Big Key", big, "BIG_KEYS/" + std::to_string(big), x + 22, y0);
             }
             if (i != 6) {
-                c.image("DUNGEON_MAPS/" + std::to_string(itemCount(s, logic, prefix + " Dungeon Map") > 0 ? 1 : 0), x + 42, y0, 20, 20);
-                c.image("COMPASSES/" + std::to_string(itemCount(s, logic, prefix + " Compass") > 0 ? 1 : 0), x + 62, y0, 20, 20);
+                const int map = itemCount(s, logic, prefix + " Dungeon Map") > 0 ? 1 : 0;
+                const int compass = itemCount(s, logic, prefix + " Compass") > 0 ? 1 : 0;
+                dungeonIcon(c, "Dungeon Map", map, "DUNGEON_MAPS/" + std::to_string(map), x + 42, y0);
+                dungeonIcon(c, "Compass", compass, "COMPASSES/" + std::to_string(compass), x + 62, y0);
             }
             c.image("DUNGEONS/" + name + "/false", x + 4, y0 + 22, 76, 76);
         } else {
@@ -608,7 +670,7 @@ void drawItemInfo(const Canvas& c, const Snapshot& s, const LogicResult& logic, 
     const ItemSlot& slot = itemSlots()[sItem];
     c.text(slot.name, x0 + 14, y0 + 12, kAccent, 22);
     const int n = itemCount(s, logic, slot.name);
-    c.image(itemKey(slot.name, n), x0 + (w - 96) / 2, y0 + 56, 96, 96);
+    drawItemIcon(c, slot.name, n, x0 + (w - 96) / 2, y0 + 56, 96);
     char t[32];
     snprintf(t, sizeof t, n > 0 ? "Have: %d" : "Not yet", n);
     c.text(t, x0 + w / 2, y0 + 164, kText, 20, 0.5f);
@@ -794,6 +856,16 @@ extern "C" void pc_tracker_overlay_frame(void) {
             loadArt();
         }
         loadFont();
+        {
+            std::vector<std::string> items;
+            for (const ItemSlot& slot : itemSlots()) {
+                items.push_back(slot.name);
+            }
+            for (const char* kind : {"Dungeon Map", "Compass", "Big Key", "Small Key"}) {
+                items.push_back(kind);
+            }
+            loadGameIcons(items);
+        }
         PADBlockInput(true); // again: the options menu unblocks on closing
         holdGame(false);
         handleScreenKeys(pressed);

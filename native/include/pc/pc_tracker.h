@@ -85,6 +85,15 @@ struct GameFont {
     FontGlyph glyphs[95];                    // ' ' to '~'
 };
 bool gameFont(GameFont& out);
+// The game's own icon for an item (the pause menu's: /res/Msg/itemicon.arc, by the tracker's item name
+// and count, or "Dungeon Map", "Compass", "Big Key", "Small Key"; a count of 0 gives the first one),
+// decoded to RGBA. pc_tracker.cpp, game thread; false if
+// the game has no icon for it (the screen then uses the tracker's art).
+struct GameImage {
+    int width = 0, height = 0;
+    std::vector<uint8_t> rgba;
+};
+bool gameItemIcon(const std::string& item, int count, GameImage& out);
 
 // pc_tracker_logic.cpp: the tracker's logic (which locations are in logic), on its own thread
 namespace LogicColor {

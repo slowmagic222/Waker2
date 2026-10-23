@@ -23,6 +23,8 @@
 
 #include "JSystem/JKernel/JKRHeap.h"
 #include "JSystem/JUtility/JUTResFont.h"
+#include "JSystem/JUtility/JUTTexture.h"
+#include "JSystem/JKernel/JKRArchive.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_item_data.h"
 #include "d/d_s_play.h"
@@ -713,6 +715,258 @@ bool decodeFontPage(const u8* src, int w, int h, int format, std::vector<uint8_t
     return true;
 }
 } // namespace
+
+namespace {
+// A GX texture (a BTI's image, as ResTIMG describes it) decoded to RGBA: the formats the menus use
+bool decodeGx(int format, int w, int h, const u8* src, const u8* palette, int paletteFormat, int colors,
+              std::vector<uint8_t>& out) {
+    out.assign(size_t(w) * h * 4, 0);
+    const auto rgb565 = [](u16 v, u8* p) {
+        p[0] = u8(((v >> 11) & 31) * 255 / 31);
+        p[1] = u8(((v >> 5) & 63) * 255 / 63);
+        p[2] = u8((v & 31) * 255 / 31);
+        p[3] = 255;
+    };
+    const auto rgb5a3 = [](u16 v, u8* p) {
+        if (v & 0x8000) {
+            p[0] = u8(((v >> 10) & 31) * 255 / 31);
+            p[1] = u8(((v >> 5) & 31) * 255 / 31);
+            p[2] = u8((v & 31) * 255 / 31);
+            p[3] = 255;
+        } else {
+            p[0] = u8(((v >> 8) & 15) * 17);
+            p[1] = u8(((v >> 4) & 15) * 17);
+            p[2] = u8((v & 15) * 17);
+            p[3] = u8(((v >> 12) & 7) * 255 / 7);
+        }
+    };
+    const auto be16 = [](const u8* p) { return u16((p[0] << 8) | p[1]); };
+    const auto paletteColor = [&](int index, u8* p) {
+        if (palette == nullptr || index >= colors) {
+            return;
+        }
+        const u16 v = be16(palette + index * 2);
+        if (paletteFormat == GX_TL_IA8) {
+            p[0] = p[1] = p[2] = u8(v & 0xFF);
+            p[3] = u8(v >> 8);
+        } else if (paletteFormat == GX_TL_RGB565) {
+            rgb565(v, p);
+        } else {
+            rgb5a3(v, p);
+        }
+    };
+    int bw, bh;
+    switch (format) {
+    case GX_TF_I4: case GX_TF_C4: case GX_TF_CMPR: bw = 8; bh = 8; break;
+    case GX_TF_I8: case GX_TF_IA4: case GX_TF_C8: bw = 8; bh = 4; break;
+    case GX_TF_IA8: case GX_TF_RGB565: case GX_TF_RGB5A3: case GX_TF_RGBA8: bw = 4; bh = 4; break;
+    default: return false;
+    }
+    const auto texel = [&](int x, int y) -> u8* {
+        static u8 dummy[4];
+        return x < w && y < h ? &out[(size_t(y) * w + x) * 4] : dummy;
+    };
+    const u8* at = src;
+    for (int by = 0; by < h; by += bh) {
+        for (int bx = 0; bx < w; bx += bw) {
+            if (format == GX_TF_CMPR) {
+                // four 4x4 DXT1 blocks
+                for (int sub = 0; sub < 4; sub++, at += 8) {
+                    const u16 c0 = be16(at), c1 = be16(at + 2);
+                    u8 pal[4][4];
+                    rgb565(c0, pal[0]);
+                    rgb565(c1, pal[1]);
+                    for (int k = 0; k < 3; k++) {
+                        if (c0 > c1) {
+                            pal[2][k] = u8((2 * pal[0][k] + pal[1][k]) / 3);
+                            pal[3][k] = u8((pal[0][k] + 2 * pal[1][k]) / 3);
+                        } else {
+                            pal[2][k] = u8((pal[0][k] + pal[1][k]) / 2);
+                            pal[3][k] = 0;
+                        }
+                    }
+                    pal[2][3] = 255;
+                    pal[3][3] = c0 > c1 ? 255 : 0;
+                    for (int y = 0; y < 4; y++) {
+                        const u8 bits = at[4 + y];
+                        for (int x = 0; x < 4; x++) {
+                            memcpy(texel(bx + (sub & 1) * 4 + x, by + (sub >> 1) * 4 + y), pal[(bits >> (6 - x * 2)) & 3], 4);
+                        }
+                    }
+                }
+                continue;
+            }
+            if (format == GX_TF_RGBA8) {
+                // the AR halves, then the GB halves
+                for (int i = 0; i < 16; i++) {
+                    u8* p = texel(bx + i % 4, by + i / 4);
+                    p[3] = at[i * 2];
+                    p[0] = at[i * 2 + 1];
+                    p[1] = at[32 + i * 2];
+                    p[2] = at[32 + i * 2 + 1];
+                }
+                at += 64;
+                continue;
+            }
+            for (int y = 0; y < bh; y++) {
+                for (int x = 0; x < bw; x++) {
+                    u8* p = texel(bx + x, by + y);
+                    const int i = y * bw + x;
+                    switch (format) {
+                    case GX_TF_I4: {
+                        const u8 v = u8(((i & 1) == 0 ? at[i / 2] >> 4 : at[i / 2] & 15) * 17);
+                        p[0] = p[1] = p[2] = p[3] = v;
+                        break;
+                    }
+                    case GX_TF_I8: p[0] = p[1] = p[2] = p[3] = at[i]; break;
+                    case GX_TF_IA4:
+                        p[0] = p[1] = p[2] = u8((at[i] & 15) * 17);
+                        p[3] = u8((at[i] >> 4) * 17);
+                        break;
+                    case GX_TF_IA8:
+                        p[3] = at[i * 2];
+                        p[0] = p[1] = p[2] = at[i * 2 + 1];
+                        break;
+                    case GX_TF_RGB565: rgb565(be16(at + i * 2), p); break;
+                    case GX_TF_RGB5A3: rgb5a3(be16(at + i * 2), p); break;
+                    case GX_TF_C4: paletteColor((i & 1) == 0 ? at[i / 2] >> 4 : at[i / 2] & 15, p); break;
+                    case GX_TF_C8: paletteColor(at[i], p); break;
+                    case GX_TF_C14X2: paletteColor(be16(at + i * 2) & 0x3FFF, p); break;
+                    }
+                }
+            }
+            at += 32;
+        }
+    }
+    return true;
+}
+
+// The pause menu's icons (itemicon.arc) for the tracker's items, by count (the first entry: count 1)
+struct IconNames {
+    const char* item;
+    int items[4];         // game item numbers whose inventory icon to use, or 0
+    const char* bti[4];   // or the quest status' own textures in the same archive
+};
+const IconNames kIcons[] = {
+    {"Telescope", {dItemNo_TELESCOPE_e}, {}},
+    {"Boat's Sail", {dItemNo_SAIL_e}, {}},
+    {"Wind Waker", {dItemNo_WIND_WAKER_e}, {}},
+    {"Grappling Hook", {dItemNo_GRAPPLING_HOOK_e}, {}},
+    {"Spoils Bag", {dItemNo_SPOILS_BAG_e}, {}},
+    {"Boomerang", {dItemNo_BOOMERANG_e}, {}},
+    {"Deku Leaf", {dItemNo_DEKU_LEAF_e}, {}},
+    {"Progressive Sword", {}, {"sword_00.bti", "sword_01.bti", "sword_02.bti", "sword_03.bti"}},
+    {"Tingle Tuner", {dItemNo_TINGLE_TUNER_e}, {}},
+    {"Progressive Picto Box", {dItemNo_PICTO_BOX_e, dItemNo_DELUXE_PICTO_BOX_e}, {}},
+    {"Iron Boots", {dItemNo_IRON_BOOTS_e}, {}},
+    {"Magic Armor", {dItemNo_MAGIC_ARMOR_e}, {}},
+    {"Bait Bag", {dItemNo_BAIT_BAG_e}, {}},
+    {"Progressive Bow", {dItemNo_BOW_e, dItemNo_MAGIC_ARROW_e, dItemNo_LIGHT_ARROW_e}, {}},
+    {"Bombs", {dItemNo_BOMB_BAG_e}, {}},
+    {"Progressive Shield", {}, {"shield_00.bti", "shield_01.bti"}},
+    {"Cabana Deed", {dItemNo_CABANA_DEED_e}, {}},
+    {"Maggie's Letter", {dItemNo_MAGGIES_LETTER_e}, {}},
+    {"Moblin's Letter", {dItemNo_MOBLINS_LETTER_e}, {}},
+    {"Note to Mom", {dItemNo_NOTE_TO_MOM_e}, {}},
+    {"Delivery Bag", {dItemNo_DELIVERY_BAG_e}, {}},
+    {"Hookshot", {dItemNo_HOOKSHOT_e}, {}},
+    {"Skull Hammer", {dItemNo_SKULL_HAMMER_e}, {}},
+    {"Power Bracelets", {}, {"gloves_00.bti"}},
+    {"Empty Bottle", {dItemNo_EMPTY_BOTTLE_e, dItemNo_EMPTY_BOTTLE_e, dItemNo_EMPTY_BOTTLE_e, dItemNo_EMPTY_BOTTLE_e}, {}},
+    {"Wind's Requiem", {dItemNo_WINDS_REQUIEM_e}, {}},
+    {"Ballad of Gales", {dItemNo_BALLAD_OF_GALES_e}, {}},
+    {"Command Melody", {dItemNo_COMMAND_MELODY_e}, {}},
+    {"Earth God's Lyric", {dItemNo_EARTH_GODS_LYRIC_e}, {}},
+    {"Wind God's Aria", {dItemNo_WIND_GODS_ARIA_e}, {}},
+    {"Song of Passing", {dItemNo_SONG_OF_PASSING_e}, {}},
+    {"Hero's Charm", {}, {"amulet_01.bti"}},
+    // dMenu_Collect's symTex, in dSymbol order (Nayru, Din, Farore)
+    {"Nayru's Pearl", {}, {"god_symbol_02.bti"}},
+    {"Din's Pearl", {}, {"god_symbol_00.bti"}},
+    {"Farore's Pearl", {}, {"god_symbol_01.bti"}},
+    {"Tingle Statue", {dItemNo_TINGLE_STATUE_1_e}, {}},
+    {"Hurricane Spin", {dItemNo_HURRICANE_SPIN_e}, {}},
+    {"Progressive Bomb Bag", {dItemNo_MAX_BOMB_UP1_e, dItemNo_MAX_BOMB_UP2_e}, {}},
+    {"Progressive Quiver", {dItemNo_MAX_ARROW_UP1_e, dItemNo_MAX_ARROW_UP2_e}, {}},
+    {"Progressive Wallet", {dItemNo_MAX_RUPEE_UP1_e, dItemNo_MAX_RUPEE_UP2_e}, {}},
+    {"Progressive Magic Meter", {dItemNo_MAGIC_POWER_e, dItemNo_MAX_MP_UP1_e}, {}},
+    // the dungeon items, by kind
+    {"Dungeon Map", {dItemNo_MAP_e}, {}},
+    {"Compass", {dItemNo_COMPASS_e}, {}},
+    {"Big Key", {dItemNo_BOSS_KEY_e}, {}},
+    {"Small Key", {dItemNo_SMALL_KEY_e}, {}},
+};
+
+bool readBti(const char* name, GameImage& out) {
+    JKRArchive* archive = dComIfGp_getItemIconArchive();
+    if (archive == nullptr || name == nullptr || name[0] == '\0') {
+        return false;
+    }
+    alignas(32) static u8 sBuf[0x10000];
+    const u32 size = JKRReadTypeResource(sBuf, sizeof sBuf, 'TIMG', name, archive);
+    if (size < sizeof(ResTIMG)) {
+        return false;
+    }
+    const ResTIMG* t = reinterpret_cast<const ResTIMG*>(sBuf);
+    const int w = u16(t->width), h = u16(t->height);
+    const u32 image = u32(t->imageOffset) != 0 ? u32(t->imageOffset) : sizeof(ResTIMG);
+    if (w <= 0 || h <= 0 || w > 512 || h > 512 || image >= size) {
+        return false;
+    }
+    const u8* palette = t->indexTexture && u32(t->paletteOffset) < size ? sBuf + u32(t->paletteOffset) : nullptr;
+    out.width = w;
+    out.height = h;
+    return decodeGx(t->format, w, h, sBuf + image, palette, t->colorFormat, u16(t->numColors), out.rgba);
+}
+} // namespace
+
+// The pause menu's archives' file names, once in the log: what the screen can take from the game next
+static void logMenuArchives() {
+    static bool sDone = false;
+    if (sDone) {
+        return;
+    }
+    sDone = true;
+    const struct {
+        const char* name;
+        JKRArchive* archive;
+    } kArchives[] = {
+        {"itemres.arc", dComIfGp_getItemResArchive()},
+        {"clctres.arc", dComIfGp_getCollectResArchive()},
+        {"itemicon.arc", dComIfGp_getItemIconArchive()},
+    };
+    for (const auto& a : kArchives) {
+        if (a.archive == nullptr || a.archive->mFiles == nullptr || a.archive->mStringTable == nullptr) {
+            continue;
+        }
+        std::string names;
+        for (u32 i = 0; i < a.archive->countFile(); i++) {
+            const JKRArchive::SDIFileEntry& f = a.archive->mFiles[i];
+            if ((f.getFlags() & 1) != 0) {
+                names += ' ';
+                names += a.archive->mStringTable + f.getNameOffset();
+            }
+        }
+        writef(STDERR_FILENO, "[cos] tracker: %s:%s\n", a.name, names.c_str());
+    }
+}
+bool gameItemIcon(const std::string& item, int count, GameImage& out) {
+    logMenuArchives();
+    for (const IconNames& n : kIcons) {
+        if (item != n.item) {
+            continue;
+        }
+        int i = std::max(0, std::min(count, 4) - 1);
+        while (i > 0 && n.items[i] == 0 && n.bti[i] == nullptr) {
+            i--;
+        }
+        if (n.bti[i] != nullptr) {
+            return readBti(n.bti[i], out);
+        }
+        return n.items[i] != 0 && readBti(dItem_data::getTexture(u8(n.items[i])), out);
+    }
+    return false;
+}
 
 bool gameFont(GameFont& out) {
     JUTResFont* font = static_cast<JUTResFont*>(mDoExt_font0);
