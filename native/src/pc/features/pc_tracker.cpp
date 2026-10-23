@@ -630,6 +630,8 @@ std::string build(unsigned int frame) {
     sCurStage = dStage_stagInfo_GetSaveTbl(info);
     if (const std::string key = progressKey(); key != sProgress.key) {
         loadProgress(key);
+        // what was set by hand on the tracker screen, per slot too (pc_tracker_logic.cpp)
+        logicSaveFile(key.empty() ? "" : progressDir() + "/" + key + "-tracker.json");
     }
     whereIsLink(dComIfGp_getStartStageName());
     out += ", \"playing\": true, \"saveSlot\": " + std::to_string(dComIfGs_getDataNum());

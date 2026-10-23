@@ -8,6 +8,7 @@
 //                                     then Mailbox, The Great Sea, Hyrule): [{name, dungeon, available, remaining, color,
 //                                     locations: [{name, color}]}], checked, available, remaining}
 //   cosTracker.toggle(generalLocation, detailedLocation): a check marked by hand
+//   cosTracker.save() -> JSON / cosTracker.load(json): the state, kept across a restart
 //   cosTracker.item(itemName, delta): an item set by hand, one more (delta 1) or one less (-1), cycling
 //                                     as a click on the tracker's item does
 //   (update and updateText take an empty string for "no new state": the result after a toggle)
@@ -35,6 +36,7 @@ import TrackerState from './services/tracker-state';
 
 let trackerState = null;
 let previousGame = null;
+let currentPermalink = null;
 
 function areaSummary(logic, name, isDungeon, onlyProgressLocations) {
   const counts = logic.locationCounts(name, { isDungeon, onlyProgressLocations, disableLogic: false });
@@ -65,6 +67,7 @@ globalThis.cosTracker = {
       LogicHelper.initialize();
       trackerState = TrackerState.default();
       previousGame = null;
+      currentPermalink = permalink;
       return JSON.stringify({ version: Settings.getVersion() });
     } catch (err) {
       trackerState = null;
@@ -115,6 +118,41 @@ globalThis.cosTracker = {
         ? trackerState.decrementItem(itemName, true)
         : trackerState.incrementItem(itemName, true);
     }
+  },
+
+  // The tracker's state, to keep what was set by hand across a restart (one file per save slot)
+  save() {
+    if (_.isNil(trackerState)) {
+      return '';
+    }
+    return JSON.stringify({ permalink: currentPermalink, state: trackerState.readState() });
+  },
+
+  // A state save() made for this seed, or '' (another slot without one): the default state; the
+  // game's next state is merged in as the first one
+  load(savedJson) {
+    if (_.isNil(trackerState)) {
+      return;
+    }
+    const fresh = TrackerState.default();
+    let saved = null;
+    try {
+      saved = _.isEmpty(savedJson) ? null : JSON.parse(savedJson);
+    } catch (err) {
+      saved = null;
+    }
+    if (_.isNil(saved) || saved.permalink !== currentPermalink || !_.isObject(saved.state)) {
+      trackerState = fresh;
+    } else {
+      const raw = fresh.readState();
+      _.forEach(_.keys(raw), (key) => {
+        if (_.isObject(saved.state[key])) {
+          raw[key] = _.merge({}, raw[key], saved.state[key]);
+        }
+      });
+      trackerState = TrackerState.createStateRaw(raw);
+    }
+    previousGame = null;
   },
 
   updateText(gameStateJson, onlyProgressLocations = true) {

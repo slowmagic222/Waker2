@@ -53,7 +53,8 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
 3. A third press hides it.
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
-open it is hidden. Marks made by hand last until the game is closed.
+open it is hidden. What is set by hand (checks and items) is kept per seed and save slot in
+`user/tracker/<disc>-<size>-file<N>-tracker.json`, next to the progress file, as soon as it is set.
 
 **The logic** is the tracker's own answer: the game runs the tracker's logic code (its `src/services`,
 bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of its own, on the seed's settings and

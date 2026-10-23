@@ -126,6 +126,9 @@ std::string logicDir();
 void logicSubmit(const std::string& stateJson);
 // Game thread: mark a check by hand (or unmark it), as a click in the tracker does
 void logicToggle(const std::string& generalLocation, const std::string& detailedLocation);
+// Game thread: the file that keeps what was set by hand for the save slot being played (pc_tracker.cpp,
+// next to its progress file); a new one loads it (or starts over without one), "" keeps nothing
+void logicSaveFile(const std::string& path);
 // Game thread: an item set by hand, one more (delta > 0) or one less, cycling as the tracker's click does
 void logicItem(const std::string& item, int delta);
 // Game thread: the newest result

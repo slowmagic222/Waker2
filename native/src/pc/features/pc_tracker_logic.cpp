@@ -51,6 +51,9 @@ struct Command {
     std::string a, b;
 };
 std::vector<Command> sCommands;
+// the save slot's file for what was set by hand (logicSaveFile): the path, and whether it changed
+std::string sSaveFile;
+bool sSaveFileNew = false;
 LogicResult sDone;    // the thread's newest result
 bool sDoneNew = false;
 LogicResult sResult; // the game thread's copy
@@ -199,16 +202,34 @@ void* run(void*) {
     std::string().swap(macros);
     std::string().swap(script);
 
+    std::string saveFile; // the save slot's file for what was set by hand
     for (;;) {
         std::string state;
         std::vector<Command> commands;
+        std::string newSaveFile;
+        bool saveFileChanged = false;
         {
             std::unique_lock<std::mutex> g(sLock);
-            sWake.wait(g, [] { return !sPending.empty() || !sCommands.empty(); });
+            sWake.wait(g, [] { return !sPending.empty() || !sCommands.empty() || sSaveFileNew; });
             state.swap(sPending);
             commands.swap(sCommands);
+            saveFileChanged = sSaveFileNew;
+            newSaveFile = sSaveFile;
+            sSaveFileNew = false;
         }
         const auto t0 = std::chrono::steady_clock::now();
+        if (saveFileChanged) {
+            // another seed's slot: its own state (what was set by hand), or the default one
+            saveFile = newSaveFile;
+            std::string saved;
+            if (!saveFile.empty() && readFile(saveFile, saved)) {
+                writef(STDERR_FILENO, "[cos] tracker: marks by hand from %s\n", saveFile.c_str());
+            }
+            JSValue arg = JS_NewStringLen(ctx, saved.data(), saved.size());
+            std::string ignored;
+            callString(ctx, api, "load", 1, &arg, ignored);
+            JS_FreeValue(ctx, arg);
+        }
         for (const Command& c : commands) {
             JSValue args[2] = {JS_NewStringLen(ctx, c.a.data(), c.a.size()),
                                JS_NewStringLen(ctx, c.b.data(), c.b.size())};
@@ -220,6 +241,18 @@ void* run(void*) {
             callString(ctx, api, c.fn, 2, args, ignored);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
+        }
+        if (!commands.empty() && !saveFile.empty()) {
+            // kept at once, written to a new file then renamed over the old one
+            std::string saved;
+            if (callString(ctx, api, "save", 0, nullptr, saved) && !saved.empty()) {
+                const std::string tmp = saveFile + ".tmp";
+                if (FILE* f = fopen(tmp.c_str(), "w")) {
+                    fwrite(saved.data(), 1, saved.size(), f);
+                    fclose(f);
+                    rename(tmp.c_str(), saveFile.c_str());
+                }
+            }
         }
         // an empty state: the last one again (after something set by hand)
         JSValue arg = JS_NewStringLen(ctx, state.data(), state.size());
@@ -319,6 +352,16 @@ void logicToggle(const std::string& generalLocation, const std::string& detailed
         return;
     }
     sCommands.push_back({"toggle", generalLocation, detailedLocation});
+    sWake.notify_one();
+}
+
+void logicSaveFile(const std::string& path) {
+    std::lock_guard<std::mutex> g(sLock);
+    if (path == sSaveFile) {
+        return;
+    }
+    sSaveFile = path;
+    sSaveFileNew = true;
     sWake.notify_one();
 }
 
