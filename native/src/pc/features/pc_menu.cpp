@@ -705,6 +705,13 @@ const PcSettingDesc kBuiltins[] = {
      "Second item set (X/Y/Z)",
      "That button swaps the X, Y and Z items for a second set; equip them in the menu as usual. Kept "
      "per save slot (BetterWW's Gecko code)."},
+    {"COS_TRACKER_POPUPS", "Avisos del tracker",
+     "Avisos arriba al jugar: \"1 location checked!\" al abrir un cofre, \"4 checks opened up!\" cuando un "
+     "objeto abre lugares nuevos (docs/TRACKER.md).",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "1", nullptr, nullptr, 170,
+     "Tracker pop-ups",
+     "Pop-ups at the top while playing: \"1 location checked!\" for a check, \"4 checks opened up!\" when "
+     "an item opens up new places (docs/TRACKER.md)."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",

@@ -94,6 +94,9 @@ struct GameImage {
     std::vector<uint8_t> rgba;
 };
 bool gameItemIcon(const std::string& item, int count, GameImage& out);
+// The game's sound for a tracker pop-up (game thread): the secret-solved chime when checks opened up,
+// else the pause menu's select sound. Nothing while the game's audio is off.
+void popupSound(bool opened);
 
 // pc_tracker_logic.cpp: the tracker's logic (which locations are in logic), on its own thread
 namespace LogicColor {
@@ -119,16 +122,12 @@ struct LogicResult {
     std::vector<LogicArea> areas; // the 49 islands (sea chart order), the 7 dungeons, the 3 others
     std::vector<NamedCount> items; // the tracker's item counts (from the game)
     int millis = 0;               // how long the last one took
+    int serial = 0;               // one more for each new result (logicResult)
 };
 // The logic's folder: COS_TRACKER_LOGIC, else tracker-logic/ next to the game (the Switch: next to user/)
 std::string logicDir();
 // Game thread: work out this state (stateJson's JSON) next; the first call starts the thread.
 void logicSubmit(const std::string& stateJson);
-// Game thread: mark a check by hand (or unmark it), as a click in the tracker does
-void logicToggle(const std::string& generalLocation, const std::string& detailedLocation);
-// Game thread: the file that keeps what was set by hand for the save slot being played (pc_tracker.cpp,
-// next to its progress file); a new one loads it (or starts over without one), "" keeps nothing
-void logicSaveFile(const std::string& path);
 // Game thread: the newest result
 const LogicResult& logicResult();
 // pc_tracker_logic.cpp: the rando disc's permalink from the text next to it; empty if none

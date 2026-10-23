@@ -11,7 +11,7 @@ import TrackerState from './tracker-state';
 //   smallKeysHeld   small keys held now per dungeon (the game does not count the keys used)
 //   locations       { generalLocation: { detailedLocation: checked } } for the ones it can tell
 //   salvagedCharts  the charts whose sunken treasure was salvaged
-// The game's state is merged into the tracker's, so marks made by hand stay: an item is set when
+// The game's state is merged into the tracker's: an item is set when
 // the game's count changed since the last state applied (the first time, the higher of the two),
 // a small key count gains what the game's count gains, and locations are only ever checked,
 // never unchecked.

@@ -6,14 +6,18 @@
 //      (tracker-logic/art.rgba); the stick or the D-pad moves the cursor over the items, the islands and
 //      the dungeons. On a place the list on the right names its checks, each coloured as the tracker
 //      colours it (blue: in logic, red: not yet, grey, ticked and struck out: checked); A goes into the
-//      list, where A marks a check by hand. On an item, its name and count (the game's: items are
-//      only shown). B goes back, then closes it.
-//   2. a small panel in a corner while the game runs: the counts.
+//      list to scroll it. On an item, its name and count. Everything comes from the game: nothing is
+//      set by hand. B goes back, then closes it.
+//   2. a small panel in a corner while the game runs: the counts, and Link's place's.
 //   3. hidden.
+// Outside the screen, pop-ups say what the last checks did: "1 location checked!", "4 checks opened up!",
+// with the game's sound (the options menu's COS_TRACKER_POPUPS turns them off).
 // The default button map gives neither stick click to the game. With the options menu open it is hidden.
 #include "pc_internal.h"
 
 #include "pc/pc_tracker.h"
+
+#include "pc/pc_settings.h"
 
 #include <aurora/imgui.h>
 #include <imgui.h>
@@ -27,6 +31,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <set>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -468,7 +473,7 @@ std::string itemKey(const std::string& item, int count) {
     return "ITEMS/" + item + "/0";
 }
 
-// An item's count: the tracker's (the game's and the ones set by hand) once its logic runs, else the game's
+// An item's count: the tracker's (from the game) once its logic runs, else the game's
 int itemCount(const Snapshot& s, const LogicResult& logic, const std::string& name) {
     if (logic.ready) {
         return countOf(logic.items, name);
@@ -718,41 +723,52 @@ void drawScreen() {
     }
     drawExtras(c, s, logic);
 
-    c.text(sInList    ? "Stick / D-pad: move     A: mark checked / not     B: back"
+    c.text(sInList    ? "Stick / D-pad: move     B: back"
            : sItem >= 0 ? "Stick / D-pad: move     B: close"
                         : "Stick / D-pad: move     A: its checks     B: close     L3+R3: small panel",
            40, 680, kDimText, 16);
     c.text("Art and logic: wooferzfg's TWW Randomizer Tracker", 1240, 680, kDimText, 14, 1);
 }
 
+// The small panel in the top right corner, in the game's font as the screen: the counts, and the
+// place Link is in (or the cursor's)
 void drawPanel() {
     const Snapshot& s = snapshot();
     const LogicResult& logic = logicResult();
     ImGuiIO& io = ImGui::GetIO();
-    const float scale = std::max(1.0f, io.DisplaySize.y / 720.0f * 1.25f);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 8.0f, 8.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(0.78f);
-    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                                        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
-    if (!ImGui::Begin("##cos_tracker_panel", nullptr, kFlags)) {
-        ImGui::End();
-        return;
-    }
-    ImGui::SetWindowFontScale(scale);
-    const ImVec4 accent = ImGui::ColorConvertU32ToFloat4(kAccent);
+    const float scale = std::min(io.DisplaySize.x / 1280.0f, io.DisplaySize.y / 720.0f);
+    // the layout's right edge on the window's
+    Canvas c{ImGui::GetForegroundDrawList(), ImVec2(io.DisplaySize.x - 1280 * scale, 0), scale, ImGui::GetFont(),
+             18.0f};
+    constexpr float kRight = 1272, kTop = 8, kPad = 10, kLine = 24, kSmall = 15;
+
+    // each line: its parts (text, colour) drawn one after another
+    struct Part {
+        std::string text;
+        ImU32 color;
+    };
+    std::vector<std::vector<Part>> lines;
+    int place = -1;
+    char t[160];
     if (!s.playing) {
-        ImGui::TextColored(accent, "Tracker");
-        ImGui::TextDisabled("Start or load a file.");
+        lines.push_back({{"Tracker", kAccent}, {"  Start or load a file.", kDimText}});
     } else if (logic.ready) {
-        ImGui::TextColored(accent, "Tracker");
-        ImGui::SameLine();
-        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(kAvailable), "%d in logic", logic.available);
-        ImGui::SameLine();
-        ImGui::Text("/ %d left", logic.remaining);
-        if (sCursor < int(logic.areas.size())) {
-            const LogicArea& a = logic.areas[sCursor];
-            ImGui::TextDisabled("%s: %d / %d", a.name.c_str(), a.available, a.remaining);
+        snprintf(t, sizeof t, "%d in logic", logic.available);
+        std::vector<Part> first{{"Tracker  ", kAccent}, {t, kAvailable}};
+        snprintf(t, sizeof t, "   %d left", logic.remaining);
+        first.push_back({t, kText});
+        lines.push_back(first);
+        place = s.where >= 0 && s.where < int(logic.areas.size()) ? s.where
+                : sCursor < int(logic.areas.size())                ? sCursor
+                                                                   : -1;
+        if (place >= 0) {
+            const LogicArea& a = logic.areas[place];
+            if (a.locations.empty()) {
+                snprintf(t, sizeof t, "   nothing to check");
+            } else {
+                snprintf(t, sizeof t, "   %d / %d checked", a.checked, int(a.locations.size()));
+            }
+            lines.push_back({{a.name, place == s.where ? kLink : kText}, {t, kDimText}});
         }
     } else {
         int checked = 0, total = 0;
@@ -760,10 +776,189 @@ void drawPanel() {
             checked += a.checked;
             total += a.total;
         }
-        ImGui::TextColored(accent, "Tracker  %d/%d checks  +%d/49 sunken", checked, total, s.salvaged);
+        snprintf(t, sizeof t, "%d / %d checked   %d / 49 sunken", checked, total, s.salvaged);
+        lines.push_back({{"Tracker  ", kAccent}, {t, kText}});
     }
-    ImGui::TextDisabled("L3+R3 / F2: hide");
-    ImGui::End();
+
+    float w = c.textWidth("L3+R3: hide", kSmall);
+    for (const std::vector<Part>& line : lines) {
+        float lw = 0;
+        for (const Part& p : line) {
+            lw += c.textWidth(p.text.c_str(), c.fontSize);
+        }
+        w = std::max(w, lw);
+    }
+    const bool marker = place >= 0 && place == s.where;
+    const float markerW = marker ? 22 : 0;
+    w += markerW;
+    const float h = kPad * 2 + kLine * lines.size() + kSmall + 4;
+    const float x0 = kRight - w - kPad * 2;
+    c.rect(x0, kTop, w + kPad * 2, h, kPanel, 8);
+    float y = kTop + kPad;
+    for (size_t i = 0; i < lines.size(); i++) {
+        float x = x0 + kPad;
+        if (i == 1 && marker) {
+            c.linkMarker(x + 7, y + 10, 7, s.atSea || s.where >= 49);
+            x += markerW;
+        }
+        for (const Part& p : lines[i]) {
+            c.text(p.text.c_str(), x, y, p.color);
+            x += c.textWidth(p.text.c_str(), c.fontSize);
+        }
+        y += kLine;
+    }
+    c.text("L3+R3: hide", x0 + kPad, y + 2, kDimText, kSmall);
+}
+
+// ---- pop-ups: what the last checks did -------------------------------------------------------------
+
+struct Popup {
+    std::string title;  // "1 location checked!"
+    std::string detail; // the check's name, or ""
+    ImU32 color;
+    double start = -1;  // ImGui time it was first shown, -1 not yet
+};
+std::vector<Popup> sPopups;
+constexpr double kPopupSeconds = 3.5;
+constexpr size_t kPopupsShown = 3;
+
+// The last result seen: its checked and its "in logic" checks ("area\tcheck"), to tell what is new
+struct Seen {
+    bool valid = false;
+    int serial = 0;
+    std::set<std::string> checked, available;
+    int plainChecked = 0; // without the logic: the save's own count
+    double since = 0;     // when play started (pop-ups wait a moment: the first states are a load)
+} sSeen;
+
+bool popupsOn() {
+    const char* v = pc_settings_get("COS_TRACKER_POPUPS");
+    return v[0] == '\0' || strcmp(v, "0") != 0;
+}
+
+void notePopups() {
+    const Snapshot& s = snapshot();
+    const LogicResult& logic = logicResult();
+    const double now = ImGui::GetTime();
+    if (!s.playing) {
+        sSeen = Seen{};
+        sPopups.clear();
+        return;
+    }
+    if (!sSeen.valid && sSeen.since == 0) {
+        sSeen.since = now;
+    }
+    // a load or a new save slot: a burst of checks at once is no news
+    const bool settling = now - sSeen.since < 4.0;
+
+    if (!logic.ready) {
+        int checked = 0;
+        for (const Area& a : s.areas) {
+            checked += a.checked;
+        }
+        const int added = checked - sSeen.plainChecked;
+        if (sSeen.valid && added > 0 && added <= 3 && !settling && sPage != SCREEN && popupsOn()) {
+            char t[64];
+            snprintf(t, sizeof t, "%d location%s checked!", added, added == 1 ? "" : "s");
+            sPopups.push_back({t, "", kAccent});
+            popupSound(false);
+        }
+        sSeen.plainChecked = checked;
+        sSeen.valid = true;
+        return;
+    }
+    if (logic.serial == sSeen.serial) {
+        return;
+    }
+    std::set<std::string> checked, available;
+    std::string firstNew;
+    for (const LogicArea& a : logic.areas) {
+        for (const LogicLocation& l : a.locations) {
+            if (l.color == LogicColor::CHECKED) {
+                checked.insert(a.name + "\t" + l.name);
+            } else if (l.color == LogicColor::AVAILABLE) {
+                available.insert(a.name + "\t" + l.name);
+            }
+        }
+    }
+    int newChecked = 0, opened = 0;
+    for (const std::string& k : checked) {
+        if (sSeen.checked.count(k) == 0) {
+            if (newChecked++ == 0) {
+                firstNew = k;
+            }
+        }
+    }
+    for (const std::string& k : available) {
+        if (sSeen.available.count(k) == 0 && sSeen.checked.count(k) == 0) {
+            opened++;
+        }
+    }
+    // the first result of a play (or after results without the logic) only sets the base
+    const bool show = sSeen.valid && sSeen.serial != 0 && !settling && newChecked <= 3 && sPage != SCREEN && popupsOn();
+    if (show && newChecked > 0) {
+        char t[64];
+        snprintf(t, sizeof t, "%d location%s checked!", newChecked, newChecked == 1 ? "" : "s");
+        std::string detail;
+        if (newChecked == 1) {
+            const size_t tab = firstNew.find('\t');
+            detail = firstNew.substr(0, tab) + ": " + firstNew.substr(tab + 1);
+        }
+        sPopups.push_back({t, detail, kAccent});
+    }
+    if (show && opened > 0) {
+        char t[64];
+        snprintf(t, sizeof t, "%d check%s opened up!", opened, opened == 1 ? "" : "s");
+        sPopups.push_back({t, "", kAvailable});
+    }
+    if (show && (newChecked > 0 || opened > 0)) {
+        popupSound(opened > 0);
+    }
+    sSeen.checked = std::move(checked);
+    sSeen.available = std::move(available);
+    sSeen.serial = logic.serial;
+    sSeen.valid = true;
+}
+
+// The pop-ups at the top of the screen, the oldest first, each fading in and out
+void drawPopups() {
+    if (sPopups.empty()) {
+        return;
+    }
+    ImGuiIO& io = ImGui::GetIO();
+    const double now = ImGui::GetTime();
+    const float scale = std::min(io.DisplaySize.x / 1280.0f, io.DisplaySize.y / 720.0f);
+    Canvas c{ImGui::GetForegroundDrawList(),
+             ImVec2((io.DisplaySize.x - 1280 * scale) * 0.5f, 0), scale, ImGui::GetFont(), 22.0f};
+    float y = 70;
+    for (size_t i = 0; i < sPopups.size() && i < kPopupsShown; i++) {
+        Popup& p = sPopups[i];
+        if (p.start < 0) {
+            p.start = now;
+        }
+        const double t = now - p.start;
+        const float fade = float(std::min({1.0, t / 0.25, (kPopupSeconds - t) / 0.5}));
+        if (fade <= 0) {
+            continue;
+        }
+        auto alpha = [fade](ImU32 color) {
+            return (color & ~IM_COL32_A_MASK) | (ImU32(((color >> IM_COL32_A_SHIFT) & 0xFF) * fade) << IM_COL32_A_SHIFT);
+        };
+        const float dw = p.detail.empty() ? 0 : c.textWidth(p.detail.c_str(), 15);
+        const float w = std::max(c.textWidth(p.title.c_str(), 22), dw) + 36;
+        const float h = p.detail.empty() ? 40 : 60;
+        const float slide = (1 - fade) * -10;
+        c.rect(640 - w / 2, y + slide, w, h, alpha(IM_COL32(10, 18, 30, 190)), 10);
+        c.frame(640 - w / 2, y + slide, w, h, alpha((p.color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 150)), 2, 10);
+        c.text(p.title.c_str(), 640, y + slide + 8, alpha(p.color), 22, 0.5f);
+        if (!p.detail.empty()) {
+            c.text(p.detail.c_str(), 640, y + slide + 36, alpha(kText), 15, 0.5f);
+        }
+        y += h + 8;
+    }
+    while (!sPopups.empty() && sPopups.front().start >= 0 && now - sPopups.front().start > kPopupSeconds) {
+        sPopups.erase(sPopups.begin());
+    }
 }
 
 void handleScreenKeys(uint32_t pressed) {
@@ -788,9 +983,6 @@ void handleScreenKeys(uint32_t pressed) {
     if (pressed & kUp) sListCursor = (sListCursor + n - 1) % n;
     if (pressed & kDown) sListCursor = (sListCursor + 1) % n;
     sListCursor = std::min(sListCursor, n - 1);
-    if (pressed & kConfirm) {
-        logicToggle(area->name, area->locations[sListCursor].name);
-    }
 }
 
 void setPage(Page page) {
@@ -829,6 +1021,8 @@ extern "C" void pc_tracker_overlay_frame(void) {
         sPrevKeys = keysDown();
         return;
     }
+    loadFont();
+    notePopups();
     uint32_t pressed = keysPressed();
     if (pressed & kToggle) {
         setPage(sPage == HIDDEN ? SCREEN : sPage == SCREEN ? PANEL : HIDDEN);
@@ -844,7 +1038,6 @@ extern "C" void pc_tracker_overlay_frame(void) {
         if (!sArt.tried) {
             loadArt();
         }
-        loadFont();
         {
             std::vector<std::string> items;
             for (const ItemSlot& slot : itemSlots()) {
@@ -859,8 +1052,11 @@ extern "C" void pc_tracker_overlay_frame(void) {
         holdGame(false);
         handleScreenKeys(pressed);
         drawScreen();
-    } else if (sPage == PANEL) {
-        drawPanel();
+    } else {
+        if (sPage == PANEL) {
+            drawPanel();
+        }
+        drawPopups();
     }
 }
 
@@ -871,7 +1067,10 @@ extern "C" void pc_tracker_overlay_draw(void) {
     }
     if (sPage == SCREEN && sArt.tried) {
         drawScreen();
-    } else if (sPage == PANEL) {
-        drawPanel();
+    } else if (sPage != SCREEN) {
+        if (sPage == PANEL) {
+            drawPanel();
+        }
+        drawPopups();
     }
 }
