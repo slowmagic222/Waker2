@@ -676,6 +676,13 @@ const PcSettingDesc kBuiltins[] = {
      "Beedle buying Blue Chu Jelly, the Deluxe Picto Box on a button, Morths out of the map, enemies "
      "killed with Light Arrows (Stalfos, Miniblins, Jalhalla's Poes, Magtails) and Phantom Ganon's "
      "trigger."},
+    {"COS_TRACKER_POPUPS", "Avisos del tracker",
+     "Avisos arriba al jugar: \"1 location checked!\" al abrir un cofre, \"4 checks opened up!\" cuando un "
+     "objeto abre lugares nuevos (docs/TRACKER.md).",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "1", nullptr, nullptr, 140,
+     "Tracker pop-ups",
+     "Pop-ups at the top while playing: \"1 location checked!\" for a check, \"4 checks opened up!\" when "
+     "an item opens up new places (docs/TRACKER.md)."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",

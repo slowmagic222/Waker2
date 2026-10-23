@@ -48,8 +48,14 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
    archives (`[cos] tracker: itemres.arc: ...`), for the menu's frames next. A green ring marks where Link is: the
    sea sector he sails in (on an island's own stages, the last one, dimmer) or the dungeon he is in, and
    the cursor starts there.
-2. A second press: a small panel in a corner while the game runs (in logic / left).
+2. A second press: a small panel in the top right corner while the game runs, in the same font: in logic /
+   left, and the place Link is in (checked of its checks).
 3. A third press hides it.
+
+Pop-ups: while the game runs (panel or not), a pop-up at the top says what the last checks did: "1
+location checked!" with the check's name, and "4 checks opened up!" when an item puts new checks in
+logic. Not for a check marked by hand, nor for the burst of checks when a file loads. The options menu's
+Quality of life tab turns them off ("Tracker pop-ups", `COS_TRACKER_POPUPS`; on by default).
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
 open it is hidden. The checks marked by hand are kept per seed and save slot in

@@ -363,7 +363,9 @@ void logicSaveFile(const std::string& path) {
 const LogicResult& logicResult() {
     std::lock_guard<std::mutex> g(sLock);
     if (sDoneNew) {
+        const int serial = sResult.serial + 1;
         sResult = sDone;
+        sResult.serial = serial;
         sDoneNew = false;
     }
     return sResult;

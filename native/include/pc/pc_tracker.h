@@ -119,6 +119,7 @@ struct LogicResult {
     std::vector<LogicArea> areas; // the 49 islands (sea chart order), the 7 dungeons, the 3 others
     std::vector<NamedCount> items; // the tracker's item counts (from the game)
     int millis = 0;               // how long the last one took
+    int serial = 0;               // one more for each new result (logicResult)
 };
 // The logic's folder: COS_TRACKER_LOGIC, else tracker-logic/ next to the game (the Switch: next to user/)
 std::string logicDir();
