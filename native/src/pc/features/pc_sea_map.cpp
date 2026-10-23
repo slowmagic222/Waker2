@@ -1,8 +1,10 @@
 // COS_QOL_SEA_MAP (pc_qol.h, docs/QOL_PLAN.md item 20): a small live chart of the Great Sea in the screen's
-// bottom-right corner while the player is on the sea stage, drawn with Aurora's ImGui (like the frame-rate
+// bottom-right corner during play, drawn with Aurora's ImGui (like the frame-rate
 // panel, pc_overlay.cpp). The 7x7 sectors, the ones reached shaded (the save's "arrive" bits, the same the
 // sea chart menu reads; every sector with COS_QOL_REVEAL_CHART), the player's sector outlined, an arrow at
-// the player's position pointing where they face, and the sector's name under the chart.
+// the player's position pointing where they face, and the sector's name under the chart. Inside (a house, a
+// dungeon) the sector last sailed in stays outlined, without the arrow. Hidden only with the HUD, in menus,
+// cutscenes, screen fades, the telescope and the picto box.
 //
 // The sea: stage "sea", room 1-49 = sector A1..G7 row by row; a sector is 100000 units, the chart centred
 // on 0 (dMap_c::point2Grid), x to the east (columns 1-7), z to the south (rows A-G).
@@ -51,8 +53,7 @@ bool seaMapVisible() {
         return false;
     }
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
-    return player != nullptr && strcmp(dComIfGp_getStartStageName(), "sea") == 0 && dMenu_flag() == 0 &&
-           !fopOvlpM_IsDoingReq() && !dComIfGp_event_runCheck() && dComIfGp_getMesgStatus() == 0 &&
+    return player != nullptr && dMenu_flag() == 0 && !fopOvlpM_IsDoingReq() && !dComIfGp_event_runCheck() &&
            !dComIfGp_checkCameraAttentionStatus(0, dCamAttnStts_TELESCOPE_LOOK_e) &&
            !dComIfGp_checkCameraAttentionStatus(0, dCamAttnStts_PICTO_BOX_AIM_e);
 }
@@ -83,8 +84,18 @@ void seaMapFrame() {
         return;
     }
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
-    const float px = player->current.pos.x;
-    const float pz = player->current.pos.z;
+    // On the sea (islands included: they are rooms of the stage "sea") the player's own position; inside
+    // (a house, a cave, a dungeon) the last one on the sea, without the arrow.
+    static float sLastX = 0.0f, sLastZ = 0.0f;
+    static bool sHaveLast = false;
+    const bool onSea = strcmp(dComIfGp_getStartStageName(), "sea") == 0;
+    if (onSea) {
+        sLastX = player->current.pos.x;
+        sLastZ = player->current.pos.z;
+        sHaveLast = true;
+    }
+    const float px = sLastX;
+    const float pz = sLastZ;
     const short angle = player->shape_angle.y;
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -120,6 +131,9 @@ void seaMapFrame() {
     int row = (int)std::floor(pz / 100000.0f + 0.5f) + 3;
     col = col < 0 ? 0 : col > 6 ? 6 : col;
     row = row < 0 ? 0 : row > 6 ? 6 : row;
+    if (!sHaveLast) {
+        return; // not on the sea yet since the game started: no place to mark
+    }
     const ImVec2 sa(o.x + col * cell, o.y + row * cell);
     dl->AddRect(sa, ImVec2(sa.x + cell, sa.y + cell), IM_COL32(120, 255, 120, 255), 2.0f, 0, 2.0f);
 
@@ -134,8 +148,10 @@ void seaMapFrame() {
     const ImVec2 tip(mx + dx * len, my + dz * len);
     const ImVec2 left(mx - dx * len * 0.5f + dz * len * 0.45f, my - dz * len * 0.5f - dx * len * 0.45f);
     const ImVec2 right(mx - dx * len * 0.5f - dz * len * 0.45f, my - dz * len * 0.5f + dx * len * 0.45f);
-    dl->AddTriangleFilled(tip, left, right, IM_COL32(255, 70, 50, 255));
-    dl->AddTriangle(tip, left, right, IM_COL32(255, 255, 255, 230), 1.0f);
+    if (onSea) {
+        dl->AddTriangleFilled(tip, left, right, IM_COL32(255, 70, 50, 255));
+        dl->AddTriangle(tip, left, right, IM_COL32(255, 255, 255, 230), 1.0f);
+    }
 
     const int no = row * 7 + col;
     char label[48];
