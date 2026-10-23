@@ -6,23 +6,33 @@
 // dungeon) the sector last sailed in stays outlined, without the arrow. Hidden only with the HUD, in menus,
 // cutscenes, screen fades, the telescope and the picto box.
 //
+// The islands are the sea chart's own pictures: the zoomed-in sector's island texture (Fmap.arc's
+// "R%02X_b.bti", dMenu_Fmap_c::changeFmapTexture), placed where the chart's check point data puts it in the
+// sector (setDispIslandPos), read once and decoded from its GX format. A sector without one (open sea) keeps
+// the simple shape (drawIsland).
+//
 // The sea: stage "sea", room 1-49 = sector A1..G7 row by row; a sector is 100000 units, the chart centred
 // on 0 (dMap_c::point2Grid), x to the east (columns 1-7), z to the south (rows A-G).
 #include "pc_internal.h"
 
 #include "pc/pc_qol.h"
 #include "pc/pc_settings.h"
+#include "JSystem/JKernel/JKRArchive.h"
+#include "JSystem/JUtility/JUTTexture.h"
 #include "d/d_com_inf_game.h"
+#include "d/d_map.h"
 #include "d/d_meter.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "f_pc/f_pc_manager.h"
 #include "f_pc/f_pc_name.h"
 
+#include <aurora/imgui.h>
 #include <imgui.h>
 
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace pc {
 
@@ -67,6 +77,200 @@ void drawIsland(ImDrawList* dl, int no, ImVec2 c, float cell, ImU32 land, ImU32 
         const float rr = big ? r * 1.35f : r;
         dl->AddCircleFilled(c, rr, land);
         dl->AddCircle(c, rr, rim, 0, 1.0f);
+    }
+}
+
+// A GX texture (a BTI's image, as ResTIMG describes it) decoded to RGBA: the formats the menus use
+bool decodeGx(int format, int w, int h, const u8* src, const u8* palette, int paletteFormat, int colors,
+              std::vector<uint8_t>& out) {
+    out.assign(size_t(w) * h * 4, 0);
+    const auto rgb565 = [](u16 v, u8* p) {
+        p[0] = u8(((v >> 11) & 31) * 255 / 31);
+        p[1] = u8(((v >> 5) & 63) * 255 / 63);
+        p[2] = u8((v & 31) * 255 / 31);
+        p[3] = 255;
+    };
+    const auto rgb5a3 = [](u16 v, u8* p) {
+        if (v & 0x8000) {
+            p[0] = u8(((v >> 10) & 31) * 255 / 31);
+            p[1] = u8(((v >> 5) & 31) * 255 / 31);
+            p[2] = u8((v & 31) * 255 / 31);
+            p[3] = 255;
+        } else {
+            p[0] = u8(((v >> 8) & 15) * 17);
+            p[1] = u8(((v >> 4) & 15) * 17);
+            p[2] = u8((v & 15) * 17);
+            p[3] = u8(((v >> 12) & 7) * 255 / 7);
+        }
+    };
+    const auto be16 = [](const u8* p) { return u16((p[0] << 8) | p[1]); };
+    const auto paletteColor = [&](int index, u8* p) {
+        if (palette == nullptr || index >= colors) {
+            return;
+        }
+        const u16 v = be16(palette + index * 2);
+        if (paletteFormat == GX_TL_IA8) {
+            p[0] = p[1] = p[2] = u8(v & 0xFF);
+            p[3] = u8(v >> 8);
+        } else if (paletteFormat == GX_TL_RGB565) {
+            rgb565(v, p);
+        } else {
+            rgb5a3(v, p);
+        }
+    };
+    int bw, bh;
+    switch (format) {
+    case GX_TF_I4: case GX_TF_C4: case GX_TF_CMPR: bw = 8; bh = 8; break;
+    case GX_TF_I8: case GX_TF_IA4: case GX_TF_C8: bw = 8; bh = 4; break;
+    case GX_TF_IA8: case GX_TF_RGB565: case GX_TF_RGB5A3: case GX_TF_RGBA8: bw = 4; bh = 4; break;
+    default: return false;
+    }
+    const auto texel = [&](int x, int y) -> u8* {
+        static u8 dummy[4];
+        return x < w && y < h ? &out[(size_t(y) * w + x) * 4] : dummy;
+    };
+    const u8* at = src;
+    for (int by = 0; by < h; by += bh) {
+        for (int bx = 0; bx < w; bx += bw) {
+            if (format == GX_TF_CMPR) {
+                // four 4x4 DXT1 blocks
+                for (int sub = 0; sub < 4; sub++, at += 8) {
+                    const u16 c0 = be16(at), c1 = be16(at + 2);
+                    u8 pal[4][4];
+                    rgb565(c0, pal[0]);
+                    rgb565(c1, pal[1]);
+                    for (int k = 0; k < 3; k++) {
+                        if (c0 > c1) {
+                            pal[2][k] = u8((2 * pal[0][k] + pal[1][k]) / 3);
+                            pal[3][k] = u8((pal[0][k] + 2 * pal[1][k]) / 3);
+                        } else {
+                            pal[2][k] = u8((pal[0][k] + pal[1][k]) / 2);
+                            pal[3][k] = 0;
+                        }
+                    }
+                    pal[2][3] = 255;
+                    pal[3][3] = c0 > c1 ? 255 : 0;
+                    for (int y = 0; y < 4; y++) {
+                        const u8 bits = at[4 + y];
+                        for (int x = 0; x < 4; x++) {
+                            memcpy(texel(bx + (sub & 1) * 4 + x, by + (sub >> 1) * 4 + y), pal[(bits >> (6 - x * 2)) & 3], 4);
+                        }
+                    }
+                }
+                continue;
+            }
+            if (format == GX_TF_RGBA8) {
+                // the AR halves, then the GB halves
+                for (int i = 0; i < 16; i++) {
+                    u8* p = texel(bx + i % 4, by + i / 4);
+                    p[3] = at[i * 2];
+                    p[0] = at[i * 2 + 1];
+                    p[1] = at[32 + i * 2];
+                    p[2] = at[32 + i * 2 + 1];
+                }
+                at += 64;
+                continue;
+            }
+            for (int y = 0; y < bh; y++) {
+                for (int x = 0; x < bw; x++) {
+                    u8* p = texel(bx + x, by + y);
+                    const int i = y * bw + x;
+                    switch (format) {
+                    case GX_TF_I4: {
+                        const u8 v = u8(((i & 1) == 0 ? at[i / 2] >> 4 : at[i / 2] & 15) * 17);
+                        p[0] = p[1] = p[2] = p[3] = v;
+                        break;
+                    }
+                    case GX_TF_I8: p[0] = p[1] = p[2] = p[3] = at[i]; break;
+                    case GX_TF_IA4:
+                        p[0] = p[1] = p[2] = u8((at[i] & 15) * 17);
+                        p[3] = u8((at[i] >> 4) * 17);
+                        break;
+                    case GX_TF_IA8:
+                        p[3] = at[i * 2];
+                        p[0] = p[1] = p[2] = at[i * 2 + 1];
+                        break;
+                    case GX_TF_RGB565: rgb565(be16(at + i * 2), p); break;
+                    case GX_TF_RGB5A3: rgb5a3(be16(at + i * 2), p); break;
+                    case GX_TF_C4: paletteColor((i & 1) == 0 ? at[i / 2] >> 4 : at[i / 2] & 15, p); break;
+                    case GX_TF_C8: paletteColor(at[i], p); break;
+                    case GX_TF_C14X2: paletteColor(be16(at + i * 2) & 0x3FFF, p); break;
+                    }
+                }
+            }
+            at += 32;
+        }
+    }
+    return true;
+}
+
+// A sector's island picture from the sea chart: loaded once (a few sectors a frame), then kept
+struct IslandArt {
+    enum { Unread, Ready, None } state = Unread;
+    ImTextureID tex = ImTextureID{};
+    int w = 0, h = 0;
+    bool grey = false;  // an intensity texture (I4/I8/IA4/IA8): tinted with the land colour
+    float ox = 0, oy = 0; // where the island sits in its sector, in units (x east, y south)
+};
+IslandArt sIslands[49];
+// How much of a cell an island's picture fills (its larger side); tune here if the islands look too big
+constexpr float kIslandFit = 0.9f;
+
+void readIsland(int no) {
+    IslandArt& art = sIslands[no];
+    art.state = IslandArt::None;
+    // the chart's check point for the sector: where the island is in it (dMenu_Fmap_c::setDispIslandPos)
+    const dMap_FmapChkPnt* chk = static_cast<const dMap_FmapChkPnt*>(dComIfGp_getFmapData());
+    const int gx = no % 7 - 3, gy = no / 7 - 3;
+    bool found = false;
+    for (u32 i = 0; chk != nullptr && i < u32(chk->field_0x0) && i < 64; i++) {
+        const FmapChkPnt& p = chk->field_0x4[i];
+        if (p.mSectorX == gx && p.mSectorY == gy) {
+            art.ox = s16(p.field_0x2);
+            art.oy = s16(p.field_0x4);
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        return; // the chart shows no island picture there either
+    }
+    char name[16];
+    snprintf(name, sizeof(name), "R%02X_b.bti", no + 1);
+    alignas(32) static u8 sBuf[0x2c00]; // the size the chart's own buffer has (mChkPntTxt_p)
+    const u32 size = JKRReadTypeResource(sBuf, sizeof sBuf, 'FM  ', name, dComIfGp_getFmapArchive());
+    if (size < sizeof(ResTIMG)) {
+        return;
+    }
+    const ResTIMG* t = reinterpret_cast<const ResTIMG*>(sBuf);
+    const int w = u16(t->width), h = u16(t->height);
+    const u32 image = u32(t->imageOffset) != 0 ? u32(t->imageOffset) : sizeof(ResTIMG);
+    if (w <= 0 || h <= 0 || w > 512 || h > 512 || image >= size) {
+        return;
+    }
+    const u8* palette = t->indexTexture && u32(t->paletteOffset) < size ? sBuf + u32(t->paletteOffset) : nullptr;
+    std::vector<uint8_t> rgba;
+    if (!decodeGx(t->format, w, h, sBuf + image, palette, t->colorFormat, u16(t->numColors), rgba)) {
+        return;
+    }
+    art.tex = aurora_imgui_add_texture(u32(w), u32(h), rgba.data());
+    art.w = w;
+    art.h = h;
+    art.grey = t->format == GX_TF_I4 || t->format == GX_TF_I8 || t->format == GX_TF_IA4 || t->format == GX_TF_IA8;
+    art.state = IslandArt::Ready;
+}
+
+// The pictures not read yet, a few a frame (the archive is in ARAM: each read is a copy)
+void readIslands() {
+    if (dComIfGp_getFmapArchive() == nullptr || dComIfGp_getFmapData() == nullptr) {
+        return;
+    }
+    int budget = 4;
+    for (int no = 0; no < 49 && budget > 0; no++) {
+        if (sIslands[no].state == IslandArt::Unread) {
+            readIsland(no);
+            budget--;
+        }
     }
 }
 
@@ -123,6 +327,7 @@ void seaMapFrame() {
     if (!seaMapVisible()) {
         return;
     }
+    readIslands();
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     // On the sea (islands included: they are rooms of the stage "sea") the player's own position; inside
     // (a house, a cave, a dungeon) the last one on the sea, without the arrow.
@@ -177,9 +382,24 @@ void seaMapFrame() {
                 dl->AddRectFilled(ImVec2(a.x + 1, a.y + 1), ImVec2(b.x - 1, b.y - 1), reached, 2.0f);
             }
             dl->AddRect(a, b, grid);
-            // the island: drawn in land colours where reached, a faint outline elsewhere
-            drawIsland(dl, no, ImVec2(a.x + cell / 2.0f, a.y + cell / 2.0f), cell,
-                       known ? C(96, 150, 70, 235) : C(255, 255, 255, 45), known ? C(60, 40, 20, 200) : C(0, 0, 0, 0));
+            // the island: the chart's picture, fitted to the cell as the chart fits it to its pane, at its place
+            // in the sector; full colour where reached, a faint silhouette elsewhere
+            const IslandArt& art = sIslands[no];
+            if (art.state == IslandArt::Ready) {
+                const float fit = cell * kIslandFit / (float)(art.w > art.h ? art.w : art.h);
+                const ImVec2 c(a.x + cell / 2.0f + art.ox / 100000.0f * cell, a.y + cell / 2.0f + art.oy / 100000.0f * cell);
+                const ImVec2 half(art.w * fit / 2.0f, art.h * fit / 2.0f);
+                const ImU32 tint = known ? (art.grey ? C(150, 205, 110, 255) : C(255, 255, 255, 255))
+                                         : C(255, 255, 255, 70);
+                dl->PushClipRect(a, b, true);
+                dl->AddImage(art.tex, ImVec2(c.x - half.x, c.y - half.y), ImVec2(c.x + half.x, c.y + half.y), ImVec2(0, 0),
+                             ImVec2(1, 1), tint);
+                dl->PopClipRect();
+            } else {
+                // not read yet or no picture: a simple shape, in land colours where reached, a faint outline elsewhere
+                drawIsland(dl, no, ImVec2(a.x + cell / 2.0f, a.y + cell / 2.0f), cell,
+                           known ? C(96, 150, 70, 235) : C(255, 255, 255, 45), known ? C(60, 40, 20, 200) : C(0, 0, 0, 0));
+            }
         }
     }
     dl->AddRect(o, ImVec2(o.x + size, o.y + size), frame, 0.0f, 0, 1.5f);
