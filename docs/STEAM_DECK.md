@@ -1,0 +1,61 @@
+# Waker2 on the Steam Deck (test build)
+
+A test build of the Linux x86_64 game for SteamOS, made by `.github/workflows/steamdeck.yml` without the
+disc. Nothing of the game comes with it: it reads your own discs every time it starts. Untested on a Deck so
+far; the Linux build has only run in a container with software Vulkan (README.md, "Status").
+
+## What you need
+
+- `GZLE01.iso`: your own **USA** disc of The Wind Waker, revision 0, as an uncompressed `.iso` (Dolphin:
+  right-click the game, *Convert File...*, ISO).
+- Optional, for a randomized game: a seed made with the [Wind Waker Randomizer](https://github.com/LagoLunatic/wwrando)
+  from that disc (its output, `WW Random <seed>.iso`). The port follows wwrando at commit `9775811`; see
+  [RANDO.md](RANDO.md) for what a seed does and does not do yet.
+
+## Install (Desktop Mode)
+
+1. Download the `waker2-steamdeck-<commit>` artifact from the workflow run (GitHub, Actions tab, the
+   *steamdeck* run, *Artifacts*), unzip it, and extract the `.tar.gz` inside into your home folder, so
+   you have `~/waker2/switchwaker` and `~/waker2/waker2.sh`. Use Dolphin (the file manager)'s *Extract*,
+   or `tar -xzf waker2-steamdeck-*.tar.gz -C ~` in Konsole.
+2. Copy your clean disc into that folder as `~/waker2/GZLE01.iso`.
+3. For a seed, copy the randomizer's `.iso` into the same folder. `waker2.sh` uses the first `.iso` that
+   is not `GZLE01.iso` as `COS_RANDO_DISC`; keep only one seed there. Take it out to play the plain game.
+4. Try it once from Konsole: `~/waker2/waker2.sh`. If it closes at once, the output (also saved
+   as `~/waker2/waker2.log`, the last run; the run before it is `~/waker2/waker2.prev.log`) says why.
+
+## Add it to Steam (for Game Mode)
+
+1. In Steam (Desktop Mode): *Games*, *Add a Non-Steam Game to My Library...*, *Browse...*, pick
+   `~/waker2/waker2.sh` (set the file type filter to *All files*), *Add Selected Programs*.
+2. In its *Properties*, *Compatibility*: leave *Force the use of a specific Steam Play compatibility tool*
+   **off** (with Proton the script does not start at all). Optional: rename it (e.g. "Wind Waker Rando"). Launch options can override the
+   launcher, e.g. `COS_RANDO_DISC="/home/deck/waker2/my seed.iso" %command%`, or
+   `COS_BACKEND=opengl %command%` if Vulkan misbehaves.
+3. Back in Game Mode it is in your library under *Non-Steam*. The Deck's controls arrive as an Xbox-style
+   controller (use the *Gamepad* controller layout). **F1** (or L+R+Z) opens the options menu.
+
+## What the launcher sets
+
+| Variable | Default | |
+|---|---|---|
+| `COS_DISC` | `~/waker2/GZLE01.iso` | the clean disc |
+| `COS_RANDO_DISC` | the other `.iso` in the folder, if any | the seed; set it empty (`COS_RANDO_DISC= %command%`) to ignore one |
+| `COS_FULLSCREEN` | `1` | |
+
+Saves, settings and caches go in `~/waker2/user/`.
+
+## The tracker
+
+**In the game:** click both sticks in together (L3+R3) for the tracker screen: the game pauses, and it
+shows the items, the sea chart with what is in logic on each island, and the dungeons, in the tracker's
+own art. Move over an island or dungeon to see its checks and how many are checked (blue in logic,
+red not yet, checked ones ticked and struck out); A goes into the list to scroll it (nothing is set by hand), B goes
+back and closes. Move onto an item to see what you have. Again for a small panel in a
+corner while you play, a third time to hide it. Works in Game Mode with nothing to set up; F2 does the
+same on a keyboard. It needs the seed's permalink next to the rando disc: the in-game seed generator writes
+`<disc> - Permalink.txt`, and wwrando's `WW Random <seed> - Non-Spoiler Log.txt` (or the spoiler log)
+works too, so copy it next to the `.iso`. Without one the screen shows items and checks but no logic.
+With a seed, what it has seen is also kept in `~/waker2/user/tracker/`, so a crash or an older save does
+not take checks off it. More in [TRACKER.md](TRACKER.md).
+
