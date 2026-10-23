@@ -35,22 +35,32 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
 
 1. The tracker screen: the game pauses, and the screen shows the tracker's items, its sea chart with each
    island's checks "in logic / not checked", and the dungeons (keys, map, compass, big key, counts), in
-   wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the islands and dungeons, and
-   the list on the right names the checks of the one under it, coloured as the tracker colours them:
-   blue in logic, red not yet, grey checked. A on a place moves into its list, and A there marks a check
-   by hand (or unmarks it), for what the game cannot tell; B goes back, and B again closes the screen.
+   wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the items, the islands and
+   the dungeons. On a place, the list on the right says how many of its checks are checked and names
+   them, coloured as the tracker colours them: blue in logic, red not yet, and checked ones grey, ticked
+   and struck out. A moves into the list, and A there marks a check by hand (or unmarks it). On an item
+   it shows its name and count; items come from the game only and cannot be changed. B goes back, and B
+   again closes the screen.
+   The screen is drawn over the paused game, which shows through, in the game's own font (its message
+   font, read from the game; ImGui's until the game has loaded it), with the pause menu's own item and
+   dungeon item icons (read from the game's `itemicon.arc`; the tracker's art where the game has none,
+   such as the Triforce and the charts). The first time the screen opens the log lists the pause menu's
+   archives (`[cos] tracker: itemres.arc: ...`), for the menu's frames next. A green ring marks where Link is: the
+   sea sector he sails in (on an island's own stages, the last one, dimmer) or the dungeon he is in, and
+   the cursor starts there.
 2. A second press: a small panel in a corner while the game runs (in logic / left).
 3. A third press hides it.
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
-open it is hidden. Marks made by hand last until the game is closed.
+open it is hidden. The checks marked by hand are kept per seed and save slot in
+`user/tracker/<disc>-<size>-file<N>-tracker.json`, next to the progress file, as soon as it is set.
 
 **The logic** is the tracker's own answer: the game runs the tracker's logic code (its `src/services`,
 bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of its own, on the seed's settings and
 wwrando's logic files, and merges the game's state into the tracker's (`scripts/tracker/logic/autotracker.js`):
 
 - an item is set when the game's count changed since the last state (the first state keeps the higher
-  of the tracker's and the game's count), so a mark made by hand stays until the game's count moves;
+  of the tracker's and the game's count);
 - a small key count gains what the game's held count gains;
 - locations are only ever checked, never unchecked;
 - another save slot starts over.

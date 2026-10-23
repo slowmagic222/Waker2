@@ -8,11 +8,13 @@
 //                                     then Mailbox, The Great Sea, Hyrule): [{name, dungeon, available, remaining, color,
 //                                     locations: [{name, color}]}], checked, available, remaining}
 //   cosTracker.toggle(generalLocation, detailedLocation): a check marked by hand
+//   cosTracker.save() -> JSON / cosTracker.load(json): the state, kept across a restart
 //   (update and updateText take an empty string for "no new state": the result after a toggle)
 //   cosTracker.updateText(gameStateJson) -> the same as lines, for the game (no JSON parser there):
 //     T <checked> <available> <remaining>
 //     A <dungeon 0|1> <available> <remaining> <color> <area name>
 //     L <color> <location name>                  (the area's locations, after its A line)
+//     I <count> <item name>                      (the tracker's item counts, from the game)
 //     E <error>
 //   fields separated by tabs, colors by their first letter (a, u, c, n);
 //   colors: the tracker's, "available-location", "unavailable-location", "checked-location",
@@ -31,6 +33,7 @@ import TrackerState from './services/tracker-state';
 
 let trackerState = null;
 let previousGame = null;
+let currentPermalink = null;
 
 function areaSummary(logic, name, isDungeon, onlyProgressLocations) {
   const counts = logic.locationCounts(name, { isDungeon, onlyProgressLocations, disableLogic: false });
@@ -61,6 +64,7 @@ globalThis.cosTracker = {
       LogicHelper.initialize();
       trackerState = TrackerState.default();
       previousGame = null;
+      currentPermalink = permalink;
       return JSON.stringify({ version: Settings.getVersion() });
     } catch (err) {
       trackerState = null;
@@ -105,6 +109,41 @@ globalThis.cosTracker = {
     }
   },
 
+  // The tracker's state, to keep what was set by hand across a restart (one file per save slot)
+  save() {
+    if (_.isNil(trackerState)) {
+      return '';
+    }
+    return JSON.stringify({ permalink: currentPermalink, state: trackerState.readState() });
+  },
+
+  // A state save() made for this seed, or '' (another slot without one): the default state; the
+  // game's next state is merged in as the first one
+  load(savedJson) {
+    if (_.isNil(trackerState)) {
+      return;
+    }
+    const fresh = TrackerState.default();
+    let saved = null;
+    try {
+      saved = _.isEmpty(savedJson) ? null : JSON.parse(savedJson);
+    } catch (err) {
+      saved = null;
+    }
+    if (_.isNil(saved) || saved.permalink !== currentPermalink || !_.isObject(saved.state)) {
+      trackerState = fresh;
+    } else {
+      const raw = fresh.readState();
+      _.forEach(_.keys(raw), (key) => {
+        if (_.isObject(saved.state[key])) {
+          raw[key] = _.merge({}, raw[key], saved.state[key]);
+        }
+      });
+      trackerState = TrackerState.createStateRaw(raw);
+    }
+    previousGame = null;
+  },
+
   updateText(gameStateJson, onlyProgressLocations = true) {
     const result = JSON.parse(this.update(gameStateJson, onlyProgressLocations));
     if (!_.isNil(result.error)) {
@@ -116,6 +155,9 @@ globalThis.cosTracker = {
       _.forEach(area.locations, (location) => {
         lines.push(`L\t${colorLetter(location.color)}\t${location.name}`);
       });
+    });
+    _.forEach(trackerState.items, (count, name) => {
+      lines.push(`I\t${count}\t${name}`);
     });
     return `${lines.join('\n')}\n`;
   },
