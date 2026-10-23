@@ -44,18 +44,56 @@ const char* const kSectorNames[49] = {
     "Five-Star Isles",
 };
 
+// How a sector's island is drawn, from its name: a reef is a ring of rocks, a fairy island a dot, a group
+// of isles three dots, a big island a bigger blob.
+void drawIsland(ImDrawList* dl, int no, ImVec2 c, float cell, ImU32 land, ImU32 rim) {
+    const char* name = kSectorNames[no];
+    const float r = cell * 0.22f;
+    if (strstr(name, "Reef") != nullptr) {
+        dl->AddCircle(c, r * 1.1f, land, 10, cell * 0.08f);
+    } else if (strstr(name, "Fairy") != nullptr) {
+        dl->AddCircleFilled(c, r * 0.5f, land);
+    } else if (strstr(name, "Isles") != nullptr || strstr(name, "Archipelago") != nullptr) {
+        dl->AddCircleFilled(ImVec2(c.x - r * 0.8f, c.y + r * 0.4f), r * 0.45f, land);
+        dl->AddCircleFilled(ImVec2(c.x + r * 0.8f, c.y + r * 0.4f), r * 0.45f, land);
+        dl->AddCircleFilled(ImVec2(c.x, c.y - r * 0.6f), r * 0.45f, land);
+    } else {
+        static const int kBig[] = {0, 10, 12, 19, 25, 39, 40, 43}; // FF, Windfall, Dragon Roost, Fire Mountain,
+                                                                    // Tower, Ice Ring, Forest Haven, Outset
+        bool big = false;
+        for (int b : kBig) {
+            big = big || b == no;
+        }
+        const float rr = big ? r * 1.35f : r;
+        dl->AddCircleFilled(c, rr, land);
+        dl->AddCircle(c, rr, rim, 0, 1.0f);
+    }
+}
+
 void* isPlayScene(void* proc, void*) {
     return fpcM_GetName(proc) == fpcNm_PLAY_SCENE_e ? proc : nullptr;
 }
 
 // The chart shows when the HUD would: on the sea, in play, no menu, message, event or screen fade, and the
 // HUD not hidden by its button.
+// COS_QOL_SEA_MAP_WHEN: "always" (all through play), "sea" (on the stage "sea", islands included), "boat"
+// (riding the boat).
 bool seaMapVisible() {
     if (!pc_qol(PC_QOL_SEA_MAP) || pc_qol_hud_hidden() || menuOpen() || fpcM_Search(isPlayScene, nullptr) == nullptr) {
         return false;
     }
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
-    return player != nullptr && dMenu_flag() == 0 && !fopOvlpM_IsDoingReq() && !dComIfGp_event_runCheck() &&
+    if (player == nullptr) {
+        return false;
+    }
+    const char* when = pc_settings_get("COS_QOL_SEA_MAP_WHEN");
+    if (strcmp(when, "boat") == 0 && !dComIfGp_checkPlayerStatus0(0, daPyStts0_SHIP_RIDE_e)) {
+        return false;
+    }
+    if (strcmp(when, "sea") == 0 && strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return false;
+    }
+    return dMenu_flag() == 0 && !fopOvlpM_IsDoingReq() && !dComIfGp_event_runCheck() &&
            !dComIfGp_checkCameraAttentionStatus(0, dCamAttnStts_TELESCOPE_LOOK_e) &&
            !dComIfGp_checkCameraAttentionStatus(0, dCamAttnStts_PICTO_BOX_AIM_e);
 }
@@ -123,7 +161,7 @@ void seaMapFrame() {
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     const ImU32 sea = C(24, 62, 104, 170);
-    const ImU32 reached = C(222, 196, 132, 200);
+    const ImU32 reached = C(70, 132, 186, 200); // a lighter sea where reached
     const ImU32 grid = C(255, 255, 255, 60);
     const ImU32 frame = C(255, 240, 200, 220);
     dl->AddRectFilled(ImVec2(o.x - 3, o.y - 3), ImVec2(o.x + size + 3, o.y + size + textH + 3), C(0, 0, 0, 110),
@@ -134,10 +172,14 @@ void seaMapFrame() {
             const int no = row * 7 + col;
             const ImVec2 a(o.x + col * cell, o.y + row * cell);
             const ImVec2 b(a.x + cell, a.y + cell);
-            if (pc_qol(PC_QOL_REVEAL_CHART) || dComIfGs_isSaveArriveGrid(no)) {
+            const bool known = pc_qol(PC_QOL_REVEAL_CHART) || dComIfGs_isSaveArriveGrid(no);
+            if (known) {
                 dl->AddRectFilled(ImVec2(a.x + 1, a.y + 1), ImVec2(b.x - 1, b.y - 1), reached, 2.0f);
             }
             dl->AddRect(a, b, grid);
+            // the island: drawn in land colours where reached, a faint outline elsewhere
+            drawIsland(dl, no, ImVec2(a.x + cell / 2.0f, a.y + cell / 2.0f), cell,
+                       known ? C(96, 150, 70, 235) : C(255, 255, 255, 45), known ? C(60, 40, 20, 200) : C(0, 0, 0, 0));
         }
     }
     dl->AddRect(o, ImVec2(o.x + size, o.y + size), frame, 0.0f, 0, 1.5f);
