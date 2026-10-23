@@ -28,6 +28,8 @@ on:
       - 'scripts/seedgen/**'
       - 'native/src/pc/features/pc_seedgen*'
       - 'native/cmake/quickjs.cmake'
+      - 'native/src/pc/features/pc_qol*'
+      - 'native/src/pc/features/pc_sea_map*'
 
 permissions:
   contents: read
