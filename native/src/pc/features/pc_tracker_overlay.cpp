@@ -3,9 +3,11 @@
 // (pc_tracker_logic.cpp). L3+R3 (both sticks pressed together, on any controller) or F2:
 //   1. the tracker screen: the game pauses, and the screen shows the tracker's items, its sea chart (each
 //      island's checks in logic / not checked) and the dungeons, in wooferzfg's tracker's own art
-//      (tracker-logic/art.rgba); the stick or the D-pad moves the cursor over the islands and dungeons
-//      and the list on the right names the one under it, each check coloured as the tracker colours it
-//      (blue: in logic, red: not yet, grey: checked). B closes it.
+//      (tracker-logic/art.rgba); the stick or the D-pad moves the cursor over the items, the islands and
+//      the dungeons. On a place the list on the right names its checks, each coloured as the tracker
+//      colours it (blue: in logic, red: not yet, grey, ticked and struck out: checked); A goes into the
+//      list, where A marks a check by hand. On an item A gives one more, X one less (the tracker's
+//      click), for what the game cannot tell. B goes back, then closes it.
 //   2. a small panel in a corner while the game runs: the counts.
 //   3. hidden.
 // The default button map gives neither stick click to the game. With the options menu open it is hidden.
@@ -89,7 +91,7 @@ const Sprite* sprite(const std::string& key) {
 
 // ---- input -----------------------------------------------------------------------------------------
 
-enum Key : uint32_t { kUp = 1, kDown = 2, kLeft = 4, kRight = 8, kBack = 16, kToggle = 32, kConfirm = 64 };
+enum Key : uint32_t { kUp = 1, kDown = 2, kLeft = 4, kRight = 8, kBack = 16, kToggle = 32, kConfirm = 64, kLess = 128 };
 
 // The buttons down now, of every controller and the keyboard
 uint32_t keysDown() {
@@ -110,6 +112,7 @@ uint32_t keysDown() {
         // B: east on an Xbox-style pad, and the Switch's B (Aurora's shim maps it to east)
         keys |= button(SDL_GAMEPAD_BUTTON_EAST) ? kBack : 0;
         keys |= button(SDL_GAMEPAD_BUTTON_SOUTH) ? kConfirm : 0; // A, the same way
+        keys |= button(SDL_GAMEPAD_BUTTON_WEST) ? kLess : 0;     // X on an Xbox-style pad (the Deck)
         keys |= button(SDL_GAMEPAD_BUTTON_LEFT_STICK) && button(SDL_GAMEPAD_BUTTON_RIGHT_STICK) ? kToggle : 0;
     }
     int count = 0;
@@ -121,6 +124,7 @@ uint32_t keysDown() {
     keys |= key(SDL_SCANCODE_RIGHT) ? kRight : 0;
     keys |= key(SDL_SCANCODE_ESCAPE) ? kBack : 0;
     keys |= key(SDL_SCANCODE_RETURN) ? kConfirm : 0;
+    keys |= key(SDL_SCANCODE_BACKSPACE) ? kLess : 0;
     keys |= key(SDL_SCANCODE_F2) ? kToggle : 0;
     return keys;
 }
@@ -144,37 +148,122 @@ uint32_t keysPressed() {
     return pressed;
 }
 
-// ---- the cursor: the 7x7 sea chart, then a row of the dungeons and the others ------------------------
+// ---- the cursor: the items, the 7x7 sea chart, then a row of the dungeons and the others -------------
 
 constexpr int kSeaSide = 7;
 constexpr int kExtras = 10; // 7 dungeons, Mailbox, The Great Sea, Hyrule
-int sCursor = 43;           // Outset Island
+int sCursor = 43;           // the area under the cursor (logic.areas' order): Outset Island
+int sItem = -1;             // or the item under it (kItemSlots), -1: an area
 bool sInList = false;       // A on a place: the cursor is in its list of checks
 int sListCursor = 0;
 
-void moveCursor(uint32_t pressed) {
-    if (sCursor < kSeaSide * kSeaSide) {
-        int row = sCursor / kSeaSide, col = sCursor % kSeaSide;
-        if (pressed & kLeft) col = (col + kSeaSide - 1) % kSeaSide;
-        if (pressed & kRight) col = (col + 1) % kSeaSide;
-        if (pressed & kUp) row = std::max(0, row - 1);
-        if (pressed & kDown) {
-            if (row == kSeaSide - 1) {
-                sCursor = kSeaSide * kSeaSide + std::min(col * kExtras / kSeaSide, kExtras - 1);
-                return;
+// The item table, in the tracker's own arrangement (src/ui/items-table.jsx): four rows of eight, then
+// the pearls on their holder and the Triforce under the first four columns, two rows of the rest at
+// the right. Positions on the 1280x720 layout.
+constexpr float kItemsX = 40, kItemsY = 66, kItemCell = 52.5f, kItemIcon = 46.0f;
+struct ItemSlot {
+    const char* name;
+    float x, y, size;
+};
+const std::vector<ItemSlot>& itemSlots() {
+    static const std::vector<ItemSlot> slots = [] {
+        static const char* const kRows[4][8] = {
+            {"Telescope", "Boat's Sail", "Wind Waker", "Grappling Hook", "Spoils Bag", "Boomerang", "Deku Leaf",
+             "Progressive Sword"},
+            {"Tingle Tuner", "Progressive Picto Box", "Iron Boots", "Magic Armor", "Bait Bag", "Progressive Bow",
+             "Bombs", "Progressive Shield"},
+            {"Cabana Deed", "Maggie's Letter", "Moblin's Letter", "Note to Mom", "Delivery Bag", "Hookshot",
+             "Skull Hammer", "Power Bracelets"},
+            {"Empty Bottle", "Wind's Requiem", "Ballad of Gales", "Command Melody", "Earth God's Lyric",
+             "Wind God's Aria", "Song of Passing", "Hero's Charm"},
+        };
+        static const char* const kBottom[7] = {"Tingle Statue", "Ghost Ship Chart", "Hurricane Spin",
+                                               "Progressive Bomb Bag", "Progressive Quiver", "Progressive Wallet",
+                                               "Progressive Magic Meter"};
+        std::vector<ItemSlot> v;
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 8; col++) {
+                v.push_back({kRows[row][col], kItemsX + 18 + col * kItemCell, kItemsY + 13 + row * kItemCell, kItemIcon});
             }
-            row++;
         }
-        sCursor = row * kSeaSide + col;
-    } else {
-        int i = sCursor - kSeaSide * kSeaSide;
-        if (pressed & kLeft) i = (i + kExtras - 1) % kExtras;
-        if (pressed & kRight) i = (i + 1) % kExtras;
-        if (pressed & kUp) {
-            sCursor = (kSeaSide - 1) * kSeaSide + std::min(i * kSeaSide / kExtras, kSeaSide - 1);
-            return;
+        const float py = kItemsY + 13 + 4 * kItemCell + 2;
+        v.push_back({"Nayru's Pearl", kItemsX + 46, py + 4, 36});
+        v.push_back({"Din's Pearl", kItemsX + 20, py + 52, 36});
+        v.push_back({"Farore's Pearl", kItemsX + 72, py + 52, 36});
+        v.push_back({"Triforce Shard", kItemsX + 122, py + 2, 96});
+        for (int i = 0; i < 7; i++) {
+            const int col = i < 3 ? 5 + i : 4 + (i - 3);
+            v.push_back({kBottom[i], kItemsX + 18 + col * kItemCell, py + (i < 3 ? 0 : kItemCell), kItemIcon});
         }
-        sCursor = kSeaSide * kSeaSide + i;
+        return v;
+    }();
+    return slots;
+}
+
+// The sea chart and the row of the others, on the same layout
+constexpr float kSeaX = 516, kSeaY = 66, kSeaW = 382, kSeaH = 363;
+constexpr float kExtrasX = 48, kExtrasY = 456, kExtrasCell = 85;
+
+// Every place the cursor can be, by its centre: item i is -1 - i, an area its index
+struct Target {
+    int id;
+    float x, y;
+};
+std::vector<Target> targets() {
+    std::vector<Target> t;
+    const std::vector<ItemSlot>& slots = itemSlots();
+    for (size_t i = 0; i < slots.size(); i++) {
+        t.push_back({-1 - int(i), slots[i].x + slots[i].size / 2, slots[i].y + slots[i].size / 2});
+    }
+    for (int i = 0; i < kSeaSide * kSeaSide; i++) {
+        t.push_back({i, kSeaX + (i % kSeaSide + 0.5f) * kSeaW / kSeaSide, kSeaY + (i / kSeaSide + 0.5f) * kSeaH / kSeaSide});
+    }
+    for (int i = 0; i < kExtras; i++) {
+        t.push_back({kSeaSide * kSeaSide + i, kExtrasX + i * kExtrasCell + 40, kExtrasY + 60});
+    }
+    return t;
+}
+
+// The nearest place in the direction pressed (straight ahead counts more than off to the side)
+void moveCursor(uint32_t pressed) {
+    const float dx = (pressed & kRight) ? 1.0f : (pressed & kLeft) ? -1.0f : 0.0f;
+    const float dy = (pressed & kDown) ? 1.0f : (pressed & kUp) ? -1.0f : 0.0f;
+    if (dx == 0 && dy == 0) {
+        return;
+    }
+    const std::vector<Target> all = targets();
+    const int here = sItem >= 0 ? -1 - sItem : sCursor;
+    const Target* from = nullptr;
+    for (const Target& t : all) {
+        if (t.id == here) {
+            from = &t;
+        }
+    }
+    if (from == nullptr) {
+        return;
+    }
+    const Target* best = nullptr;
+    float bestScore = 0;
+    for (const Target& t : all) {
+        const float ox = t.x - from->x, oy = t.y - from->y;
+        const float ahead = dx != 0 ? ox * dx : oy * dy;
+        const float side = dx != 0 ? oy : ox;
+        if (ahead < 8) {
+            continue;
+        }
+        const float score = ahead + 2.5f * (side < 0 ? -side : side);
+        if (best == nullptr || score < bestScore) {
+            best = &t;
+            bestScore = score;
+        }
+    }
+    if (best != nullptr) {
+        if (best->id < 0) {
+            sItem = -1 - best->id;
+        } else {
+            sItem = -1;
+            sCursor = best->id;
+        }
     }
 }
 
@@ -227,6 +316,16 @@ struct Canvas {
         dl->AddRect(at(x, y), at(x + w, y + h), color, rounding * scale, 0, thickness * scale);
     }
 
+    void line(float x1, float y1, float x2, float y2, ImU32 color, float thickness) const {
+        dl->AddLine(at(x1, y1), at(x2, y2), color, thickness * scale);
+    }
+
+    // A tick in a box of side h at (x, y)
+    void tick(float x, float y, float h, ImU32 color) const {
+        const ImVec2 points[3] = {at(x, y + h * 0.55f), at(x + h * 0.38f, y + h * 0.9f), at(x + h, y + h * 0.1f)};
+        dl->AddPolyline(points, 3, color, 0, 2.5f * scale);
+    }
+
     float textWidth(const char* text, float size) const {
         return font->CalcTextSizeA(size * scale, FLT_MAX, 0, text).x / scale;
     }
@@ -267,60 +366,36 @@ std::string itemKey(const std::string& item, int count) {
     return "ITEMS/" + item + "/0";
 }
 
-// The item table, in the tracker's own arrangement (src/ui/items-table.jsx): four rows of eight, then
-// the pearls, the Triforce and a row of seven
-const char* const kItemRows[4][8] = {
-    {"Telescope", "Boat's Sail", "Wind Waker", "Grappling Hook", "Spoils Bag", "Boomerang", "Deku Leaf",
-     "Progressive Sword"},
-    {"Tingle Tuner", "Progressive Picto Box", "Iron Boots", "Magic Armor", "Bait Bag", "Progressive Bow", "Bombs",
-     "Progressive Shield"},
-    {"Cabana Deed", "Maggie's Letter", "Moblin's Letter", "Note to Mom", "Delivery Bag", "Hookshot", "Skull Hammer",
-     "Power Bracelets"},
-    {"Empty Bottle", "Wind's Requiem", "Ballad of Gales", "Command Melody", "Earth God's Lyric", "Wind God's Aria",
-     "Song of Passing", "Hero's Charm"},
-};
-const char* const kItemBottom[7] = {"Tingle Statue", "Ghost Ship Chart", "Hurricane Spin", "Progressive Bomb Bag",
-                                    "Progressive Quiver", "Progressive Wallet", "Progressive Magic Meter"};
-
-void drawItems(const Canvas& c, const Snapshot& s, float x0, float y0) {
-    c.image("ITEMS_TABLE_BACKGROUND", x0, y0);
-    constexpr float kCell = 52.5f, kIcon = 46.0f;
-    for (int row = 0; row < 4; row++) {
-        for (int col = 0; col < 8; col++) {
-            const char* item = kItemRows[row][col];
-            const int n = countOf(s.items, item);
-            c.image(itemKey(item, n), x0 + 18 + col * kCell, y0 + 13 + row * kCell, kIcon, kIcon);
-            if (n > 1 && strcmp(item, "Empty Bottle") == 0) {
-                char t[8];
-                snprintf(t, sizeof t, "%d", n);
-                c.text(t, x0 + 18 + col * kCell + kIcon, y0 + 13 + row * kCell + kIcon - 16, kText, 0, 1);
-            }
-        }
+// An item's count: the tracker's (the game's and the ones set by hand) once its logic runs, else the game's
+int itemCount(const Snapshot& s, const LogicResult& logic, const std::string& name) {
+    if (logic.ready) {
+        return countOf(logic.items, name);
     }
-    // the pearls on their holder and the Triforce under the first four columns, two rows of the rest at
-    // the right (as the tracker places them)
-    const float py = y0 + 13 + 4 * kCell + 2;
-    c.image("PEARL_HOLDER", x0 + 14, py, 100, 100);
-    c.image(itemKey("Nayru's Pearl", countOf(s.items, "Nayru's Pearl")), x0 + 46, py + 4, 36, 36);
-    c.image(itemKey("Din's Pearl", countOf(s.items, "Din's Pearl")), x0 + 20, py + 52, 36, 36);
-    c.image(itemKey("Farore's Pearl", countOf(s.items, "Farore's Pearl")), x0 + 72, py + 52, 36, 36);
-    c.image(itemKey("Triforce Shard", countOf(s.items, "Triforce Shard")), x0 + 122, py + 2, 96, 96);
-    for (int i = 0; i < 7; i++) {
-        const char* item = kItemBottom[i];
-        const int n = countOf(s.items, item);
-        const int col = i < 3 ? 5 + i : 4 + (i - 3);
-        const float ix = x0 + 18 + col * kCell, iy = py + (i < 3 ? 0 : kCell);
-        c.image(itemKey(item, n), ix, iy, kIcon, kIcon);
-        if (strcmp(item, "Tingle Statue") == 0 && n > 0) {
+    return countOf(s.items, name);
+}
+
+void drawItems(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
+    c.image("ITEMS_TABLE_BACKGROUND", kItemsX, kItemsY);
+    c.image("PEARL_HOLDER", kItemsX + 14, kItemsY + 13 + 4 * kItemCell + 2, 100, 100);
+    const std::vector<ItemSlot>& slots = itemSlots();
+    for (size_t i = 0; i < slots.size(); i++) {
+        const ItemSlot& slot = slots[i];
+        const int n = itemCount(s, logic, slot.name);
+        c.image(itemKey(slot.name, n), slot.x, slot.y, slot.size, slot.size);
+        if (n > 1 && (strcmp(slot.name, "Empty Bottle") == 0 || strcmp(slot.name, "Tingle Statue") == 0)) {
             char t[8];
             snprintf(t, sizeof t, "%d", n);
-            c.text(t, ix + kIcon, iy + kIcon - 16, kText, 0, 1);
+            c.text(t, slot.x + slot.size, slot.y + slot.size - 16, kText, 0, 1);
+        }
+        if (int(i) == sItem) {
+            c.frame(slot.x - 3, slot.y - 3, slot.size + 6, slot.size + 6, kAccent, 3, 4);
         }
     }
 }
 
 // The 7x7 sea chart: each island's checks in logic / not checked, the cursor's square framed
-void drawSeaChart(const Canvas& c, const LogicResult& logic, float x0, float y0, float w, float h) {
+void drawSeaChart(const Canvas& c, const LogicResult& logic) {
+    const float x0 = kSeaX, y0 = kSeaY, w = kSeaW, h = kSeaH;
     c.image("SEA_CHART", x0, y0, w, h);
     const float cw = w / kSeaSide, ch = h / kSeaSide;
     for (int i = 0; i < kSeaSide * kSeaSide; i++) {
@@ -331,19 +406,20 @@ void drawSeaChart(const Canvas& c, const LogicResult& logic, float x0, float y0,
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
             c.text(t, x + cw * 0.5f, y + ch - c.fontSize - 3, colorOf(a.color), 0, 0.5f);
         }
-        if (i == sCursor) {
+        if (i == sCursor && sItem < 0) {
             c.frame(x + 1, y + 1, cw - 2, ch - 2, kAccent, 3, 4);
         }
     }
 }
 
 // The dungeons, each with its map, compass, big key and small keys held, and the three other places
-void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic, float x0, float y0) {
+void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
+    const float x0 = kExtrasX, y0 = kExtrasY;
     static const char* const kNames[kExtras] = {"Dragon Roost Cavern", "Forbidden Woods", "Tower of the Gods",
                                                  "Forsaken Fortress", "Earth Temple", "Wind Temple", "Ganon's Tower",
                                                  "Mailbox", "The Great Sea", "Hyrule"};
     static const char* const kShort[7] = {"DRC", "FW", "TotG", "FF", "ET", "WT", "GT"};
-    constexpr float kCell = 85;
+    constexpr float kCell = kExtrasCell;
     c.rect(x0 - 8, y0 - 8, kCell * kExtras + 12, 150, IM_COL32(20, 34, 54, 210), 8);
     for (int i = 0; i < kExtras; i++) {
         const float x = x0 + i * kCell;
@@ -352,13 +428,15 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic, fl
             const std::string prefix = kShort[i];
             const bool keys = i != 3 && i != 6; // the Forsaken Fortress and Ganon's Tower have none
             if (keys) {
-                const int held = countOf(s.smallKeysHeld, prefix + " Small Key");
+                // found (the tracker's count) once the logic runs, else held now
+                const int held = logic.ready ? countOf(logic.items, prefix + " Small Key")
+                                             : countOf(s.smallKeysHeld, prefix + " Small Key");
                 c.image("SMALL_KEYS/" + std::to_string(std::min(held, 4)), x + 2, y0, 20, 20);
-                c.image("BIG_KEYS/" + std::to_string(countOf(s.items, prefix + " Big Key") > 0 ? 1 : 0), x + 22, y0, 20, 20);
+                c.image("BIG_KEYS/" + std::to_string(itemCount(s, logic, prefix + " Big Key") > 0 ? 1 : 0), x + 22, y0, 20, 20);
             }
             if (i != 6) {
-                c.image("DUNGEON_MAPS/" + std::to_string(countOf(s.items, prefix + " Dungeon Map") > 0 ? 1 : 0), x + 42, y0, 20, 20);
-                c.image("COMPASSES/" + std::to_string(countOf(s.items, prefix + " Compass") > 0 ? 1 : 0), x + 62, y0, 20, 20);
+                c.image("DUNGEON_MAPS/" + std::to_string(itemCount(s, logic, prefix + " Dungeon Map") > 0 ? 1 : 0), x + 42, y0, 20, 20);
+                c.image("COMPASSES/" + std::to_string(itemCount(s, logic, prefix + " Compass") > 0 ? 1 : 0), x + 62, y0, 20, 20);
             }
             c.image("DUNGEONS/" + name + "/false", x + 4, y0 + 22, 76, 76);
         } else {
@@ -371,7 +449,7 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic, fl
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
             c.text(t, x + 42, y0 + 104, colorOf(a.color), 0, 0.5f);
         }
-        if (index == sCursor) {
+        if (index == sCursor && sItem < 0) {
             c.frame(x - 2, y0 - 4, kCell - 4, 132, kAccent, 3, 6);
         }
     }
@@ -406,9 +484,11 @@ void drawList(const Canvas& c, const LogicResult& logic, float x0, float y0, flo
     }
     const LogicArea& a = logic.areas[sCursor];
     c.text(a.name.c_str(), x0 + 14, y0 + 12, kAccent, 22);
-    char t[48];
-    snprintf(t, sizeof t, "%d in logic, %d not checked", a.available, a.remaining);
-    c.text(t, x0 + 14, y0 + 40, kDimText);
+    char t[64];
+    snprintf(t, sizeof t, "%d / %d checked", a.checked, int(a.locations.size()));
+    c.text(t, x0 + 14, y0 + 40, a.checked == int(a.locations.size()) && a.checked > 0 ? kAccent : kText);
+    snprintf(t, sizeof t, "%d in logic", a.available);
+    c.text(t, x0 + w - 14, y0 + 40, kAvailable, 0, 1);
     float y = y0 + 70;
     if (a.locations.empty()) {
         c.text("No progress locations here.", x0 + 14, y, kDimText);
@@ -425,9 +505,35 @@ void drawList(const Canvas& c, const LogicResult& logic, float x0, float y0, flo
         if (sInList && i == sListCursor) {
             c.frame(x0 + 8, y - 3, w - 16, c.fontSize + 6, kAccent, 2, 4);
         }
-        c.rect(x0 + 14, y + 5, 8, 8, colorOf(l.color), 2);
-        c.text(l.name.c_str(), x0 + 30, y, colorOf(l.color));
+        if (l.color == LogicColor::CHECKED) {
+            // ticked and struck out
+            c.tick(x0 + 12, y + 2, 13, kAccent);
+            c.text(l.name.c_str(), x0 + 30, y, kChecked);
+            const float tw = std::min(c.textWidth(l.name.c_str(), c.fontSize), w - 44);
+            c.line(x0 + 29, y + c.fontSize * 0.55f, x0 + 31 + tw, y + c.fontSize * 0.55f, kChecked, 1.5f);
+        } else {
+            c.rect(x0 + 14, y + 5, 8, 8, colorOf(l.color), 2);
+            c.text(l.name.c_str(), x0 + 30, y, colorOf(l.color));
+        }
         y += c.fontSize + 7;
+    }
+}
+
+// The list's place when the cursor is on an item: its name and count
+void drawItemInfo(const Canvas& c, const Snapshot& s, const LogicResult& logic, float x0, float y0, float w, float h) {
+    c.rect(x0, y0, w, h, IM_COL32(20, 34, 54, 225), 8);
+    const ItemSlot& slot = itemSlots()[sItem];
+    c.text(slot.name, x0 + 14, y0 + 12, kAccent, 22);
+    const int n = itemCount(s, logic, slot.name);
+    c.image(itemKey(slot.name, n), x0 + (w - 96) / 2, y0 + 56, 96, 96);
+    char t[32];
+    snprintf(t, sizeof t, n > 0 ? "Have: %d" : "Not yet", n);
+    c.text(t, x0 + w / 2, y0 + 164, kText, 20, 0.5f);
+    if (logic.ready) {
+        c.text("A: one more   X: one less", x0 + w / 2, y0 + 200, kDimText, 0, 0.5f);
+        c.text("(the game's count wins when it changes)", x0 + w / 2, y0 + 224, kDimText, 14, 0.5f);
+    } else {
+        c.text("Set by hand once the logic runs.", x0 + w / 2, y0 + 200, kDimText, 0, 0.5f);
     }
 }
 
@@ -458,13 +564,18 @@ void drawScreen() {
         c.text(t, 1240, 48, kDimText, 15, 1);
     }
 
-    drawItems(c, s, 40, 66);
-    drawSeaChart(c, logic, 516, 66, 382, 363);
-    drawList(c, logic, 918, 66, 322, 520);
-    drawExtras(c, s, logic, 48, 456);
+    drawItems(c, s, logic);
+    drawSeaChart(c, logic);
+    if (sItem >= 0) {
+        drawItemInfo(c, s, logic, 918, 66, 322, 520);
+    } else {
+        drawList(c, logic, 918, 66, 322, 520);
+    }
+    drawExtras(c, s, logic);
 
-    c.text(sInList ? "Stick / D-pad: move     A: mark checked / not     B: back"
-                   : "Stick / D-pad: move     A: its checks     B: close     L3+R3: small panel",
+    c.text(sInList    ? "Stick / D-pad: move     A: mark checked / not     B: back"
+           : sItem >= 0 ? "Stick / D-pad: move     A: one more     X: one less     B: close"
+                        : "Stick / D-pad: move     A: its checks     B: close     L3+R3: small panel",
            40, 680, kDimText, 16);
     c.text("Art and logic: wooferzfg's TWW Randomizer Tracker", 1240, 680, kDimText, 14, 1);
 }
@@ -515,6 +626,12 @@ void handleScreenKeys(uint32_t pressed) {
     const LogicArea* area = logic.ready && sCursor < int(logic.areas.size()) ? &logic.areas[sCursor] : nullptr;
     if (!sInList) {
         moveCursor(pressed);
+        if (sItem >= 0) {
+            if (logic.ready && (pressed & (kConfirm | kLess)) != 0) {
+                logicItem(itemSlots()[sItem].name, (pressed & kConfirm) != 0 ? 1 : -1);
+            }
+            return;
+        }
         if ((pressed & kConfirm) != 0 && area != nullptr && !area->locations.empty()) {
             sInList = true;
             sListCursor = 0;

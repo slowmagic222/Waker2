@@ -8,11 +8,15 @@
 //                                     then Mailbox, The Great Sea, Hyrule): [{name, dungeon, available, remaining, color,
 //                                     locations: [{name, color}]}], checked, available, remaining}
 //   cosTracker.toggle(generalLocation, detailedLocation): a check marked by hand
+//   cosTracker.item(itemName, delta): an item set by hand, one more (delta 1) or one less (-1), cycling
+//                                     as a click on the tracker's item does
 //   (update and updateText take an empty string for "no new state": the result after a toggle)
 //   cosTracker.updateText(gameStateJson) -> the same as lines, for the game (no JSON parser there):
 //     T <checked> <available> <remaining>
 //     A <dungeon 0|1> <available> <remaining> <color> <area name>
 //     L <color> <location name>                  (the area's locations, after its A line)
+//     I <count> <item name>                      (the tracker's item counts: the game's and the ones
+//                                                 set by hand)
 //     E <error>
 //   fields separated by tabs, colors by their first letter (a, u, c, n);
 //   colors: the tracker's, "available-location", "unavailable-location", "checked-location",
@@ -105,6 +109,14 @@ globalThis.cosTracker = {
     }
   },
 
+  item(itemName, delta) {
+    if (!_.isNil(trackerState)) {
+      trackerState = delta < 0
+        ? trackerState.decrementItem(itemName, true)
+        : trackerState.incrementItem(itemName, true);
+    }
+  },
+
   updateText(gameStateJson, onlyProgressLocations = true) {
     const result = JSON.parse(this.update(gameStateJson, onlyProgressLocations));
     if (!_.isNil(result.error)) {
@@ -116,6 +128,9 @@ globalThis.cosTracker = {
       _.forEach(area.locations, (location) => {
         lines.push(`L\t${colorLetter(location.color)}\t${location.name}`);
       });
+    });
+    _.forEach(trackerState.items, (count, name) => {
+      lines.push(`I\t${count}\t${name}`);
     });
     return `${lines.join('\n')}\n`;
   },

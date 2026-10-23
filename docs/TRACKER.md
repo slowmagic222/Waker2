@@ -35,10 +35,13 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
 
 1. The tracker screen: the game pauses, and the screen shows the tracker's items, its sea chart with each
    island's checks "in logic / not checked", and the dungeons (keys, map, compass, big key, counts), in
-   wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the islands and dungeons, and
-   the list on the right names the checks of the one under it, coloured as the tracker colours them:
-   blue in logic, red not yet, grey checked. A on a place moves into its list, and A there marks a check
-   by hand (or unmarks it), for what the game cannot tell; B goes back, and B again closes the screen.
+   wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the items, the islands and
+   the dungeons. On a place, the list on the right says how many of its checks are checked and names
+   them, coloured as the tracker colours them: blue in logic, red not yet, and checked ones grey, ticked
+   and struck out. A moves into the list, and A there marks a check by hand (or unmarks it). On an item,
+   A gives one more and X one less, cycling as a click on the tracker's item does, for what the game
+   cannot tell (the game's own count wins again once it changes). B goes back, and B again closes the
+   screen.
 2. A second press: a small panel in a corner while the game runs (in logic / left).
 3. A third press hides it.
 

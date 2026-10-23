@@ -75,6 +75,7 @@ struct LogicArea {
     bool dungeon = false;
     int available = 0; // not checked and in logic
     int remaining = 0; // not checked
+    int checked = 0;   // of locations.size()
     char color = LogicColor::UNAVAILABLE;
     std::vector<LogicLocation> locations;
 };
@@ -83,6 +84,7 @@ struct LogicResult {
     std::string error; // why there is no logic (no permalink, no files ...); empty while it starts
     int checked = 0, available = 0, remaining = 0;
     std::vector<LogicArea> areas; // the 49 islands (sea chart order), the 7 dungeons, the 3 others
+    std::vector<NamedCount> items; // the tracker's item counts: the game's, and the ones set by hand
     int millis = 0;               // how long the last one took
 };
 // The logic's folder: COS_TRACKER_LOGIC, else tracker-logic/ next to the game (the Switch: next to user/)
@@ -91,6 +93,8 @@ std::string logicDir();
 void logicSubmit(const std::string& stateJson);
 // Game thread: mark a check by hand (or unmark it), as a click in the tracker does
 void logicToggle(const std::string& generalLocation, const std::string& detailedLocation);
+// Game thread: an item set by hand, one more (delta > 0) or one less, cycling as the tracker's click does
+void logicItem(const std::string& item, int delta);
 // Game thread: the newest result
 const LogicResult& logicResult();
 // pc_tracker_logic.cpp: the rando disc's permalink from the text next to it; empty if none

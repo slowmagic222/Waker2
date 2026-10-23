@@ -49,8 +49,9 @@ Saves, settings and caches go in `~/waker2/user/`.
 
 **In the game:** click both sticks in together (L3+R3) for the tracker screen: the game pauses, and it
 shows the items, the sea chart with what is in logic on each island, and the dungeons, in the tracker's
-own art. Move over an island or dungeon to see its checks (blue in logic, red not yet, grey checked);
-A goes into the list and marks a check by hand, B goes back and closes. Again for a small panel in a
+own art. Move over an island or dungeon to see its checks and how many are checked (blue in logic,
+red not yet, checked ones ticked and struck out); A goes into the list and marks a check by hand, B goes
+back and closes. Move onto an item to set it by hand: A one more, X one less. Again for a small panel in a
 corner while you play, a third time to hide it. Works in Game Mode with nothing to set up; F2 does the
 same on a keyboard. It needs the seed's permalink next to the rando disc: the in-game seed generator writes
 `<disc> - Permalink.txt`, and wwrando's `WW Random <seed> - Non-Spoiler Log.txt` (or the spoiler log)

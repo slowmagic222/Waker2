@@ -44,7 +44,13 @@ std::mutex& sLock = *new std::mutex;
 std::condition_variable& sWake = *new std::condition_variable;
 bool sStarted = false;
 std::string sPending; // the newest state not yet worked out (empty: none)
-std::vector<std::pair<std::string, std::string>> sToggles; // checks marked by hand, not yet applied
+// what was set by hand, not yet applied: a check ("toggle", general, detailed) or an item ("item",
+// name, "1" / "-1")
+struct Command {
+    const char* fn;
+    std::string a, b;
+};
+std::vector<Command> sCommands;
 LogicResult sDone;    // the thread's newest result
 bool sDoneNew = false;
 LogicResult sResult; // the game thread's copy
@@ -93,7 +99,11 @@ void parseResult(const std::string& text, LogicResult& out) {
             a.name = f[5];
             out.areas.push_back(std::move(a));
         } else if (f[0] == "L" && f.size() >= 3 && !out.areas.empty()) {
-            out.areas.back().locations.push_back({f[2], colorOf(f[1].empty() ? 'u' : f[1][0])});
+            LogicArea& a = out.areas.back();
+            a.locations.push_back({f[2], colorOf(f[1].empty() ? 'u' : f[1][0])});
+            a.checked += a.locations.back().color == LogicColor::CHECKED ? 1 : 0;
+        } else if (f[0] == "I" && f.size() >= 3) {
+            out.items.push_back({f[2], atoi(f[1].c_str())});
         }
     }
     out.ready = out.error.empty();
@@ -191,23 +201,27 @@ void* run(void*) {
 
     for (;;) {
         std::string state;
-        std::vector<std::pair<std::string, std::string>> toggles;
+        std::vector<Command> commands;
         {
             std::unique_lock<std::mutex> g(sLock);
-            sWake.wait(g, [] { return !sPending.empty() || !sToggles.empty(); });
+            sWake.wait(g, [] { return !sPending.empty() || !sCommands.empty(); });
             state.swap(sPending);
-            toggles.swap(sToggles);
+            commands.swap(sCommands);
         }
         const auto t0 = std::chrono::steady_clock::now();
-        for (const auto& [general, detailed] : toggles) {
-            JSValue args[2] = {JS_NewStringLen(ctx, general.data(), general.size()),
-                               JS_NewStringLen(ctx, detailed.data(), detailed.size())};
+        for (const Command& c : commands) {
+            JSValue args[2] = {JS_NewStringLen(ctx, c.a.data(), c.a.size()),
+                               JS_NewStringLen(ctx, c.b.data(), c.b.size())};
+            if (strcmp(c.fn, "item") == 0) {
+                JS_FreeValue(ctx, args[1]);
+                args[1] = JS_NewInt32(ctx, atoi(c.b.c_str()));
+            }
             std::string ignored;
-            callString(ctx, api, "toggle", 2, args, ignored);
+            callString(ctx, api, c.fn, 2, args, ignored);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
         }
-        // an empty state: the last one again (after a toggle)
+        // an empty state: the last one again (after something set by hand)
         JSValue arg = JS_NewStringLen(ctx, state.data(), state.size());
         const bool ok = callString(ctx, api, "updateText", 1, &arg, out);
         JS_FreeValue(ctx, arg);
@@ -304,7 +318,16 @@ void logicToggle(const std::string& generalLocation, const std::string& detailed
     if (!sStarted) {
         return;
     }
-    sToggles.emplace_back(generalLocation, detailedLocation);
+    sCommands.push_back({"toggle", generalLocation, detailedLocation});
+    sWake.notify_one();
+}
+
+void logicItem(const std::string& item, int delta) {
+    std::lock_guard<std::mutex> g(sLock);
+    if (!sStarted) {
+        return;
+    }
+    sCommands.push_back({"item", item, delta < 0 ? "-1" : "1"});
     sWake.notify_one();
 }
 
