@@ -499,6 +499,21 @@ const PcSettingChoice kQolButton[] = {{"0", "Desactivado", "Off"},
                                       {"down", "Cruceta abajo", "D-pad down"},
                                       {"lstick", "Clic stick izq.", "Left stick click"},
                                       {"rstick", "Clic stick der.", "Right stick click"}};
+const PcSettingChoice kSeaMapSize[] = {{"0.75", "Pequeño", "Small"},
+                                       {"1", "Normal", "Normal"},
+                                       {"1.5", "Grande", "Large"},
+                                       {"2", "Muy grande", "Extra large"}};
+const PcSettingChoice kSeaMapPos[] = {{"bottom-right", "Abajo a la derecha", "Bottom right"},
+                                      {"right", "Derecha, en medio", "Right, middle"},
+                                      {"top-right", "Arriba a la derecha", "Top right"},
+                                      {"top-left", "Arriba a la izquierda", "Top left"},
+                                      {"left", "Izquierda, en medio", "Left, middle"},
+                                      {"bottom-left", "Abajo a la izquierda", "Bottom left"}};
+const PcSettingChoice kSeaMapOpacity[] = {{"100", "100%"}, {"75", "75%"}, {"50", "50%"}, {"25", "25%"}};
+const PcSettingChoice kQolAutosave[] = {{"0", "Desactivado", "Off"},
+                                        {"items", "Al conseguir objetos", "After new items"},
+                                        {"10", "Cada 10 minutos", "Every 10 minutes"},
+                                        {"items10", "Ambos", "Both"}};
 const PcSettingChoice kHdStats[] = {{"0", "Desactivadas", "Off"}, {"150", "Cada 150 cuadros", "Every 150 frames"},
                                     {"300", "Cada 300 cuadros", "Every 300 frames"},
                                     {"600", "Cada 600 cuadros", "Every 600 frames"}};
@@ -705,10 +720,34 @@ const PcSettingDesc kBuiltins[] = {
      "Second item set (X/Y/Z)",
      "That button swaps the X, Y and Z items for a second set; equip them in the menu as usual. Kept "
      "per save slot (BetterWW's Gecko code)."},
+    {"COS_QOL_SEA_MAP", "Mapa del mar en la esquina",
+     "En el Gran Mar, una carta pequeña abajo a la derecha: las cuadrículas visitadas, dónde estás y hacia "
+     "dónde miras, y el nombre de la isla. Se oculta con el HUD.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", applyQol, nullptr, 170,
+     "Sea map in the corner",
+     "On the Great Sea, a small chart in the bottom-right corner: the sectors you reached, where you are "
+     "and which way you face, and the island's name. Hidden with the HUD."},
+    {"COS_QOL_SEA_MAP_SIZE", "Mapa del mar: tamaño", "El tamaño del mapa del mar de la esquina.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapSize), "1", nullptr, nullptr, 171,
+     "Sea map: size", "The size of the corner sea map."},
+    {"COS_QOL_SEA_MAP_POS", "Mapa del mar: posición", "Dónde va el mapa del mar en la pantalla.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapPos), "bottom-right", nullptr, nullptr, 172,
+     "Sea map: position", "Where the sea map goes on the screen."},
+    {"COS_QOL_SEA_MAP_OPACITY", "Mapa del mar: opacidad", "Menos opacidad deja ver el juego a través del mapa.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapOpacity), "100", nullptr, nullptr, 173,
+     "Sea map: opacity", "Less opacity lets the game show through the map."},
+    {"COS_QOL_AUTOSAVE", "Autoguardado",
+     "La partida se guarda sola, como en la pantalla de guardar: al conseguir un objeto o mejora, cada 10 "
+     "minutos o ambos. Solo cuando no hay menú, mensaje ni escena, y si la partida ya se guardó a mano en "
+     "esta tarjeta.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kQolAutosave), "0", applyQol, nullptr, 180,
+     "Autosave",
+     "The game saves itself, as from the save screen: after a new item or upgrade, every 10 minutes, or "
+     "both. Only with no menu, message or cutscene, and once the file was saved by hand on this card."},
     {"COS_TRACKER_POPUPS", "Avisos del tracker",
      "Avisos arriba al jugar: \"1 location checked!\" al abrir un cofre, \"4 checks opened up!\" cuando un "
      "objeto abre lugares nuevos (docs/TRACKER.md).",
-     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "1", nullptr, nullptr, 170,
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "1", nullptr, nullptr, 190,
      "Tracker pop-ups",
      "Pop-ups at the top while playing: \"1 location checked!\" for a check, \"4 checks opened up!\" when "
      "an item opens up new places (docs/TRACKER.md)."},
@@ -1022,6 +1061,7 @@ const QolPresetValue kQolPreset[] = {
     // not BetterWW's patches (its optional Gecko codes at most): the BetterWW preset leaves them as they
     // are (nullptr), the original values turn them off
     {PC_QOL_HUD_BUTTON, nullptr}, {PC_QOL_ITEMS_STAY, nullptr}, {PC_QOL_ITEM_SETS, nullptr},
+    {PC_QOL_SEA_MAP, nullptr},  {PC_QOL_AUTOSAVE, nullptr},
 };
 static_assert(sizeof(kQolPreset) / sizeof(kQolPreset[0]) == PC_QOLS, "a QoL option without a preset value");
 

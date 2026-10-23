@@ -1,5 +1,6 @@
-// The quality-of-life options that have a button of their own (pc_qol.h, docs/QOL_PLAN.md): COS_QOL_HUD_BUTTON
-// hides and shows the HUD, COS_QOL_ITEM_SETS swaps the X/Y/Z items with a second set. pc_qol_frame runs on
+// The quality-of-life options that act from outside the game's own code (pc_qol.h, docs/QOL_PLAN.md):
+// COS_QOL_HUD_BUTTON hides and shows the HUD, COS_QOL_ITEM_SETS swaps the X/Y/Z items with a second set,
+// COS_QOL_AUTOSAVE saves the game as its save screen does. pc_qol_frame runs on
 // the game thread once per frame (pc_frame.cpp), after the options menu, so the game sees a change on its
 // next frame. The buttons are physical ones (pc_button_remap_input_held), not GameCube actions.
 #include "d/dolzel.h" // IWYU pragma: keep
@@ -9,12 +10,15 @@
 #include "pc_internal.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_meter.h"
+#include "d/d_stage.h"
 #include "JAZelAudio/JAZelAudio_SE.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "f_pc/f_pc_manager.h"
 #include "f_pc/f_pc_name.h"
 #include "m_Do/m_Do_audio.h"
 #include "m_Do/m_Do_controller_pad.h"
+#include "m_Do/m_Do_MemCard.h"
+#include "m_Do/m_Do_MemCardRWmng.h"
 
 #include <cstdio>
 #include <cstring>
@@ -147,6 +151,188 @@ void swapItemSets() {
                dComIfGs_getSelectItem(dItemBtn_Z_e));
 }
 
+// ---- autosave ------------------------------------------------------------------------------------------
+
+// What counts as "a new item": the inventory without the bottles (their contents change all the time), the
+// collection (sword, shield, pearls, Triforce, songs, ...), and the heart and magic maximums.
+struct Progress {
+    u8 items[dInvSlot_ItemLast_e];
+    u8 collect[sizeof(dSv_player_collect_c)];
+    u16 maxLife;
+    u8 maxMagic;
+};
+
+void readProgress(Progress& p) {
+    memset(&p, 0, sizeof(p));
+    for (int slot = 0; slot < dInvSlot_ItemLast_e; slot++) {
+        const bool bottle = slot >= dInvSlot_BOTTLE0_e && slot <= dInvSlot_BOTTLE3_e;
+        p.items[slot] = bottle ? 0 : dComIfGs_getItem(slot);
+    }
+    memcpy(p.collect, &g_dComIfG_gameInfo.save.getPlayer().getCollect(), sizeof(p.collect));
+    p.maxLife = g_dComIfG_gameInfo.save.getPlayer().getPlayerStatusA().getMaxLife();
+    p.maxMagic = g_dComIfG_gameInfo.save.getPlayer().getPlayerStatusA().getMaxMagic();
+}
+
+constexpr unsigned int kAutosaveTimerFrames = 30 * 60 * 10; // 10 minutes of play at 30 game frames a second
+constexpr unsigned int kAutosaveMinGap = 30 * 30;           // at least 30 seconds between two autosaves
+constexpr unsigned int kAutosaveNoticeFrames = 30 * 2;
+
+enum class SaveStep { Idle, Loading, Saving };
+
+struct Autosave {
+    bool known = false; // `last` holds this play's progress
+    Progress last;
+    int dataNum = -1;
+    bool itemPending = false;
+    unsigned int playFrames = 0;    // since the last save (autosave or the game's own: see below)
+    unsigned int sinceLast = kAutosaveMinGap;
+    SaveStep step = SaveStep::Idle;
+    unsigned int stepFrames = 0;
+    unsigned int noticeFrames = 0;
+    bool loggedNoFile = false;
+    alignas(32) u8 card[3 * sizeof(card_gamedata)];
+} sAuto;
+
+// The save screen's own test (dMenu_save_c::memCardDataSave): a new file, or the file this card holds.
+bool saveAllowed() {
+    if (dComIfGs_getNewFile() == 1) {
+        return true;
+    }
+    return dComIfGs_getNoFile() == 0 && dComIfGs_getMemCardCheckID() == mDoMemCd_getCardSerialNo();
+}
+
+// The card thread idle and the card ready (getStatus 2), as the save screen requires before it saves.
+bool cardIdle() {
+    return mDoMemCd_isCardCommNone() && mDoMemCd_getStatus(0) == 2;
+}
+
+// Writes this file into the card image just read, as dMenu_save_c::memCardDataSave and dataWrite do, and
+// starts the write. The recollection data (the boss refights' copy of the player) is exchanged back at
+// once rather than after the write: the copy in the card image is what the save screen writes.
+void startWrite() {
+    dComIfGs_exchangePlayerRecollectionData();
+    dComIfGs_putSave(dStage_stagInfo_GetSaveTbl(dComIfGp_getStage().getStagInfo()));
+    dComIfGs_setGameStartStage();
+    const int res = dComIfGs_setMemoryToCard(sAuto.card, dComIfGs_getDataNum());
+    dComIfGs_exchangePlayerRecollectionData();
+    if (res == -1) {
+        pc::writef(STDERR_FILENO, "[cos] qol: autosave: memory_to_card failed\n");
+        sAuto.step = SaveStep::Idle;
+        return;
+    }
+    mDoMemCdRWm_SetCheckSumGameData(sAuto.card, dComIfGs_getDataNum());
+    mDoMemCd_Save(sAuto.card, sizeof(sAuto.card), 0);
+    sAuto.step = SaveStep::Saving;
+    sAuto.stepFrames = 0;
+}
+
+void autosaveFrame(bool safe) {
+    const int mode = pc_qol(PC_QOL_AUTOSAVE);
+    Progress now;
+    readProgress(now);
+    if (!sAuto.known || sAuto.dataNum != dComIfGs_getDataNum()) {
+        // a file was loaded (or the option turned on): what it has now is the starting point
+        sAuto.known = true;
+        sAuto.last = now;
+        sAuto.dataNum = dComIfGs_getDataNum();
+        sAuto.itemPending = false;
+        sAuto.playFrames = 0;
+    } else if (memcmp(&now, &sAuto.last, sizeof(now)) != 0) {
+        sAuto.last = now;
+        sAuto.itemPending = true;
+    }
+    sAuto.playFrames++;
+    sAuto.sinceLast++;
+    if (sAuto.noticeFrames > 0) {
+        sAuto.noticeFrames--;
+    }
+
+    switch (sAuto.step) {
+    case SaveStep::Idle: {
+        if (mode == 0) {
+            sAuto.itemPending = false;
+            return;
+        }
+        const bool due = ((mode & PC_QOL_AUTOSAVE_ITEMS) && sAuto.itemPending) ||
+                         ((mode & PC_QOL_AUTOSAVE_TIMER) && sAuto.playFrames >= kAutosaveTimerFrames);
+        if (!due || !safe || sAuto.sinceLast < kAutosaveMinGap || !cardIdle()) {
+            return;
+        }
+        if (!saveAllowed()) {
+            if (!sAuto.loggedNoFile) {
+                pc::writef(STDERR_FILENO, "[cos] qol: autosave: this file is not on this card yet (save once from "
+                                          "the save screen)\n");
+                sAuto.loggedNoFile = true;
+            }
+            sAuto.itemPending = false;
+            sAuto.playFrames = 0;
+            return;
+        }
+        // the card's file first, so the other two files are written back as they are
+        mDoMemCd_Load();
+        sAuto.step = SaveStep::Loading;
+        sAuto.stepFrames = 0;
+        return;
+    }
+    case SaveStep::Loading: {
+        if (++sAuto.stepFrames > 30 * 10) {
+            pc::writef(STDERR_FILENO, "[cos] qol: autosave: the card did not load in 10 s\n");
+            sAuto.step = SaveStep::Idle;
+            sAuto.sinceLast = 0;
+            return;
+        }
+        if (!mDoMemCd_isCardCommNone()) {
+            return;
+        }
+        const u32 load = mDoMemCd_LoadSync(sAuto.card, sizeof(sAuto.card), 0);
+        if (load == 0) {
+            return; // the card thread still holds its lock
+        }
+        if (load != 1) {
+            pc::writef(STDERR_FILENO, "[cos] qol: autosave: the card's file did not load (%u)\n", load);
+            sAuto.step = SaveStep::Idle;
+            sAuto.sinceLast = 0;
+            return;
+        }
+        // the moment may have passed while the card was read (a message, an event, a scene change)
+        if (!safe) {
+            sAuto.step = SaveStep::Idle;
+            return;
+        }
+        startWrite();
+        return;
+    }
+    case SaveStep::Saving: {
+        if (++sAuto.stepFrames > 30 * 10) {
+            pc::writef(STDERR_FILENO, "[cos] qol: autosave: the card did not answer in 10 s\n");
+            sAuto.step = SaveStep::Idle;
+            sAuto.sinceLast = 0;
+            return;
+        }
+        const s32 res = mDoMemCd_SaveSync();
+        if (res == 0) {
+            return;
+        }
+        sAuto.step = SaveStep::Idle;
+        sAuto.sinceLast = 0;
+        if (res == 1) {
+            // as the save screen does after a good write
+            dComIfGs_setMemCardCheckID(mDoMemCd_getCardSerialNo());
+            dComIfGs_setNewFile(0);
+            dComIfGs_setNoFile(0);
+            sAuto.itemPending = false;
+            sAuto.playFrames = 0;
+            sAuto.noticeFrames = kAutosaveNoticeFrames;
+            pc::writef(STDERR_FILENO, "[cos] qol: autosave: file %d saved (stage %s)\n", dComIfGs_getDataNum() + 1,
+                       dComIfGp_getStartStageName());
+        } else {
+            pc::writef(STDERR_FILENO, "[cos] qol: autosave: the write failed (%d)\n", (int)res);
+        }
+        return;
+    }
+    }
+}
+
 } // namespace
 
 extern "C" {
@@ -155,7 +341,14 @@ int pc_qol_hud_hidden(void) {
     return sHudHidden && pc_qol(PC_QOL_HUD_BUTTON) != 0;
 }
 
+const char* pc_qol_notice(void) {
+    return sAuto.noticeFrames > 0 ? (pc::pc_ui_spanish() ? "Guardado" : "Saved") : nullptr;
+}
+
 void pc_qol_frame(void) {
+    if (fpcM_Search(isPlayScene, nullptr) == nullptr) {
+        sAuto.known = false; // the title or the file select: the next play starts from what its file has
+    }
     if (pc::menuOpen() || fpcM_Search(isPlayScene, nullptr) == nullptr) {
         // the buttons' state is still followed, so a press that opened or closed something is not a press here
         pressed(PC_QOL_HUD_BUTTON, sHudButton);
@@ -169,6 +362,7 @@ void pc_qol_frame(void) {
     if (pressed(PC_QOL_ITEM_SETS, sItemSetButton) && canSwapItems()) {
         swapItemSets();
     }
+    autosaveFrame(canSwapItems());
 }
 
 } // extern "C"
