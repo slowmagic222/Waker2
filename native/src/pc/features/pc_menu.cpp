@@ -498,6 +498,10 @@ const PcSettingChoice kQolButton[] = {{"0", "Desactivado", "Off"},
                                       {"down", "Cruceta abajo", "D-pad down"},
                                       {"lstick", "Clic stick izq.", "Left stick click"},
                                       {"rstick", "Clic stick der.", "Right stick click"}};
+const PcSettingChoice kQolAutosave[] = {{"0", "Desactivado", "Off"},
+                                        {"items", "Al conseguir objetos", "After new items"},
+                                        {"10", "Cada 10 minutos", "Every 10 minutes"},
+                                        {"items10", "Ambos", "Both"}};
 const PcSettingChoice kHdStats[] = {{"0", "Desactivadas", "Off"}, {"150", "Cada 150 cuadros", "Every 150 frames"},
                                     {"300", "Cada 300 cuadros", "Every 300 frames"},
                                     {"600", "Cada 600 cuadros", "Every 600 frames"}};
@@ -711,6 +715,14 @@ const PcSettingDesc kBuiltins[] = {
      "Sea map in the corner",
      "On the Great Sea, a small chart in the bottom-right corner: the sectors you reached, where you are "
      "and which way you face, and the island's name. Hidden with the HUD."},
+    {"COS_QOL_AUTOSAVE", "Autoguardado",
+     "La partida se guarda sola, como en la pantalla de guardar: al conseguir un objeto o mejora, cada 10 "
+     "minutos o ambos. Solo cuando no hay menú, mensaje ni escena, y si la partida ya se guardó a mano en "
+     "esta tarjeta.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kQolAutosave), "0", applyQol, nullptr, 180,
+     "Autosave",
+     "The game saves itself, as from the save screen: after a new item or upgrade, every 10 minutes, or "
+     "both. Only with no menu, message or cutscene, and once the file was saved by hand on this card."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",
@@ -1011,7 +1023,7 @@ const QolPresetValue kQolPreset[] = {
     // not BetterWW's patches (its optional Gecko codes at most): the BetterWW preset leaves them as they
     // are (nullptr), the original values turn them off
     {PC_QOL_HUD_BUTTON, nullptr}, {PC_QOL_ITEMS_STAY, nullptr}, {PC_QOL_ITEM_SETS, nullptr},
-    {PC_QOL_SEA_MAP, nullptr},
+    {PC_QOL_SEA_MAP, nullptr},  {PC_QOL_AUTOSAVE, nullptr},
 };
 static_assert(sizeof(kQolPreset) / sizeof(kQolPreset[0]) == PC_QOLS, "a QoL option without a preset value");
 

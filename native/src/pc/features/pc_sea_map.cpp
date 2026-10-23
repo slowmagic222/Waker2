@@ -59,8 +59,27 @@ bool seaMapVisible() {
 
 } // namespace
 
+// COS_QOL_AUTOSAVE's notice (pc_qol_notice): a word in the bottom-left corner for two seconds.
+void noticeFrame() {
+    const char* notice = pc_qol_notice();
+    if (notice == nullptr) {
+        return;
+    }
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float margin = std::floor(display.y * 0.04f);
+    const ImVec2 ts = ImGui::CalcTextSize(notice);
+    const ImVec2 p(margin, display.y - margin - ts.y);
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    dl->AddRectFilled(ImVec2(p.x - 6, p.y - 4), ImVec2(p.x + ts.x + 6, p.y + ts.y + 4), IM_COL32(0, 0, 0, 130), 6.0f);
+    dl->AddText(p, IM_COL32(255, 240, 200, 240), notice);
+}
+
 void seaMapFrame() {
-    if (ImGui::GetCurrentContext() == nullptr || !seaMapVisible()) {
+    if (ImGui::GetCurrentContext() == nullptr) {
+        return;
+    }
+    noticeFrame();
+    if (!seaMapVisible()) {
         return;
     }
     fopAc_ac_c* player = dComIfGp_getPlayer(0);

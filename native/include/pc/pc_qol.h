@@ -29,6 +29,9 @@
  *                            item_sets.txt next to settings.ini
  * COS_QOL_SEA_MAP=1          a small live chart of the Great Sea in the bottom-right corner while on
  *                            the sea (pc_sea_map.cpp)
+ * COS_QOL_AUTOSAVE=items|10|items10  the game saves to its file on its own (as the save screen does): after
+ *                            a new item or upgrade, every 10 minutes of play, or both; only once the
+ *                            file was saved by hand on this card, and only when the Start menu could open
  *
  * All off by default (0: the original game). Each value is read from the environment (the settings
  * file's value, pc_settings.h) the first time the game asks; the menu's apply function sets it
@@ -60,6 +63,7 @@ typedef enum PcQol {
     PC_QOL_ITEMS_STAY,
     PC_QOL_ITEM_SETS,
     PC_QOL_SEA_MAP,
+    PC_QOL_AUTOSAVE,
     PC_QOLS
 } PcQol;
 
@@ -73,6 +77,10 @@ typedef enum PcQol {
 #define PC_QOL_BUTTON_DOWN 2   /* "down": D-pad down (the GameCube's D-pad down does nothing in play) */
 #define PC_QOL_BUTTON_LSTICK 3 /* "lstick": left stick click */
 #define PC_QOL_BUTTON_RSTICK 4 /* "rstick": right stick click */
+
+/* PC_QOL_AUTOSAVE's values: bits. */
+#define PC_QOL_AUTOSAVE_ITEMS 1 /* "items": after a new item or upgrade */
+#define PC_QOL_AUTOSAVE_TIMER 2 /* "10": every 10 minutes of play */
 
 /* The option's value: 0 off (the original game), else on (PC_QOL_SAIL: PC_QOL_SAIL_SWIFT/BRISK;
    PC_QOL_HUD_BUTTON, PC_QOL_ITEM_SETS: PC_QOL_BUTTON_*). */
@@ -93,6 +101,8 @@ int pc_qol_hud_hidden(void);
 /* The game thread, once per frame after the options menu (pc_frame.cpp): the HUD and item set buttons
    (pc_qol_hooks.cpp). */
 void pc_qol_frame(void);
+/* A short line for the corner of the screen ("Guardado", an autosave just finished), NULL if none now. */
+const char* pc_qol_notice(void);
 
 #ifdef __cplusplus
 }
