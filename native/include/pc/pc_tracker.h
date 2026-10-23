@@ -38,6 +38,7 @@ void pc_tracker_overlay_draw(void);
 #ifdef __cplusplus
 }
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -59,8 +60,31 @@ struct Snapshot {
     std::vector<Area> areas;
     int salvaged = 0; // sunken treasures (charts salvaged), of 49
     int keptOnly = 0; // checks kept on disk that the save in memory does not have (a crash, an older save)
+    // Where Link is, as the tracker's areas (LogicResult::areas' order): the sea sector (0-48) he sails in
+    // or was last in (on an island's own stages, inside), or a dungeon (49-55); -1 not known yet
+    int where = -1;
+    bool atSea = false; // where is the sector he is in now (not the last one)
 };
 const Snapshot& snapshot();
+
+// The game's own font (the message font, rock_24_20_4i_usa.bfn), for the tracker screen: its glyph pages
+// decoded to RGBA and the printable ASCII characters' cells. pc_tracker.cpp, game thread; false while the
+// game has no message font loaded (then the screen uses ImGui's).
+struct FontGlyph {
+    bool valid = false;
+    int page = 0;           // index into GameFont::pages
+    int x = 0, y = 0;       // the cell in its page, pixels
+    int left = 0;           // drawn this far left of the pen (the game's kerning)
+    int advance = 0;        // the pen moves this far
+};
+struct GameFont {
+    int pageWidth = 0, pageHeight = 0;
+    int cellWidth = 0, cellHeight = 0;
+    int ascent = 0, descent = 0;
+    std::vector<std::vector<uint8_t>> pages; // RGBA: white, the glyph in alpha
+    FontGlyph glyphs[95];                    // ' ' to '~'
+};
+bool gameFont(GameFont& out);
 
 // pc_tracker_logic.cpp: the tracker's logic (which locations are in logic), on its own thread
 namespace LogicColor {

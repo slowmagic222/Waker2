@@ -42,6 +42,10 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
    A gives one more and X one less, cycling as a click on the tracker's item does, for what the game
    cannot tell (the game's own count wins again once it changes). B goes back, and B again closes the
    screen.
+   The screen is drawn over the paused game, which shows through, in the game's own font (its message
+   font, read from the game; ImGui's until the game has loaded it). A green ring marks where Link is: the
+   sea sector he sails in (on an island's own stages, the last one, dimmer) or the dungeon he is in, and
+   the cursor starts there.
 2. A second press: a small panel in a corner while the game runs (in logic / left).
 3. A third press hides it.
 

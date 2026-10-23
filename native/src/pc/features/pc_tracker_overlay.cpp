@@ -84,6 +84,25 @@ void loadArt() {
     sArt.texture = aurora_imgui_add_texture(wh[0], wh[1], pixels.data());
 }
 
+// ---- the game's own font (pc_tracker.cpp's gameFont), ImGui's until the game has it -----------------
+
+struct Font {
+    bool ready = false;
+    GameFont data;
+    std::vector<ImTextureID> pages;
+} sFont;
+
+void loadFont() {
+    if (sFont.ready || !gameFont(sFont.data)) {
+        return;
+    }
+    for (const std::vector<uint8_t>& page : sFont.data.pages) {
+        sFont.pages.push_back(aurora_imgui_add_texture(sFont.data.pageWidth, sFont.data.pageHeight, page.data()));
+    }
+    sFont.ready = true;
+    writef(STDERR_FILENO, "[cos] tracker: the game's font, %d page(s)\n", int(sFont.pages.size()));
+}
+
 const Sprite* sprite(const std::string& key) {
     const auto it = sArt.sprites.find(key);
     return it == sArt.sprites.end() ? nullptr : &it->second;
@@ -276,6 +295,8 @@ const ImU32 kNonProgress = IM_COL32(235, 235, 235, 255);
 const ImU32 kText = IM_COL32(240, 240, 240, 255);
 const ImU32 kDimText = IM_COL32(170, 175, 185, 255);
 const ImU32 kAccent = IM_COL32(255, 214, 92, 255);
+const ImU32 kPanel = IM_COL32(10, 18, 30, 150);     // the panels, the game showing through
+const ImU32 kLink = IM_COL32(90, 230, 110, 255);    // where Link is
 
 ImU32 colorOf(char c) {
     switch (c) {
@@ -326,8 +347,54 @@ struct Canvas {
         dl->AddPolyline(points, 3, color, 0, 2.5f * scale);
     }
 
+    // Where Link is: a green ring with a dot (dimmer for the sector he was last in)
+    void linkMarker(float x, float y, float r, bool now) const {
+        const ImU32 color = now ? kLink : IM_COL32(90, 230, 110, 150);
+        dl->AddCircle(at(x, y), r * scale, IM_COL32(0, 0, 0, 200), 24, 5.0f * scale);
+        dl->AddCircle(at(x, y), r * scale, color, 24, 3.0f * scale);
+        dl->AddCircleFilled(at(x, y), r * 0.35f * scale, color, 12);
+    }
+
+    // The game's font: a line of size pixels (on the layout) is the font's ascent plus descent
+    float gameFontScale(float size) const {
+        const GameFont& f = sFont.data;
+        return size / float(std::max(1, f.ascent + f.descent));
+    }
+
     float textWidth(const char* text, float size) const {
+        if (sFont.ready) {
+            const float k = gameFontScale(size);
+            float w = 0;
+            for (const char* p = text; *p != '\0'; p++) {
+                const unsigned char ch = static_cast<unsigned char>(*p);
+                if (ch >= 0x20 && ch < 0x7F && sFont.data.glyphs[ch - 0x20].valid) {
+                    w += sFont.data.glyphs[ch - 0x20].advance * k;
+                }
+            }
+            return w;
+        }
         return font->CalcTextSizeA(size * scale, FLT_MAX, 0, text).x / scale;
+    }
+
+    // One line in the game's font at (x, y) on the layout, its top at y
+    void gameText(const char* text, float x, float y, float size, ImU32 color) const {
+        const GameFont& f = sFont.data;
+        const float k = gameFontScale(size);
+        for (const char* p = text; *p != '\0'; p++) {
+            const unsigned char ch = static_cast<unsigned char>(*p);
+            if (ch < 0x20 || ch >= 0x7F || !f.glyphs[ch - 0x20].valid) {
+                continue;
+            }
+            const FontGlyph& g = f.glyphs[ch - 0x20];
+            if (ch != ' ') {
+                const float gx = x - g.left * k;
+                const ImVec2 uv0(float(g.x) / f.pageWidth, float(g.y) / f.pageHeight);
+                const ImVec2 uv1(float(g.x + f.cellWidth) / f.pageWidth, float(g.y + f.cellHeight) / f.pageHeight);
+                dl->AddImage(sFont.pages[g.page], at(gx, y), at(gx + f.cellWidth * k, y + f.cellHeight * k), uv0, uv1,
+                             color);
+            }
+            x += g.advance * k;
+        }
     }
 
     // Text with a dark outline, readable over the art; align 0 left, 0.5 centred, 1 right
@@ -336,6 +403,16 @@ struct Canvas {
             size = fontSize;
         }
         x -= textWidth(text, size) * align;
+        if (sFont.ready) {
+            if (outline) {
+                const ImU32 shadow = IM_COL32(0, 0, 0, 230);
+                for (const ImVec2 d : {ImVec2(-1.2f, 0), ImVec2(1.2f, 0), ImVec2(0, -1.2f), ImVec2(0, 1.2f), ImVec2(1.5f, 1.5f)}) {
+                    gameText(text, x + d.x, y + d.y, size, shadow);
+                }
+            }
+            gameText(text, x, y, size, color);
+            return;
+        }
         if (outline) {
             const ImU32 shadow = IM_COL32(0, 0, 0, 220);
             for (const ImVec2 d : {ImVec2(-1, 0), ImVec2(1, 0), ImVec2(0, -1), ImVec2(0, 1), ImVec2(1, 1)}) {
@@ -394,7 +471,7 @@ void drawItems(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
 }
 
 // The 7x7 sea chart: each island's checks in logic / not checked, the cursor's square framed
-void drawSeaChart(const Canvas& c, const LogicResult& logic) {
+void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     const float x0 = kSeaX, y0 = kSeaY, w = kSeaW, h = kSeaH;
     c.image("SEA_CHART", x0, y0, w, h);
     const float cw = w / kSeaSide, ch = h / kSeaSide;
@@ -405,6 +482,9 @@ void drawSeaChart(const Canvas& c, const LogicResult& logic) {
             char t[16];
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
             c.text(t, x + cw * 0.5f, y + ch - c.fontSize - 3, colorOf(a.color), 0, 0.5f);
+        }
+        if (i == s.where) {
+            c.linkMarker(x + cw * 0.5f, y + ch * 0.4f, 13, s.atSea);
         }
         if (i == sCursor && sItem < 0) {
             c.frame(x + 1, y + 1, cw - 2, ch - 2, kAccent, 3, 4);
@@ -420,7 +500,7 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
                                                  "Mailbox", "The Great Sea", "Hyrule"};
     static const char* const kShort[7] = {"DRC", "FW", "TotG", "FF", "ET", "WT", "GT"};
     constexpr float kCell = kExtrasCell;
-    c.rect(x0 - 8, y0 - 8, kCell * kExtras + 12, 150, IM_COL32(20, 34, 54, 210), 8);
+    c.rect(x0 - 8, y0 - 8, kCell * kExtras + 12, 150, kPanel, 8);
     for (int i = 0; i < kExtras; i++) {
         const float x = x0 + i * kCell;
         const std::string name = kNames[i];
@@ -449,6 +529,9 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
             c.text(t, x + 42, y0 + 104, colorOf(a.color), 0, 0.5f);
         }
+        if (index == s.where) {
+            c.linkMarker(x + 70, y0 + 34, 11, true);
+        }
         if (index == sCursor && sItem < 0) {
             c.frame(x - 2, y0 - 4, kCell - 4, 132, kAccent, 3, 6);
         }
@@ -457,7 +540,7 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
 
 // The list of the area under the cursor
 void drawList(const Canvas& c, const LogicResult& logic, float x0, float y0, float w, float h) {
-    c.rect(x0, y0, w, h, IM_COL32(20, 34, 54, 225), 8);
+    c.rect(x0, y0, w, h, kPanel, 8);
     if (!logic.ready) {
         c.text("Logic", x0 + 14, y0 + 12, kAccent, 22);
         const std::string why = logic.error.empty() ? "starting..." : logic.error;
@@ -521,7 +604,7 @@ void drawList(const Canvas& c, const LogicResult& logic, float x0, float y0, flo
 
 // The list's place when the cursor is on an item: its name and count
 void drawItemInfo(const Canvas& c, const Snapshot& s, const LogicResult& logic, float x0, float y0, float w, float h) {
-    c.rect(x0, y0, w, h, IM_COL32(20, 34, 54, 225), 8);
+    c.rect(x0, y0, w, h, kPanel, 8);
     const ItemSlot& slot = itemSlots()[sItem];
     c.text(slot.name, x0 + 14, y0 + 12, kAccent, 22);
     const int n = itemCount(s, logic, slot.name);
@@ -543,7 +626,8 @@ void drawScreen() {
     ImGuiIO& io = ImGui::GetIO();
     const float scale = std::min(io.DisplaySize.x / 1280.0f, io.DisplaySize.y / 720.0f);
     ImDrawList* dl = ImGui::GetForegroundDrawList();
-    dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(4, 10, 22, 225));
+    // a light shade only: the (paused) game shows through
+    dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(0, 0, 0, 70));
     Canvas c{dl,
              ImVec2((io.DisplaySize.x - 1280 * scale) * 0.5f, (io.DisplaySize.y - 720 * scale) * 0.5f),
              scale, ImGui::GetFont(), 17.0f};
@@ -557,6 +641,13 @@ void drawScreen() {
     } else if (!s.playing) {
         c.text("Start or load a file.", 1240, 26, kDimText, 20, 1);
     }
+    if (s.playing && s.where >= 0 && s.where < int(logic.areas.size())) {
+        char t[96];
+        snprintf(t, sizeof t, s.where < 49 && !s.atSea ? "Link: last at %s" : "Link: %s",
+                 logic.areas[s.where].name.c_str());
+        c.linkMarker(184, 36, 8, true);
+        c.text(t, 198, 26, kLink, 18);
+    }
     if (s.playing && s.keptOnly > 0) {
         // progress kept on disk (pc_tracker.cpp) that this save does not have
         char t[96];
@@ -565,7 +656,7 @@ void drawScreen() {
     }
 
     drawItems(c, s, logic);
-    drawSeaChart(c, logic);
+    drawSeaChart(c, s, logic);
     if (sItem >= 0) {
         drawItemInfo(c, s, logic, 918, 66, 322, 520);
     } else {
@@ -659,6 +750,10 @@ void setPage(Page page) {
     if (page == SCREEN) {
         PADBlockInput(true);
         holdGame(true);
+        if (snapshot().where >= 0) {
+            sCursor = snapshot().where; // the cursor starts where Link is
+            sItem = -1;
+        }
     } else if (sPage == SCREEN) {
         PADBlockInput(false);
     }
@@ -698,6 +793,7 @@ extern "C" void pc_tracker_overlay_frame(void) {
         if (!sArt.tried) {
             loadArt();
         }
+        loadFont();
         PADBlockInput(true); // again: the options menu unblocks on closing
         holdGame(false);
         handleScreenKeys(pressed);

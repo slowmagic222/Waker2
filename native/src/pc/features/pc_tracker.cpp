@@ -22,6 +22,7 @@
 #include "pc/pc_tracker.h"
 
 #include "JSystem/JKernel/JKRHeap.h"
+#include "JSystem/JUtility/JUTResFont.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_item_data.h"
 #include "d/d_s_play.h"
@@ -43,6 +44,9 @@
 #if defined(__SWITCH__)
 #include "cos_switch.h"
 #endif
+
+// the game's message font (m_Do_ext.cpp)
+extern JUTFont* mDoExt_font0;
 
 namespace pc::tracker {
 
@@ -574,6 +578,37 @@ void salvagedCharts(std::string& out) {
     out += ']';
 }
 
+// Where Link is for the tracker screen: on the sea, the room he stays in is the sector (rooms 1-49, A1 to
+// G7 row by row); elsewhere the last sector stays (the island he went into), or a dungeon's stages say it
+void whereIsLink(const char* stage) {
+    static int sLastSector = -1;
+    if (strcmp(stage, "sea") == 0) {
+        const int room = dComIfGp_roomControl_getStayNo();
+        if (room >= 1 && room <= 49) {
+            sLastSector = room - 1;
+            sSnapshot.atSea = true;
+        }
+        sSnapshot.where = sLastSector;
+        return;
+    }
+    // the dungeons' stages (and their boss rooms), in the tracker's order: DRC, FW, TotG, FF, ET, WT, GT
+    static const struct {
+        const char* prefix;
+        int dungeon;
+    } kDungeons[] = {
+        {"M_NewD2", 0}, {"M_DragB", 0}, {"kindan", 1}, {"kinBOSS", 1}, {"Siren", 2}, {"majroom", 3},
+        {"MajyuE", 3},  {"ma2room", 3}, {"ma3room", 3}, {"Mjtower", 3}, {"M_Dai", 4}, {"kaze", 5},
+        {"Ganon", 6},   {"GTower", 6},  {"Xboss", 6},
+    };
+    for (const auto& d : kDungeons) {
+        if (strncmp(stage, d.prefix, strlen(d.prefix)) == 0) {
+            sSnapshot.where = 49 + d.dungeon;
+            return;
+        }
+    }
+    sSnapshot.where = sLastSector;
+}
+
 std::string build(unsigned int frame) {
     std::string out;
     out.reserve(24 * 1024);
@@ -594,6 +629,7 @@ std::string build(unsigned int frame) {
     if (const std::string key = progressKey(); key != sProgress.key) {
         loadProgress(key);
     }
+    whereIsLink(dComIfGp_getStartStageName());
     out += ", \"playing\": true, \"saveSlot\": " + std::to_string(dComIfGs_getDataNum());
     out += ", \"stage\": ";
     jsonString(out, dComIfGp_getStartStageName());
@@ -626,6 +662,111 @@ void holdGame(bool first) {
     }
     // the hit-stop pause of the PLAY scene, renewed every frame (pc_menu.cpp)
     dScnPly_ply_c::setPauseTimer(2);
+}
+
+// The game's message font, read from the JUTResFont the game keeps (m_Do_ext.cpp's mDoExt_font0, a
+// JUTResFont outside Japan): each glyph page decoded from its GX texture format, each character's cell as
+// JUTResFont::loadImage finds it and its width entry as getWidthEntry does.
+namespace {
+// One texel of a GX intensity texture (I4, I8, IA4, IA8: the formats fonts use) as the alpha of a white
+// RGBA texel; false for another format
+bool decodeFontPage(const u8* src, int w, int h, int format, std::vector<uint8_t>& out) {
+    out.assign(size_t(w) * h * 4, 255);
+    int bw, bh; // block size in texels
+    switch (format) {
+    case GX_TF_I4: bw = 8; bh = 8; break;
+    case GX_TF_I8: bw = 8; bh = 4; break;
+    case GX_TF_IA4: bw = 8; bh = 4; break;
+    case GX_TF_IA8: bw = 4; bh = 4; break;
+    default: return false;
+    }
+    const auto put = [&](int x, int y, int a) {
+        if (x < w && y < h) {
+            out[(size_t(y) * w + x) * 4 + 3] = uint8_t(a);
+        }
+    };
+    size_t at = 0;
+    for (int by = 0; by < h; by += bh) {
+        for (int bx = 0; bx < w; bx += bw) {
+            for (int y = 0; y < bh; y++) {
+                for (int x = 0; x < bw; x++) {
+                    int a = 0;
+                    if (format == GX_TF_I4) {
+                        const u8 b = src[at + (y * bw + x) / 2];
+                        const int v = (x & 1) == 0 ? b >> 4 : b & 15;
+                        a = v * 17;
+                    } else if (format == GX_TF_I8) {
+                        a = src[at + y * bw + x];
+                    } else if (format == GX_TF_IA4) {
+                        const u8 b = src[at + y * bw + x];
+                        a = ((b >> 4) * 17) * ((b & 15) * 17) / 255; // alpha times intensity
+                    } else {
+                        const u8* p = src + at + (y * bw + x) * 2;
+                        a = p[0] * p[1] / 255;
+                    }
+                    put(bx + x, by + y, a);
+                }
+            }
+            at += 32; // every block is 32 bytes
+        }
+    }
+    return true;
+}
+} // namespace
+
+bool gameFont(GameFont& out) {
+    JUTResFont* font = static_cast<JUTResFont*>(mDoExt_font0);
+    if (font == nullptr || !font->isValid() || font->mpGlyphBlocks == nullptr || font->mGlyphBlockNum == 0) {
+        return false;
+    }
+    out = GameFont{};
+    out.ascent = font->getAscent();
+    out.descent = font->getDescent();
+    out.cellWidth = font->getCellWidth();
+    out.cellHeight = font->getCellHeight();
+    std::map<std::pair<int, int>, int> pageOf; // (glyph block, page in it) -> index into out.pages
+    for (int c = 0x20; c < 0x7F; c++) {
+        const int code = font->getFontCode(c);
+        int i = 0, cell = code;
+        for (; i < font->mGlyphBlockNum; i++) {
+            const ResFONT::GLY1* g = font->mpGlyphBlocks[i];
+            if (g->startCode <= code && code <= g->endCode) {
+                cell = code - g->startCode;
+                break;
+            }
+        }
+        if (i == font->mGlyphBlockNum) {
+            continue;
+        }
+        const ResFONT::GLY1* g = font->mpGlyphBlocks[i];
+        const int perPage = g->numRows * g->numColumns;
+        if (perPage <= 0) {
+            continue;
+        }
+        const int page = cell / perPage, inPage = cell % perPage;
+        auto it = pageOf.find({i, page});
+        if (it == pageOf.end()) {
+            std::vector<uint8_t> rgba;
+            if (!decodeFontPage(&g->data[size_t(page) * g->textureSize], g->textureWidth, g->textureHeight,
+                                int(u16(g->textureFormat)), rgba)) {
+                return false;
+            }
+            out.pageWidth = g->textureWidth;
+            out.pageHeight = g->textureHeight;
+            out.pages.push_back(std::move(rgba));
+            it = pageOf.emplace(std::make_pair(i, page), int(out.pages.size()) - 1).first;
+        }
+        FontGlyph& glyph = out.glyphs[c - 0x20];
+        glyph.valid = true;
+        glyph.page = it->second;
+        glyph.x = (inPage % g->numRows) * g->cellWidth; // as JUTResFont::loadImage
+        glyph.y = (inPage / g->numRows) * g->cellHeight;
+        JUTFont::TWidth width;
+        font->getWidthEntry(c, &width);
+        glyph.left = width.field_0x0;
+        glyph.advance = width.field_0x1;
+    }
+    return !out.pages.empty();
 }
 
 const Snapshot& snapshot() {
