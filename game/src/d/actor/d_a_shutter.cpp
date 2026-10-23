@@ -284,18 +284,28 @@ static cPhs_State daShutter_Create(void* i_this) {
     return ((daShutter_c*)i_this)->_create();
 }
 
+#if TARGET_PC
+// The method table calls these as int functions (process_method_func). A bool return sets only the low
+// byte of the return register on x86-64, so fpcBs_Delete saw garbage instead of TRUE and the shutter was
+// never deleted: its room and the play scene never finished deleting (no other room loads, stage changes
+// stay black).
+#define DASHUTTER_MTHD_RET BOOL
+#else
+#define DASHUTTER_MTHD_RET bool
+#endif
+
 /* 00000DF8-00000E18       .text daShutter_Delete__FPv */
-static bool daShutter_Delete(void* i_this) {
+static DASHUTTER_MTHD_RET daShutter_Delete(void* i_this) {
     return ((daShutter_c*)i_this)->_delete();
 }
 
 /* 00000E18-00000E38       .text daShutter_Draw__FPv */
-static bool daShutter_Draw(void* i_this) {
+static DASHUTTER_MTHD_RET daShutter_Draw(void* i_this) {
     return ((daShutter_c*)i_this)->_draw();
 }
 
 /* 00000E38-00000E58       .text daShutter_Execute__FPv */
-static bool daShutter_Execute(void* i_this) {
+static DASHUTTER_MTHD_RET daShutter_Execute(void* i_this) {
     return ((daShutter_c*)i_this)->_execute();
 }
 
