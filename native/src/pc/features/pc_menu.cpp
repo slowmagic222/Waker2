@@ -498,6 +498,17 @@ const PcSettingChoice kQolButton[] = {{"0", "Desactivado", "Off"},
                                       {"down", "Cruceta abajo", "D-pad down"},
                                       {"lstick", "Clic stick izq.", "Left stick click"},
                                       {"rstick", "Clic stick der.", "Right stick click"}};
+const PcSettingChoice kSeaMapSize[] = {{"0.75", "Pequeño", "Small"},
+                                       {"1", "Normal", "Normal"},
+                                       {"1.5", "Grande", "Large"},
+                                       {"2", "Muy grande", "Extra large"}};
+const PcSettingChoice kSeaMapPos[] = {{"bottom-right", "Abajo a la derecha", "Bottom right"},
+                                      {"right", "Derecha, en medio", "Right, middle"},
+                                      {"top-right", "Arriba a la derecha", "Top right"},
+                                      {"top-left", "Arriba a la izquierda", "Top left"},
+                                      {"left", "Izquierda, en medio", "Left, middle"},
+                                      {"bottom-left", "Abajo a la izquierda", "Bottom left"}};
+const PcSettingChoice kSeaMapOpacity[] = {{"100", "100%"}, {"75", "75%"}, {"50", "50%"}, {"25", "25%"}};
 const PcSettingChoice kQolAutosave[] = {{"0", "Desactivado", "Off"},
                                         {"items", "Al conseguir objetos", "After new items"},
                                         {"10", "Cada 10 minutos", "Every 10 minutes"},
@@ -715,6 +726,15 @@ const PcSettingDesc kBuiltins[] = {
      "Sea map in the corner",
      "On the Great Sea, a small chart in the bottom-right corner: the sectors you reached, where you are "
      "and which way you face, and the island's name. Hidden with the HUD."},
+    {"COS_QOL_SEA_MAP_SIZE", "Mapa del mar: tamaño", "El tamaño del mapa del mar de la esquina.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapSize), "1", nullptr, nullptr, 171,
+     "Sea map: size", "The size of the corner sea map."},
+    {"COS_QOL_SEA_MAP_POS", "Mapa del mar: posición", "Dónde va el mapa del mar en la pantalla.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapPos), "bottom-right", nullptr, nullptr, 172,
+     "Sea map: position", "Where the sea map goes on the screen."},
+    {"COS_QOL_SEA_MAP_OPACITY", "Mapa del mar: opacidad", "Menos opacidad deja ver el juego a través del mapa.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapOpacity), "100", nullptr, nullptr, 173,
+     "Sea map: opacity", "Less opacity lets the game show through the map."},
     {"COS_QOL_AUTOSAVE", "Autoguardado",
      "La partida se guarda sola, como en la pantalla de guardar: al conseguir un objeto o mejora, cada 10 "
      "minutos o ambos. Solo cuando no hay menú, mensaje ni escena, y si la partida ya se guardó a mano en "

@@ -11,6 +11,7 @@
 #include "pc_internal.h"
 
 #include "pc/pc_qol.h"
+#include "pc/pc_settings.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_meter.h"
 #include "f_op/f_op_overlap_mng.h"
@@ -20,6 +21,7 @@
 #include <imgui.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace pc {
@@ -98,19 +100,33 @@ void seaMapFrame() {
     const float pz = sLastZ;
     const short angle = player->shape_angle.y;
 
+    // COS_QOL_SEA_MAP_SIZE (a scale, 1 = 7 cells of 3.4% of the screen's height), _POS (the corner or side),
+    // _OPACITY (percent): read every frame, so a change in the menu shows at once
+    float scale = (float)atof(pc_settings_get("COS_QOL_SEA_MAP_SIZE"));
+    scale = scale < 0.5f || scale > 3.0f ? 1.0f : scale;
+    int opacity = atoi(pc_settings_get("COS_QOL_SEA_MAP_OPACITY"));
+    opacity = opacity < 10 || opacity > 100 ? 100 : opacity;
+    const char* pos = pc_settings_get("COS_QOL_SEA_MAP_POS");
+    auto C = [opacity](int r, int g, int b, int a) { return IM_COL32(r, g, b, a * opacity / 100); };
+
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const float cell = std::floor(display.y * 0.034f);
+    const float cell = std::floor(display.y * 0.034f * scale);
     const float size = cell * 7.0f;
     const float margin = std::floor(display.y * 0.04f);
     const float textH = ImGui::GetFontSize() + 4.0f;
-    const ImVec2 o(display.x - margin - size, display.y - margin - size - textH);
+    const bool left = pos[0] == 'l' || strncmp(pos, "top-left", 8) == 0 || strncmp(pos, "bottom-left", 11) == 0;
+    const bool top = strncmp(pos, "top", 3) == 0;
+    const bool middle = strcmp(pos, "left") == 0 || strcmp(pos, "right") == 0;
+    const float ox = left ? margin : display.x - margin - size;
+    const float oy = top ? margin : middle ? std::floor((display.y - size - textH) / 2.0f) : display.y - margin - size - textH;
+    const ImVec2 o(ox, oy);
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
-    const ImU32 sea = IM_COL32(24, 62, 104, 170);
-    const ImU32 reached = IM_COL32(222, 196, 132, 200);
-    const ImU32 grid = IM_COL32(255, 255, 255, 60);
-    const ImU32 frame = IM_COL32(255, 240, 200, 220);
-    dl->AddRectFilled(ImVec2(o.x - 3, o.y - 3), ImVec2(o.x + size + 3, o.y + size + textH + 3), IM_COL32(0, 0, 0, 110),
+    const ImU32 sea = C(24, 62, 104, 170);
+    const ImU32 reached = C(222, 196, 132, 200);
+    const ImU32 grid = C(255, 255, 255, 60);
+    const ImU32 frame = C(255, 240, 200, 220);
+    dl->AddRectFilled(ImVec2(o.x - 3, o.y - 3), ImVec2(o.x + size + 3, o.y + size + textH + 3), C(0, 0, 0, 110),
                       6.0f);
     dl->AddRectFilled(o, ImVec2(o.x + size, o.y + size), sea);
     for (int row = 0; row < 7; row++) {
@@ -135,7 +151,7 @@ void seaMapFrame() {
         return; // not on the sea yet since the game started: no place to mark
     }
     const ImVec2 sa(o.x + col * cell, o.y + row * cell);
-    dl->AddRect(sa, ImVec2(sa.x + cell, sa.y + cell), IM_COL32(120, 255, 120, 255), 2.0f, 0, 2.0f);
+    dl->AddRect(sa, ImVec2(sa.x + cell, sa.y + cell), C(120, 255, 120, 255), 2.0f, 0, 2.0f);
 
     float mx = o.x + size / 2.0f + px / 100000.0f * cell;
     float my = o.y + size / 2.0f + pz / 100000.0f * cell;
@@ -146,11 +162,11 @@ void seaMapFrame() {
     const float dx = std::sin(rad), dz = std::cos(rad);
     const float len = cell * 0.45f;
     const ImVec2 tip(mx + dx * len, my + dz * len);
-    const ImVec2 left(mx - dx * len * 0.5f + dz * len * 0.45f, my - dz * len * 0.5f - dx * len * 0.45f);
-    const ImVec2 right(mx - dx * len * 0.5f - dz * len * 0.45f, my - dz * len * 0.5f + dx * len * 0.45f);
+    const ImVec2 wingL(mx - dx * len * 0.5f + dz * len * 0.45f, my - dz * len * 0.5f - dx * len * 0.45f);
+    const ImVec2 wingR(mx - dx * len * 0.5f - dz * len * 0.45f, my - dz * len * 0.5f + dx * len * 0.45f);
     if (onSea) {
-        dl->AddTriangleFilled(tip, left, right, IM_COL32(255, 70, 50, 255));
-        dl->AddTriangle(tip, left, right, IM_COL32(255, 255, 255, 230), 1.0f);
+        dl->AddTriangleFilled(tip, wingL, wingR, C(255, 70, 50, 255));
+        dl->AddTriangle(tip, wingL, wingR, C(255, 255, 255, 230), 1.0f);
     }
 
     const int no = row * 7 + col;
@@ -159,7 +175,7 @@ void seaMapFrame() {
              pc_qol(PC_QOL_REVEAL_CHART) || dComIfGs_isSaveArriveGrid(no) ? kSectorNames[no] : "?");
     const ImVec2 ts = ImGui::CalcTextSize(label);
     const float tx = ts.x > size ? o.x + size - ts.x : o.x + (size - ts.x) / 2.0f;
-    dl->AddText(ImVec2(tx, o.y + size + 3.0f), IM_COL32(255, 255, 255, 235), label);
+    dl->AddText(ImVec2(tx, o.y + size + 3.0f), C(255, 255, 255, 235), label);
 }
 
 } // namespace pc
