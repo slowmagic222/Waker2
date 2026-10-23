@@ -831,9 +831,14 @@ struct Seen {
     double since = 0;     // when play started (pop-ups wait a moment: the first states are a load)
 } sSeen;
 
+// COS_TRACKER_POPUPS: "0" off, "1" on the left under the hearts (the default), "2" at the top, centred
 bool popupsOn() {
     const char* v = pc_settings_get("COS_TRACKER_POPUPS");
     return v[0] == '\0' || strcmp(v, "0") != 0;
+}
+
+bool popupsCentred() {
+    return strcmp(pc_settings_get("COS_TRACKER_POPUPS"), "2") == 0;
 }
 
 void notePopups() {
@@ -920,7 +925,8 @@ void notePopups() {
     sSeen.valid = true;
 }
 
-// The pop-ups at the top of the screen, the oldest first, each fading in and out
+// The pop-ups on the left under the hearts and magic (or at the top, centred), the oldest first, each
+// fading and sliding in and out
 void drawPopups() {
     if (sPopups.empty()) {
         return;
@@ -928,9 +934,11 @@ void drawPopups() {
     ImGuiIO& io = ImGui::GetIO();
     const double now = ImGui::GetTime();
     const float scale = std::min(io.DisplaySize.x / 1280.0f, io.DisplaySize.y / 720.0f);
+    const bool centred = popupsCentred();
+    // centred: the layout centred on the window; on the left: its left edge on the window's
     Canvas c{ImGui::GetForegroundDrawList(),
-             ImVec2((io.DisplaySize.x - 1280 * scale) * 0.5f, 0), scale, ImGui::GetFont(), 22.0f};
-    float y = 70;
+             ImVec2(centred ? (io.DisplaySize.x - 1280 * scale) * 0.5f : 0, 0), scale, ImGui::GetFont(), 22.0f};
+    float y = centred ? 70 : 165;
     for (size_t i = 0; i < sPopups.size() && i < kPopupsShown; i++) {
         Popup& p = sPopups[i];
         if (p.start < 0) {
@@ -947,12 +955,16 @@ void drawPopups() {
         const float dw = p.detail.empty() ? 0 : c.textWidth(p.detail.c_str(), 15);
         const float w = std::max(c.textWidth(p.title.c_str(), 22), dw) + 36;
         const float h = p.detail.empty() ? 40 : 60;
-        const float slide = (1 - fade) * -10;
-        c.rect(640 - w / 2, y + slide, w, h, alpha(IM_COL32(10, 18, 30, 190)), 10);
-        c.frame(640 - w / 2, y + slide, w, h, alpha((p.color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 150)), 2, 10);
-        c.text(p.title.c_str(), 640, y + slide + 8, alpha(p.color), 22, 0.5f);
+        const float slide = (1 - fade) * -14;
+        const float x0 = centred ? 640 - w / 2 : 24 + slide;
+        const float y0 = centred ? y + slide : y;
+        const float tx = centred ? 640 : x0 + 18;
+        const float align = centred ? 0.5f : 0.0f;
+        c.rect(x0, y0, w, h, alpha(IM_COL32(10, 18, 30, 190)), 10);
+        c.frame(x0, y0, w, h, alpha((p.color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 150)), 2, 10);
+        c.text(p.title.c_str(), tx, y0 + 8, alpha(p.color), 22, align);
         if (!p.detail.empty()) {
-            c.text(p.detail.c_str(), 640, y + slide + 36, alpha(kText), 15, 0.5f);
+            c.text(p.detail.c_str(), tx, y0 + 36, alpha(kText), 15, align);
         }
         y += h + 8;
     }
