@@ -1458,8 +1458,10 @@ int pc_frame_split(void) {
     pc_perf_begin(PC_PERF_SPLIT);
     {
         JKRPcHostAllocScope hostAlloc;
-        // The FPS overlay in paint A's frame too (it counts presents), so it does not flicker.
+        // The FPS overlay in paint A's frame too (it counts presents), so it does not flicker; the
+        // tracker the same (pc_tracker.h).
         overlayFrame(0, false);
+        pc_tracker_overlay_draw();
         const uint64_t endCallStart = sPerfOn ? monotonicNs() : 0;
         aurora_end_frame();
         if (sPerfOn) {

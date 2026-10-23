@@ -589,3 +589,15 @@ extern "C" void pc_tracker_overlay_frame(void) {
         drawPanel();
     }
 }
+
+extern "C" void pc_tracker_overlay_draw(void) {
+    using namespace pc::tracker;
+    if (ImGui::GetCurrentContext() == nullptr || pc::menuOpen()) {
+        return;
+    }
+    if (sPage == SCREEN && sArt.tried) {
+        drawScreen();
+    } else if (sPage == PANEL) {
+        drawPanel();
+    }
+}

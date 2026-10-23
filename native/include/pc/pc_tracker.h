@@ -30,6 +30,10 @@ void pc_tracker_frame_end(unsigned int frame);
 /* In each frame's ImGui frame, on the game thread (pc_frame.cpp): the overlay's toggle and window
  * (pc_tracker_overlay.cpp). */
 void pc_tracker_overlay_frame(void);
+/* The same drawing without the input, for paint A's frame at 60 fps (pc_frame_split): the ImGui of a
+ * frame is drawn in the frame it ends, so the tracker drawn only at the frame's end would be in paint B
+ * alone and flicker. */
+void pc_tracker_overlay_draw(void);
 
 #ifdef __cplusplus
 }
