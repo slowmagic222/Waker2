@@ -7,9 +7,6 @@
 //   cosTracker.update(gameStateJson) -> JSON {areas (the 49 islands in sea chart order, the 7 dungeons,
 //                                     then Mailbox, The Great Sea, Hyrule): [{name, dungeon, available, remaining, color,
 //                                     locations: [{name, color}]}], checked, available, remaining}
-//   cosTracker.toggle(generalLocation, detailedLocation): a check marked by hand
-//   cosTracker.save() -> JSON / cosTracker.load(json): the state, kept across a restart
-//   (update and updateText take an empty string for "no new state": the result after a toggle)
 //   cosTracker.updateText(gameStateJson) -> the same as lines, for the game (no JSON parser there):
 //     T <checked> <available> <remaining>
 //     A <dungeon 0|1> <available> <remaining> <color> <area name>
@@ -33,7 +30,6 @@ import TrackerState from './services/tracker-state';
 
 let trackerState = null;
 let previousGame = null;
-let currentPermalink = null;
 
 function areaSummary(logic, name, isDungeon, onlyProgressLocations) {
   const counts = logic.locationCounts(name, { isDungeon, onlyProgressLocations, disableLogic: false });
@@ -64,7 +60,6 @@ globalThis.cosTracker = {
       LogicHelper.initialize();
       trackerState = TrackerState.default();
       previousGame = null;
-      currentPermalink = permalink;
       return JSON.stringify({ version: Settings.getVersion() });
     } catch (err) {
       trackerState = null;
@@ -99,49 +94,6 @@ globalThis.cosTracker = {
       available: logic.totalLocationsAvailable({ onlyProgressLocations }),
       remaining: logic.totalLocationsRemaining({ onlyProgressLocations }),
     });
-  },
-
-  // A check marked (or unmarked) by hand, as a click in the tracker does; a check the game itself
-  // reports comes back at its next state
-  toggle(generalLocation, detailedLocation) {
-    if (!_.isNil(trackerState)) {
-      trackerState = trackerState.toggleLocationChecked(generalLocation, detailedLocation);
-    }
-  },
-
-  // The tracker's state, to keep what was set by hand across a restart (one file per save slot)
-  save() {
-    if (_.isNil(trackerState)) {
-      return '';
-    }
-    return JSON.stringify({ permalink: currentPermalink, state: trackerState.readState() });
-  },
-
-  // A state save() made for this seed, or '' (another slot without one): the default state; the
-  // game's next state is merged in as the first one
-  load(savedJson) {
-    if (_.isNil(trackerState)) {
-      return;
-    }
-    const fresh = TrackerState.default();
-    let saved = null;
-    try {
-      saved = _.isEmpty(savedJson) ? null : JSON.parse(savedJson);
-    } catch (err) {
-      saved = null;
-    }
-    if (_.isNil(saved) || saved.permalink !== currentPermalink || !_.isObject(saved.state)) {
-      trackerState = fresh;
-    } else {
-      const raw = fresh.readState();
-      _.forEach(_.keys(raw), (key) => {
-        if (_.isObject(saved.state[key])) {
-          raw[key] = _.merge({}, raw[key], saved.state[key]);
-        }
-      });
-      trackerState = TrackerState.createStateRaw(raw);
-    }
-    previousGame = null;
   },
 
   updateText(gameStateJson, onlyProgressLocations = true) {

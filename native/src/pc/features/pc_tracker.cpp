@@ -25,6 +25,7 @@
 #include "JSystem/JUtility/JUTResFont.h"
 #include "JSystem/JUtility/JUTTexture.h"
 #include "JSystem/JKernel/JKRArchive.h"
+#include "m_Do/m_Do_audio.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_item_data.h"
 #include "d/d_s_play.h"
@@ -630,8 +631,6 @@ std::string build(unsigned int frame) {
     sCurStage = dStage_stagInfo_GetSaveTbl(info);
     if (const std::string key = progressKey(); key != sProgress.key) {
         loadProgress(key);
-        // what was set by hand on the tracker screen, per slot too (pc_tracker_logic.cpp)
-        logicSaveFile(key.empty() ? "" : progressDir() + "/" + key + "-tracker.json");
     }
     whereIsLink(dComIfGp_getStartStageName());
     out += ", \"playing\": true, \"saveSlot\": " + std::to_string(dComIfGs_getDataNum());
@@ -952,6 +951,13 @@ static void logMenuArchives() {
         writef(STDERR_FILENO, "[cos] tracker: %s:%s\n", a.name, names.c_str());
     }
 }
+void popupSound(bool opened) {
+    if (!mDoAud_zelAudio_c::isInitFlag() || mDoAud_zelAudio_c::getInterface() == nullptr) {
+        return;
+    }
+    mDoAud_seStart(opened ? JA_SE_READ_RIDDLE_1 : JA_SE_ITM_MENU_DECIDE);
+}
+
 bool gameItemIcon(const std::string& item, int count, GameImage& out) {
     logMenuArchives();
     for (const IconNames& n : kIcons) {

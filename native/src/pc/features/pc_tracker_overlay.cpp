@@ -6,12 +6,12 @@
 //      (tracker-logic/art.rgba); the stick or the D-pad moves the cursor over the items, the islands and
 //      the dungeons. On a place the list on the right names its checks, each coloured as the tracker
 //      colours it (blue: in logic, red: not yet, grey, ticked and struck out: checked); A goes into the
-//      list, where A marks a check by hand. On an item, its name and count (the game's: items are
-//      only shown). B goes back, then closes it.
+//      list to scroll it. On an item, its name and count. Everything comes from the game: nothing is
+//      set by hand. B goes back, then closes it.
 //   2. a small panel in a corner while the game runs: the counts, and Link's place's.
 //   3. hidden.
-// Outside the screen, pop-ups say what the last checks did: "1 location checked!", "4 checks opened up!"
-// (the options menu's COS_TRACKER_POPUPS turns them off).
+// Outside the screen, pop-ups say what the last checks did: "1 location checked!", "4 checks opened up!",
+// with the game's sound (the options menu's COS_TRACKER_POPUPS turns them off).
 // The default button map gives neither stick click to the game. With the options menu open it is hidden.
 #include "pc_internal.h"
 
@@ -473,7 +473,7 @@ std::string itemKey(const std::string& item, int count) {
     return "ITEMS/" + item + "/0";
 }
 
-// An item's count: the tracker's (the game's and the ones set by hand) once its logic runs, else the game's
+// An item's count: the tracker's (from the game) once its logic runs, else the game's
 int itemCount(const Snapshot& s, const LogicResult& logic, const std::string& name) {
     if (logic.ready) {
         return countOf(logic.items, name);
@@ -723,7 +723,7 @@ void drawScreen() {
     }
     drawExtras(c, s, logic);
 
-    c.text(sInList    ? "Stick / D-pad: move     A: mark checked / not     B: back"
+    c.text(sInList    ? "Stick / D-pad: move     B: back"
            : sItem >= 0 ? "Stick / D-pad: move     B: close"
                         : "Stick / D-pad: move     A: its checks     B: close     L3+R3: small panel",
            40, 680, kDimText, 16);
@@ -829,7 +829,6 @@ struct Seen {
     std::set<std::string> checked, available;
     int plainChecked = 0; // without the logic: the save's own count
     double since = 0;     // when play started (pop-ups wait a moment: the first states are a load)
-    bool quiet = false;   // the next result only rebases (a check marked by hand)
 } sSeen;
 
 bool popupsOn() {
@@ -862,6 +861,7 @@ void notePopups() {
             char t[64];
             snprintf(t, sizeof t, "%d location%s checked!", added, added == 1 ? "" : "s");
             sPopups.push_back({t, "", kAccent});
+            popupSound(false);
         }
         sSeen.plainChecked = checked;
         sSeen.valid = true;
@@ -895,7 +895,7 @@ void notePopups() {
         }
     }
     // the first result of a play (or after results without the logic) only sets the base
-    const bool show = sSeen.valid && sSeen.serial != 0 && !sSeen.quiet && !settling && newChecked <= 3 && sPage != SCREEN && popupsOn();
+    const bool show = sSeen.valid && sSeen.serial != 0 && !settling && newChecked <= 3 && sPage != SCREEN && popupsOn();
     if (show && newChecked > 0) {
         char t[64];
         snprintf(t, sizeof t, "%d location%s checked!", newChecked, newChecked == 1 ? "" : "s");
@@ -911,11 +911,13 @@ void notePopups() {
         snprintf(t, sizeof t, "%d check%s opened up!", opened, opened == 1 ? "" : "s");
         sPopups.push_back({t, "", kAvailable});
     }
+    if (show && (newChecked > 0 || opened > 0)) {
+        popupSound(opened > 0);
+    }
     sSeen.checked = std::move(checked);
     sSeen.available = std::move(available);
     sSeen.serial = logic.serial;
     sSeen.valid = true;
-    sSeen.quiet = false;
 }
 
 // The pop-ups at the top of the screen, the oldest first, each fading in and out
@@ -981,10 +983,6 @@ void handleScreenKeys(uint32_t pressed) {
     if (pressed & kUp) sListCursor = (sListCursor + n - 1) % n;
     if (pressed & kDown) sListCursor = (sListCursor + 1) % n;
     sListCursor = std::min(sListCursor, n - 1);
-    if (pressed & kConfirm) {
-        logicToggle(area->name, area->locations[sListCursor].name);
-        sSeen.quiet = true; // marked by hand: no pop-up for it
-    }
 }
 
 void setPage(Page page) {

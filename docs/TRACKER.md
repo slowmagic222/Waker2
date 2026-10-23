@@ -11,9 +11,9 @@ checks, no logic).
 ## The idea
 
 The tracker stays the tracker: its logic (wwrando's `logic/` files for the seed's permalink), its
-colours, its art and its manual marks. What the game adds is the part a player does by hand: clicking
+colours and its art. What the game adds is the part a player does by hand: clicking
 each item picked up and each location checked. So the game reads its save every 15 frames and writes the
-tracker's own data model, in the tracker's names:
+tracker's own data model, in the tracker's names (nothing on the screen is set by hand):
 
 | Tracker field | From the save |
 |---|---|
@@ -38,9 +38,9 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
    wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the items, the islands and
    the dungeons. On a place, the list on the right says how many of its checks are checked and names
    them, coloured as the tracker colours them: blue in logic, red not yet, and checked ones grey, ticked
-   and struck out. A moves into the list, and A there marks a check by hand (or unmarks it). On an item
-   it shows its name and count; items come from the game only and cannot be changed. B goes back, and B
-   again closes the screen.
+   and struck out. A moves into the list to scroll it. On an item it shows its name and count. Nothing
+   can be changed: items and checks come from the game only. B goes back, and B again closes the
+   screen.
    The screen is drawn over the paused game, which shows through, in the game's own font (its message
    font, read from the game; ImGui's until the game has loaded it), with the pause menu's own item and
    dungeon item icons (read from the game's `itemicon.arc`; the tracker's art where the game has none,
@@ -54,12 +54,12 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
 
 Pop-ups: while the game runs (panel or not), a pop-up at the top says what the last checks did: "1
 location checked!" with the check's name, and "4 checks opened up!" when an item puts new checks in
-logic. Not for a check marked by hand, nor for the burst of checks when a file loads. The options menu's
-Quality of life tab turns them off ("Tracker pop-ups", `COS_TRACKER_POPUPS`; on by default).
+logic, each with the game's sound (the pause menu's select sound, or the secret-solved chime when checks
+opened up). Not for the burst of checks when a file loads. The options menu's Quality of life tab turns
+them off ("Tracker pop-ups", `COS_TRACKER_POPUPS`; on by default).
 
 Nothing to turn on; the default button map gives neither stick click to the game. With the options menu
-open it is hidden. The checks marked by hand are kept per seed and save slot in
-`user/tracker/<disc>-<size>-file<N>-tracker.json`, next to the progress file, as soon as it is set.
+open it is hidden.
 
 **The logic** is the tracker's own answer: the game runs the tracker's logic code (its `src/services`,
 bundled by `scripts/tracker/build_logic.sh`) in QuickJS on a thread of its own, on the seed's settings and
@@ -130,17 +130,17 @@ start a seed's file over.
   Aurora's ImGui and SDL 3 headers (clang, syntax only; the cloud machine cannot build the whole game).
 - The logic: `pc_tracker_logic.cpp` with QuickJS, built on its own with `build_logic.sh`'s folder and a
   9775811 permalink, worked out a sample state (19 in logic of 118 left) in about 0.6 s the first time,
-  and a check marked by hand moved the totals. The merge's tests (`autotracker.test.js`) pass in the
+  and a newly checked location moved the totals. The merge's tests (`autotracker.test.js`) pass in the
   tracker's jest.
 - The screen: drawn with Aurora's ImGui in a small SDL harness from the same code (screenshots of the
-  items, the sea chart, a dungeon, the list and a mark by hand).
+  items, the sea chart, a dungeon, the list, the panel and the pop-ups).
 - Not yet: the whole game, on the Deck or the Switch, with a real seed.
 
 ## Plan
 
 1. The state from the save. (Done.)
-2. The tracker inside the game, with its logic and art, marks by hand. (Done; untested in the game.)
-3. Next: keep the marks made by hand with the save; the chart mapping and entrances for randomized
+2. The tracker inside the game, with its logic and art. (Done; untested in the game.)
+3. Next: the chart mapping and entrances for randomized
    charts and entrances; a nicer font; the `tracker-logic/` folder in the Switch package.
 
 ## Files
