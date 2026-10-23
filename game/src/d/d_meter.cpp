@@ -7,6 +7,7 @@
 #if TARGET_PC
 #include "pc/pc_aspect.h"
 #include "pc/game_hooks.h" // dMeter_pc*: the widescreen HUD (pc_meter_hooks.cpp)
+#include "pc/pc_qol.h"
 #endif
 #include "d/d_meter.h"
 #include "JSystem/J2DGraph/J2DOrthoGraph.h"
@@ -723,7 +724,13 @@ void dMeter_PaneShow(fopMsgM_pane_class* pane) {
 
 /* 801EFAC8-801EFC40       .text dMeter_alphaControl__FP15sub_meter_class */
 void dMeter_alphaControl(sub_meter_class* i_Meter) {
+#if TARGET_PC
+    // QoL "Botón para ocultar el HUD" (pc_qol.h): hidden by its button, the HUD fades out as it does
+    // while the game hides the 2D (a screen fade)
+    if (!dComIfGp_2dShowCheck() || pc_qol_hud_hidden()) {
+#else
     if (!dComIfGp_2dShowCheck()) {
+#endif
         if (i_Meter->field_0x2f6c > 0.0f) {
             i_Meter->field_0x2f6c = fopMsgM_valueIncrease(g_meterHIO.field_0x6, (int)i_Meter->field_0x2fd8, 0);
             i_Meter->field_0x2fd8--;
@@ -762,7 +769,12 @@ void dMeter_statusCheck(sub_meter_class* i_Meter) {
     if (!info->play.show2dCheck() || (dCam_getBody()->chkFlag(0x2000000))) {
 #else
     i_Meter->mStatusFlags = 0;
+#if TARGET_PC
+    // QoL "Botón para ocultar el HUD" (pc_qol.h): every part of the HUD hides as with the 2D hidden
+    if (!dComIfGp_2dShowCheck() || pc_qol_hud_hidden() || (dCam_getBody()->chkFlag(0x2000000))) {
+#else
     if (!dComIfGp_2dShowCheck() || (dCam_getBody()->chkFlag(0x2000000))) {
+#endif
 #endif
         i_Meter->mStatusFlags |= dMtrStts_UNK4000_e;
     } else if ((dMeter_isAuctionFlag() && dComIfGp_getMesgStatus() == 0) ||

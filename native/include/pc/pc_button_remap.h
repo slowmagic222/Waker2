@@ -50,6 +50,11 @@ void pc_button_remap_restore_defaults(void);
 int pc_button_remap_port_input(int port, int* backHeld);
 /* The input (pc::remap::Input) that drives `action` now; -1 for an action out of range. */
 int pc_button_remap_current(int action);
+/* 1 if the physical input named `value` (a COS_PAD_* value: "l", "down", "lstick", ...) is held on the
+   controller of PAD port `port` (0-3), read through the same per-platform table as the map; 0 for no
+   controller, an unknown value or a GameCube adapter port. For buttons of the port's own (the
+   quality-of-life options' COS_QOL_HUD_BUTTON and COS_QOL_ITEM_SETS, pc_qol.h). */
+int pc_button_remap_input_held(int port, const char* value);
 
 #ifdef __cplusplus
 }
