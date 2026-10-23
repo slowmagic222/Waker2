@@ -1460,6 +1460,7 @@ int pc_frame_split(void) {
         JKRPcHostAllocScope hostAlloc;
         // The FPS overlay in paint A's frame too (it counts presents), so it does not flicker.
         overlayFrame(0, false);
+        seaMapFrame(); // COS_QOL_SEA_MAP, for the same reason
         const uint64_t endCallStart = sPerfOn ? monotonicNs() : 0;
         aurora_end_frame();
         if (sPerfOn) {
@@ -1626,6 +1627,7 @@ void pc_frame_end(void) {
         pc_button_remap_frame();
         // the quality-of-life buttons (pc_qol.h: hide the HUD, swap the item sets), read after the menu
         pc_qol_frame();
+        seaMapFrame();
         // the European build: a log line when the game's language changes (pc_language.cpp)
         languageFrame();
         if (gConfig.fpsOverlay) {

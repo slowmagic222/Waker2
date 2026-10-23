@@ -27,6 +27,8 @@
  * COS_QOL_ITEM_SETS=<input>  a second set of X/Y/Z items: a press of that button swaps the two sets
  *                            (BetterWW's optional Gecko code); the other set is kept per save slot in
  *                            item_sets.txt next to settings.ini
+ * COS_QOL_SEA_MAP=1          a small live chart of the Great Sea in the bottom-right corner while on
+ *                            the sea (pc_sea_map.cpp)
  *
  * All off by default (0: the original game). Each value is read from the environment (the settings
  * file's value, pc_settings.h) the first time the game asks; the menu's apply function sets it
@@ -57,6 +59,7 @@ typedef enum PcQol {
     PC_QOL_HUD_BUTTON,
     PC_QOL_ITEMS_STAY,
     PC_QOL_ITEM_SETS,
+    PC_QOL_SEA_MAP,
     PC_QOLS
 } PcQol;
 

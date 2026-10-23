@@ -725,8 +725,9 @@ void dMeter_PaneShow(fopMsgM_pane_class* pane) {
 /* 801EFAC8-801EFC40       .text dMeter_alphaControl__FP15sub_meter_class */
 void dMeter_alphaControl(sub_meter_class* i_Meter) {
 #if TARGET_PC
-    // QoL "Botón para ocultar el HUD" (pc_qol.h): hidden by its button, the HUD fades out as it does
-    // while the game hides the 2D (a screen fade)
+    // QoL "Botón para ocultar el HUD" (pc_qol.h): the compass (the one user of this alpha) fades out and
+    // back in. Only the alpha: the 2D-hidden status flags (dMeter_statusCheck) would also take the item
+    // buttons away from the player (field_0x3024, the button action mode).
     if (!dComIfGp_2dShowCheck() || pc_qol_hud_hidden()) {
 #else
     if (!dComIfGp_2dShowCheck()) {
@@ -769,12 +770,7 @@ void dMeter_statusCheck(sub_meter_class* i_Meter) {
     if (!info->play.show2dCheck() || (dCam_getBody()->chkFlag(0x2000000))) {
 #else
     i_Meter->mStatusFlags = 0;
-#if TARGET_PC
-    // QoL "Botón para ocultar el HUD" (pc_qol.h): every part of the HUD hides as with the 2D hidden
-    if (!dComIfGp_2dShowCheck() || pc_qol_hud_hidden() || (dCam_getBody()->chkFlag(0x2000000))) {
-#else
     if (!dComIfGp_2dShowCheck() || (dCam_getBody()->chkFlag(0x2000000))) {
-#endif
 #endif
         i_Meter->mStatusFlags |= dMtrStts_UNK4000_e;
     } else if ((dMeter_isAuctionFlag() && dComIfGp_getMesgStatus() == 0) ||
@@ -5026,7 +5022,12 @@ void dMeter_menuPlusMove(sub_meter_class* i_Meter) {
     }
     dVar13 = fopMsgM_valueIncrease(5, 5 - i_Meter->field_0x02c0.mUserArea, 0);
     fopMsgM_setNowAlpha(&i_Meter->field_0x02c0, dVar13);
+#if TARGET_PC
+    // QoL "Botón para ocultar el HUD" (pc_qol.h): the minimap and its points draw with this alpha
+    dMap_c::setMapAlpha(pc_qol_hud_hidden() ? 0 : dVar13 * 255.0f);
+#else
     dMap_c::setMapAlpha(dVar13 * 255.0f);
+#endif
 #if VERSION == VERSION_DEMO
     if (!dKyw_gbwind_use_check()) {
         fopMsgM_setNowAlphaZero(&i_Meter->field_0x02f8);
@@ -7616,10 +7617,9 @@ static BOOL dMeter_Draw(sub_meter_class* i_Meter) {
     if (!fopOvlpM_IsDoingReq()) {
 #endif
 #if TARGET_PC
-        // QoL "Botón para ocultar el HUD" (pc_qol.h): the HUD's screens are not drawn at all while it is
-        // hidden. The alpha of dMeter_alphaControl/dMeter_statusCheck fades most panes, but a few the
-        // game only shows or hides (the camera icon) keep theirs; a screen fade hides them by not drawing
-        // the meter (fopOvlpM_IsDoingReq), as this does. The metronome below stays.
+        // QoL "Botón para ocultar el HUD" (pc_qol.h): the HUD's screens are not drawn while it is hidden,
+        // as during a screen fade (fopOvlpM_IsDoingReq); the meter keeps running, so the buttons work.
+        // The minimap goes with its alpha (dMap_c::setMapAlpha); the metronome below stays.
         if (!pc_qol_hud_hidden()) {
 #endif
         dComIfGd_set2DOpa(&meter1);
