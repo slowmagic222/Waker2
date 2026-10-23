@@ -492,6 +492,13 @@ const PcSettingChoice kQolSail[] = {{"0", "Original", "Original"},
                                     {"swift", "Vela rápida (Swift Sail)", "Swift Sail"},
                                     {"brisk", "Vela ligera (Brisk Sail)", "Brisk Sail"},
                                     {"wind", "Vela normal con viento a favor", "Normal sail, wind at your back"}};
+// Calidad de vida > Botón para ocultar el HUD / Segundo juego de objetos (COS_QOL_HUD_BUTTON,
+// COS_QOL_ITEM_SETS, pc_qol.h): the physical button, by its COS_PAD_* value (pc_button_remap.h)
+const PcSettingChoice kQolButton[] = {{"0", "Desactivado", "Off"},
+                                      {"l", "L", "L"},
+                                      {"down", "Cruceta abajo", "D-pad down"},
+                                      {"lstick", "Clic stick izq.", "Left stick click"},
+                                      {"rstick", "Clic stick der.", "Right stick click"}};
 const PcSettingChoice kHdStats[] = {{"0", "Desactivadas", "Off"}, {"150", "Cada 150 cuadros", "Every 150 frames"},
                                     {"300", "Cada 300 cuadros", "Every 300 frames"},
                                     {"600", "Cada 600 cuadros", "Every 600 frames"}};
@@ -677,6 +684,27 @@ const PcSettingDesc kBuiltins[] = {
      "Beedle buying Blue Chu Jelly, the Deluxe Picto Box on a button, Morths out of the map, enemies "
      "killed with Light Arrows (Stalfos, Miniblins, Jalhalla's Poes, Magtails) and Phantom Ganon's "
      "trigger."},
+    {"COS_QOL_HUD_BUTTON", "Botón para ocultar el HUD",
+     "Ese botón oculta corazones, rupias, botones y minimapa; otra pulsación los vuelve a mostrar. L no "
+     "tiene otra función por defecto; un botón asignado también a una acción del juego hace las dos.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kQolButton), "0", applyQol, nullptr, 140,
+     "Hide HUD button",
+     "That button hides the hearts, rupees, buttons and minimap; another press shows them again. L has "
+     "no other use by default; a button also given a game action does both."},
+    {"COS_QOL_ITEMS_STAY", "Los objetos soltados no desaparecen",
+     "Rupias, corazones, magia, flechas y bombas que caen al suelo no parpadean ni se van; desaparecen "
+     "cuando te alejas o sales de la zona.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", applyQol, nullptr, 150,
+     "Dropped items stay",
+     "Rupees, hearts, magic, arrows and bombs that drop do not flash and vanish; they go when you move "
+     "far away or leave the area."},
+    {"COS_QOL_ITEM_SETS", "Segundo juego de objetos (X/Y/Z)",
+     "Ese botón cambia los objetos de X, Y y Z por un segundo juego; equípalos en el menú como siempre. "
+     "Se guarda por partida (Gecko de BetterWW).",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kQolButton), "0", applyQol, nullptr, 160,
+     "Second item set (X/Y/Z)",
+     "That button swaps the X, Y and Z items for a second set; equip them in the menu as usual. Kept "
+     "per save slot (BetterWW's Gecko code)."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",
@@ -984,6 +1012,9 @@ const QolPresetValue kQolPreset[] = {
     {PC_QOL_SKIP_INTRO, "1"},   {PC_QOL_REVEAL_CHART, "0"},
     {PC_QOL_TINGLE_CHESTS, "1"}, {PC_QOL_SAIL, "swift"},      {PC_QOL_FREE_BOAT, "0"},
     {PC_QOL_SWING_TURN, "1"},   {PC_QOL_NO_SONG_REPLAY, "1"}, {PC_QOL_FIX_BUGS, "1"},
+    // not BetterWW's patches (its optional Gecko codes at most): the BetterWW preset leaves them as they
+    // are (nullptr), the original values turn them off
+    {PC_QOL_HUD_BUTTON, nullptr}, {PC_QOL_ITEMS_STAY, nullptr}, {PC_QOL_ITEM_SETS, nullptr},
 };
 static_assert(sizeof(kQolPreset) / sizeof(kQolPreset[0]) == PC_QOLS, "a QoL option without a preset value");
 
@@ -991,6 +1022,9 @@ void applyQolPreset(bool betterww) {
     int locked = 0;
     for (const QolPresetValue& p : kQolPreset) {
         const char* key = pc_qol_key(p.which);
+        if (betterww && p.betterww == nullptr) {
+            continue;
+        }
         if (pc_settings_locked(key)) {
             locked++;
             continue;
