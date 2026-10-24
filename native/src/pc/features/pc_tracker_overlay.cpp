@@ -517,6 +517,27 @@ void drawItems(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
 }
 
 // The 7x7 sea chart: each island's checks in logic / not checked, the cursor's square framed
+// Each dungeon's island on the sea chart (Ganon's Tower, in Hyrule, only in the dungeons' row)
+struct DungeonSector {
+    const char* dungeon;
+    const char* island;
+};
+const DungeonSector kDungeonSectors[] = {
+    {"Dragon Roost Cavern", "Dragon Roost Island"}, {"Forbidden Woods", "Forest Haven"},
+    {"Tower of the Gods", "Tower of the Gods Sector"},
+    {"Forsaken Fortress", "Forsaken Fortress Sector"}, {"Earth Temple", "Headstone Island"},
+    {"Wind Temple", "Gale Isle"},
+};
+
+const LogicArea* areaNamed(const LogicResult& logic, const char* name) {
+    for (const LogicArea& a : logic.areas) {
+        if (a.name == name) {
+            return &a;
+        }
+    }
+    return nullptr;
+}
+
 void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     const float x0 = kSeaX, y0 = kSeaY, w = kSeaW, h = kSeaH;
     c.image("SEA_CHART", x0, y0, w, h);
@@ -525,9 +546,19 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
         const float x = x0 + (i % kSeaSide) * cw, y = y0 + (i / kSeaSide) * ch;
         if (logic.ready && i < int(logic.areas.size())) {
             const LogicArea& a = logic.areas[i];
+            // small, in the square's top corners so the chart and its islands show: the island's checks
+            // top left, the dungeon on that island's top right
+            constexpr float kSize = 12, kInset = 3;
             char t[16];
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
-            c.text(t, x + cw * 0.5f, y + ch - c.fontSize - 3, colorOf(a.color), 0, 0.5f);
+            c.text(t, x + kInset, y + kInset, colorOf(a.color), kSize);
+            for (const DungeonSector& d : kDungeonSectors) {
+                const LogicArea* da = a.name == d.island ? areaNamed(logic, d.dungeon) : nullptr;
+                if (da != nullptr) {
+                    snprintf(t, sizeof t, "%d/%d", da->available, da->remaining);
+                    c.text(t, x + cw - kInset, y + kInset, colorOf(da->color), kSize, 1);
+                }
+            }
         }
         if (i == s.where) {
             c.linkMarker(x + cw * 0.5f, y + ch * 0.4f, 13, s.atSea);
