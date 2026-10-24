@@ -35,6 +35,7 @@
 #include "pc/game_hooks.h"
 #include "pc/pc_settings.h"
 #include "pc/pc_button_remap.h"
+#include "pc/pc_qol.h"
 #include "SSystem/SComponent/c_API_graphic.h"
 #include "SSystem/SComponent/c_math.h"
 #include "pc/pc_gpu_opts.h"
@@ -1459,6 +1460,7 @@ int pc_frame_split(void) {
         JKRPcHostAllocScope hostAlloc;
         // The FPS overlay in paint A's frame too (it counts presents), so it does not flicker.
         overlayFrame(0, false);
+        seaMapFrame(); // COS_QOL_SEA_MAP, for the same reason
         const uint64_t endCallStart = sPerfOn ? monotonicNs() : 0;
         aurora_end_frame();
         if (sPerfOn) {
@@ -1623,6 +1625,9 @@ void pc_frame_end(void) {
         // Issue #15: the button remap (pc_button_remap.h) after the menu's settings poll: a changed
         // setting or a controller connected on a port gets the map before the next PADRead.
         pc_button_remap_frame();
+        // the quality-of-life buttons (pc_qol.h: hide the HUD, swap the item sets), read after the menu
+        pc_qol_frame();
+        seaMapFrame();
         // the European build: a log line when the game's language changes (pc_language.cpp)
         languageFrame();
         if (gConfig.fpsOverlay) {

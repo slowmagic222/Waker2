@@ -22,7 +22,12 @@ Option sOptions[PC_QOLS] = {
     {"COS_QOL_REVEAL_CHART", -1},  {"COS_QOL_TINGLE_CHESTS", -1},
     {"COS_QOL_SAIL", -1},          {"COS_QOL_SWING_TURN", -1},    {"COS_QOL_NO_SONG_REPLAY", -1},
     {"COS_QOL_FREE_BOAT", -1},     {"COS_QOL_SKIP_INTRO", -1},    {"COS_QOL_FIX_BUGS", -1},
+    {"COS_QOL_HUD_BUTTON", -1},    {"COS_QOL_ITEMS_STAY", -1},    {"COS_QOL_ITEM_SETS", -1},
+    {"COS_QOL_SEA_MAP", -1},       {"COS_QOL_AUTOSAVE", -1},
 };
+
+// PC_QOL_BUTTON_*'s COS_PAD_* values, by number (0: off)
+const char* const kButtons[] = {"", "l", "down", "lstick", "rstick"};
 
 int parse(int which, const char* v) {
     if (v == nullptr) {
@@ -37,6 +42,20 @@ int parse(int which, const char* v) {
         }
         if (strcmp(v, "wind") == 0) {
             return PC_QOL_SAIL_WIND;
+        }
+        return 0;
+    }
+    if (which == PC_QOL_AUTOSAVE) {
+        return strcmp(v, "items") == 0  ? PC_QOL_AUTOSAVE_ITEMS
+               : strcmp(v, "10") == 0   ? PC_QOL_AUTOSAVE_TIMER
+               : strcmp(v, "items10") == 0 ? PC_QOL_AUTOSAVE_ITEMS | PC_QOL_AUTOSAVE_TIMER
+                                        : 0;
+    }
+    if (which == PC_QOL_HUD_BUTTON || which == PC_QOL_ITEM_SETS) {
+        for (int i = 1; i < (int)(sizeof(kButtons) / sizeof(kButtons[0])); i++) {
+            if (strcmp(v, kButtons[i]) == 0) {
+                return i;
+            }
         }
         return 0;
     }
@@ -78,6 +97,10 @@ int pc_qol(PcQol which) {
 int pc_qol_fast_sail(void) {
     const int sail = pc_qol(PC_QOL_SAIL);
     return sail == PC_QOL_SAIL_SWIFT || sail == PC_QOL_SAIL_BRISK ? sail : 0;
+}
+
+const char* pc_qol_button_input(int button) {
+    return button > 0 && button < (int)(sizeof(kButtons) / sizeof(kButtons[0])) ? kButtons[button] : "";
 }
 
 const char* pc_qol_key(PcQol which) {
