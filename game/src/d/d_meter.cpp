@@ -8,6 +8,8 @@
 #include "pc/pc_aspect.h"
 #include "pc/game_hooks.h" // dMeter_pc*: the widescreen HUD (pc_meter_hooks.cpp)
 #include "pc/pc_qol.h"
+#include "pc/pc_settings.h"
+#include <stdlib.h>
 #endif
 #include "d/d_meter.h"
 #include "JSystem/J2DGraph/J2DOrthoGraph.h"
@@ -1119,12 +1121,36 @@ void dMeter_recollect_boss_data() {
     }
 }
 
+#if TARGET_PC
+// QoL HUD scale (COS_HUD_SCALE, the Graphics tab): the HUD's own screens drawn bigger or smaller, each part
+// about its corner of the 2D area (J2DPane::sPcHudScale); the timers and the minimap keep their size.
+static void dMeter_pcHudScale(bool on) {
+    f32 scale = 1.0f;
+    if (on) {
+        scale = (f32)atof(pc_settings_get("COS_HUD_SCALE"));
+        scale = scale < 0.5f || scale > 2.0f ? 1.0f : scale;
+    }
+    J2DPane::sPcHudScale = scale;
+    J2DPane::sPcHudLeft = pc_aspect_2d_left();
+    J2DPane::sPcHudRight = pc_aspect_2d_right();
+    J2DPane::sPcHudTop = -21.0f; // m_Do_graphic's 2D ortho: -21..503
+    J2DPane::sPcHudBottom = 503.0f;
+}
+#endif
+
 /* 801F0608-801F06CC       .text draw__16dDlst_2DMETER1_cFv */
 void dDlst_2DMETER1_c::draw() {
     J2DOrthoGraph* graf = dComIfGp_getCurrentGrafPort();
     graf->setPort();
+#if TARGET_PC
+    dMeter_pcHudScale(true);
     sMainParts3->draw(0.0f, 0.0f, graf);
     sMainParts1->draw(0.0f, 0.0f, graf);
+    dMeter_pcHudScale(false);
+#else
+    sMainParts3->draw(0.0f, 0.0f, graf);
+    sMainParts1->draw(0.0f, 0.0f, graf);
+#endif
 #if TARGET_PC
     // Widescreen (pc_aspect.h): the timers move right with the HUD (16:9 code, 0x801F0678/94).
     if (sScrTimer1 != NULL) {
@@ -1152,7 +1178,9 @@ void dDlst_2DMETER2_c::draw() {
     graf->setPort();
 #if TARGET_PC
     // Widescreen: main_parts2 moves right with the HUD (16:9 code, 0x801F0700).
+    dMeter_pcHudScale(true);
     sMainParts2->draw(pc_aspect_hud_shift(), 0.0f, graf);
+    dMeter_pcHudScale(false);
 #else
     sMainParts2->draw(0.0f, 0.0f, graf);
 #endif

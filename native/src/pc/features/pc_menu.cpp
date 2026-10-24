@@ -461,6 +461,8 @@ const PcSettingChoice kFbScale[] = {
     {"1.5", "1280x720 (1.5)"}, {"2.0", "1707x960 (2.0)"},    {"2.25", "1920x1080 (2.25)"},
 };
 const PcSettingChoice kAspect[] = {{"16:9", "16:9 (panorámica)", "16:9 (widescreen)"}, {"4:3", "4:3 (GameCube)"}, {"16:10", "16:10"}};
+const PcSettingChoice kHudScale[] = {{"0.75", "75 %"}, {"0.85", "85 %"}, {"1", "100 % (normal)"},
+                                     {"1.15", "115 %"}, {"1.25", "125 %"}, {"1.5", "150 %"}};
 const PcSettingChoice kOnOff[] = {{"0", "Desactivado", "Off"}, {"1", "Activado", "On"}};
 // COS_TRACKER_POPUPS (pc_tracker_overlay.cpp)
 const PcSettingChoice kTrackerPopups[] = {{"0", "Desactivados", "Off"}, {"1", "A la izquierda", "Left"},
@@ -520,6 +522,11 @@ const PcSettingChoice kQolAutosave[] = {{"0", "Desactivado", "Off"},
                                         {"items", "Al conseguir objetos", "After new items"},
                                         {"10", "Cada 10 minutos", "Every 10 minutes"},
                                         {"items10", "Ambos", "Both"}};
+// Calidad de vida > Trepar cualquier pared: segundos de resistencia (COS_QOL_CLIMB_STAMINA, pc_climb.cpp)
+const PcSettingChoice kClimbStamina[] = {{"6", "6 segundos", "6 seconds"},
+                                         {"12", "12 segundos", "12 seconds"},
+                                         {"20", "20 segundos", "20 seconds"},
+                                         {"30", "30 segundos", "30 seconds"}};
 const PcSettingChoice kHdStats[] = {{"0", "Desactivadas", "Off"}, {"150", "Cada 150 cuadros", "Every 150 frames"},
                                     {"300", "Cada 300 cuadros", "Every 300 frames"},
                                     {"600", "Cada 600 cuadros", "Every 600 frames"}};
@@ -572,6 +579,11 @@ const PcSettingDesc kBuiltins[] = {
      70,
      "Aspect ratio",
      "16:9 widescreen or the GameCube's original 4:3."},
+    {"COS_HUD_SCALE", "Tamaño del HUD",
+     "Corazones, magia, botones y rupias más grandes o más pequeños, cada uno en su esquina. El minimapa no cambia.",
+     PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kHudScale), "1", nullptr, nullptr, 75,
+     "HUD size",
+     "Hearts, magic, buttons and rupees bigger or smaller, each staying in its corner. The minimap keeps its size."},
     {"COS_HD_TEXTURES", "Texturas HD", "Usa el paquete de texturas en alta resolución si está instalado.",
      PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kOnOff), "0", nullptr, nullptr, 80,
      "HD textures",
@@ -761,6 +773,24 @@ const PcSettingDesc kBuiltins[] = {
      "Tracker pop-ups",
      "Pop-ups while playing, on the left under the hearts or at the top centre: \"1 location checked!\" for "
      "a check, \"4 checks opened up!\" when an item opens up new places (docs/TRACKER.md)."},
+    {"COS_QOL_JUMP_BUTTON", "Botón de salto",
+     "Ese botón hace saltar a Link cuando está de pie, andando o corriendo: el salto del propio juego al "
+     "saltar de un borde, con sus agarres a bordes y planeos. No salta nadando, trepando, en el barco, "
+     "fijando un objetivo ni en escenas.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kQolButton), "0", applyQol, nullptr, 210,
+     "Jump button",
+     "That button makes Link jump while he stands, walks or runs: the game's own jump off a ledge, with its "
+     "ledge grabs and glides. No jump while swimming, climbing, on the boat, targeting or in cutscenes."},
+    {"COS_QOL_CLIMB", "Trepar cualquier pared",
+     "Link trepa cualquier pared como trepa la hiedra, al estilo de Breath of the Wild, con una rueda de "
+     "resistencia junto a él. Sin resistencia se suelta, y vuelve a trepar cuando se ha llenado en el suelo.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", applyQol, nullptr, 220,
+     "Climb any wall",
+     "Link climbs any wall the way he climbs ivy, Breath of the Wild style, with a stamina wheel beside him. "
+     "Out of stamina he lets go, and climbs again once it has refilled on the ground."},
+    {"COS_QOL_CLIMB_STAMINA", "Trepar: resistencia", "Cuánto tiempo puede trepar Link con la rueda llena.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kClimbStamina), "12", nullptr, nullptr, 221,
+     "Climbing: stamina", "How long Link can climb on a full wheel."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",
@@ -1071,7 +1101,8 @@ const QolPresetValue kQolPreset[] = {
     // not BetterWW's patches (its optional Gecko codes at most): the BetterWW preset leaves them as they
     // are (nullptr), the original values turn them off
     {PC_QOL_HUD_BUTTON, nullptr}, {PC_QOL_ITEMS_STAY, nullptr}, {PC_QOL_ITEM_SETS, nullptr},
-    {PC_QOL_SEA_MAP, nullptr},  {PC_QOL_AUTOSAVE, nullptr},
+    {PC_QOL_SEA_MAP, nullptr},  {PC_QOL_AUTOSAVE, nullptr},  {PC_QOL_JUMP_BUTTON, nullptr},
+    {PC_QOL_CLIMB, nullptr},
 };
 static_assert(sizeof(kQolPreset) / sizeof(kQolPreset[0]) == PC_QOLS, "a QoL option without a preset value");
 

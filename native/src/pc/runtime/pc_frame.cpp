@@ -1464,6 +1464,7 @@ int pc_frame_split(void) {
         overlayFrame(0, false);
         pc_tracker_overlay_draw();
         seaMapFrame(); // COS_QOL_SEA_MAP, for the same reason
+        climbWheelFrame(); // COS_QOL_CLIMB
         const uint64_t endCallStart = sPerfOn ? monotonicNs() : 0;
         aurora_end_frame();
         if (sPerfOn) {
@@ -1633,6 +1634,7 @@ void pc_frame_end(void) {
         // the quality-of-life buttons (pc_qol.h: hide the HUD, swap the item sets), read after the menu
         pc_qol_frame();
         seaMapFrame();
+        climbWheelFrame();
         // the European build: a log line when the game's language changes (pc_language.cpp)
         languageFrame();
         if (gConfig.fpsOverlay) {
