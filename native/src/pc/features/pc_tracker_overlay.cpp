@@ -517,6 +517,27 @@ void drawItems(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
 }
 
 // The 7x7 sea chart: each island's checks in logic / not checked, the cursor's square framed
+// Each dungeon's island on the sea chart (Ganon's Tower: under the Tower of the Gods)
+struct DungeonSector {
+    const char* dungeon;
+    const char* island;
+};
+const DungeonSector kDungeonSectors[] = {
+    {"Dragon Roost Cavern", "Dragon Roost Island"}, {"Forbidden Woods", "Forest Haven"},
+    {"Tower of the Gods", "Tower of the Gods Sector"}, {"Ganon's Tower", "Tower of the Gods Sector"},
+    {"Forsaken Fortress", "Forsaken Fortress Sector"}, {"Earth Temple", "Headstone Island"},
+    {"Wind Temple", "Gale Isle"},
+};
+
+const LogicArea* areaNamed(const LogicResult& logic, const char* name) {
+    for (const LogicArea& a : logic.areas) {
+        if (a.name == name) {
+            return &a;
+        }
+    }
+    return nullptr;
+}
+
 void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     const float x0 = kSeaX, y0 = kSeaY, w = kSeaW, h = kSeaH;
     c.image("SEA_CHART", x0, y0, w, h);
@@ -525,9 +546,41 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
         const float x = x0 + (i % kSeaSide) * cw, y = y0 + (i / kSeaSide) * ch;
         if (logic.ready && i < int(logic.areas.size())) {
             const LogicArea& a = logic.areas[i];
+            // the dungeons on this sector's island, on a line of their own at the bottom, the island's
+            // count above it
+            std::vector<const LogicArea*> dungeons;
+            for (const DungeonSector& d : kDungeonSectors) {
+                if (a.name == d.island) {
+                    if (const LogicArea* da = areaNamed(logic, d.dungeon)) {
+                        dungeons.push_back(da);
+                    }
+                }
+            }
             char t[16];
+            const float dungeonSize = c.fontSize - 3;
+            const float islandY = y + ch - c.fontSize - 3 - (dungeons.empty() ? 0 : dungeonSize + 1);
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
-            c.text(t, x + cw * 0.5f, y + ch - c.fontSize - 3, colorOf(a.color), 0, 0.5f);
+            c.text(t, x + cw * 0.5f, islandY, colorOf(a.color), 0, 0.5f);
+            if (!dungeons.empty()) {
+                // "a/b" each (two on the Tower of the Gods' sector: it and Ganon's Tower), over a dark strip
+                // so they read as the dungeons' and not the island's
+                std::vector<std::string> parts;
+                float total = 0;
+                for (const LogicArea* da : dungeons) {
+                    snprintf(t, sizeof t, "%d/%d", da->available, da->remaining);
+                    parts.push_back(t);
+                    total += c.textWidth(t, dungeonSize);
+                }
+                const float gap = 6;
+                total += gap * (parts.size() - 1);
+                const float dy = y + ch - dungeonSize - 3;
+                c.rect(x + cw * 0.5f - total * 0.5f - 4, dy - 1, total + 8, dungeonSize + 2, IM_COL32(40, 20, 10, 170), 4);
+                float tx = x + cw * 0.5f - total * 0.5f;
+                for (size_t k = 0; k < parts.size(); k++) {
+                    c.text(parts[k].c_str(), tx, dy, colorOf(dungeons[k]->color), dungeonSize);
+                    tx += c.textWidth(parts[k].c_str(), dungeonSize) + gap;
+                }
+            }
         }
         if (i == s.where) {
             c.linkMarker(x + cw * 0.5f, y + ch * 0.4f, 13, s.atSea);
