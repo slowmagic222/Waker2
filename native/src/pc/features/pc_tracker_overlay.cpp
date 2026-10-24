@@ -546,37 +546,17 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
         const float x = x0 + (i % kSeaSide) * cw, y = y0 + (i / kSeaSide) * ch;
         if (logic.ready && i < int(logic.areas.size())) {
             const LogicArea& a = logic.areas[i];
-            // the island's count at the bottom of every square, the dungeon on that island's above it
-            std::vector<const LogicArea*> dungeons;
-            for (const DungeonSector& d : kDungeonSectors) {
-                if (a.name == d.island) {
-                    if (const LogicArea* da = areaNamed(logic, d.dungeon)) {
-                        dungeons.push_back(da);
-                    }
-                }
-            }
+            // small, in the square's top corners so the chart and its islands show: the island's checks
+            // top left, the dungeon on that island's top right
+            constexpr float kSize = 12, kInset = 3;
             char t[16];
-            // small, in the square's bottom corner area, so the chart and its islands show
-            constexpr float islandSize = 12, dungeonSize = 10;
-            const float islandY = y + ch - islandSize - 2;
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
-            c.text(t, x + cw * 0.5f, islandY, colorOf(a.color), islandSize, 0.5f);
-            if (!dungeons.empty()) {
-                // "a/b", a little smaller than the island's
-                std::vector<std::string> parts;
-                float total = 0;
-                for (const LogicArea* da : dungeons) {
+            c.text(t, x + kInset, y + kInset, colorOf(a.color), kSize);
+            for (const DungeonSector& d : kDungeonSectors) {
+                const LogicArea* da = a.name == d.island ? areaNamed(logic, d.dungeon) : nullptr;
+                if (da != nullptr) {
                     snprintf(t, sizeof t, "%d/%d", da->available, da->remaining);
-                    parts.push_back(t);
-                    total += c.textWidth(t, dungeonSize);
-                }
-                const float gap = 6;
-                total += gap * (parts.size() - 1);
-                const float dy = islandY - dungeonSize - 1;
-                float tx = x + cw * 0.5f - total * 0.5f;
-                for (size_t k = 0; k < parts.size(); k++) {
-                    c.text(parts[k].c_str(), tx, dy, colorOf(dungeons[k]->color), dungeonSize);
-                    tx += c.textWidth(parts[k].c_str(), dungeonSize) + gap;
+                    c.text(t, x + cw - kInset, y + kInset, colorOf(da->color), kSize, 1);
                 }
             }
         }
