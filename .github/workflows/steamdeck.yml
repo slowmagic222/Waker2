@@ -30,6 +30,7 @@ on:
       - 'native/cmake/quickjs.cmake'
       - 'native/src/pc/features/pc_qol*'
       - 'native/src/pc/features/pc_sea_map*'
+      - 'native/src/pc/features/pc_climb*'
 
 permissions:
   contents: read
