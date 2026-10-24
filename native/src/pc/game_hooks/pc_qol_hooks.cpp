@@ -1,5 +1,6 @@
 // The quality-of-life options that act from outside the game's own code (pc_qol.h, docs/QOL_PLAN.md):
 // COS_QOL_HUD_BUTTON hides and shows the HUD, COS_QOL_ITEM_SETS swaps the X/Y/Z items with a second set,
+// COS_QOL_JUMP_BUTTON hands a press to the player's code (daPy_lk_c::execute takes it),
 // COS_QOL_AUTOSAVE saves the game as its save screen does. pc_qol_frame runs on
 // the game thread once per frame (pc_frame.cpp), after the options menu, so the game sees a change on its
 // next frame. The buttons are physical ones (pc_button_remap_input_held), not GameCube actions.
@@ -77,7 +78,10 @@ bool trackerOpen() {
 
 Button sHudButton;
 Button sItemSetButton;
+Button sJumpButton;
 bool sHudHidden = false;
+// A jump press waiting for Link's next frame: the frames it still has (pc_qol_jump_take).
+int sJumpFrames = 0;
 
 void* isPlayScene(void* proc, void*) {
     return fpcM_GetName(proc) == fpcNm_PLAY_SCENE_e ? proc : nullptr;
@@ -355,6 +359,14 @@ int pc_qol_hud_hidden(void) {
     return sHudHidden && pc_qol(PC_QOL_HUD_BUTTON) != 0;
 }
 
+int pc_qol_jump_take(void) {
+    if (sJumpFrames == 0 || pc_qol(PC_QOL_JUMP_BUTTON) == 0) {
+        return 0;
+    }
+    sJumpFrames = 0;
+    return 1;
+}
+
 const char* pc_qol_notice(void) {
     return sAuto.noticeFrames > 0 ? (pc::pc_ui_spanish() ? "Guardado" : "Saved") : nullptr;
 }
@@ -367,7 +379,17 @@ void pc_qol_frame(void) {
         // the buttons' state is still followed, so a press that opened or closed something is not a press here
         pressed(PC_QOL_HUD_BUTTON, sHudButton);
         pressed(PC_QOL_ITEM_SETS, sItemSetButton);
+        pressed(PC_QOL_JUMP_BUTTON, sJumpButton);
+        sJumpFrames = 0;
         return;
+    }
+    // A press read now is taken by the player's next frame; if his code does not run in the next one
+    // (a pause, a scene change) it lapses rather than jumping later.
+    if (sJumpFrames > 0) {
+        sJumpFrames--;
+    }
+    if (pressed(PC_QOL_JUMP_BUTTON, sJumpButton)) {
+        sJumpFrames = 2;
     }
     if (pressed(PC_QOL_HUD_BUTTON, sHudButton)) {
         sHudHidden = !sHudHidden;
