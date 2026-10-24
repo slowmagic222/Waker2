@@ -135,7 +135,8 @@ std::string seedPermalink();
 // pc_tracker.cpp: keeps the PLAY scene paused while the tracker screen is open (call each frame;
 // first: the frame it opened)
 void holdGame(bool first);
-// pc_tracker_overlay.cpp: the tracker is on screen (the state is then built even without a rando disc)
+// pc_tracker_overlay.cpp: the tracker screen is open (the game paused under it; the state is then built
+// even without a rando disc). Other overlays (the QoL sea map, the HUD button) stand aside while it is.
 bool overlayShown();
 } // namespace pc::tracker
 #endif

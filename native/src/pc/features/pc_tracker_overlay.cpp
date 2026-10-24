@@ -8,8 +8,7 @@
 //      colours it (blue: in logic, red: not yet, grey, ticked and struck out: checked); A goes into the
 //      list to scroll it. On an item, its name and count. Everything comes from the game: nothing is
 //      set by hand. B goes back, then closes it.
-//   2. a small panel in a corner while the game runs: the counts, and Link's place's.
-//   3. hidden.
+//   2. hidden (L3+R3 again closes it too).
 // Outside the screen, pop-ups say what the last checks did: "1 location checked!", "4 checks opened up!",
 // with the game's sound (the options menu's COS_TRACKER_POPUPS turns them off).
 // The default button map gives neither stick click to the game. With the options menu open it is hidden.
@@ -43,7 +42,7 @@ namespace pc::tracker {
 
 namespace {
 
-enum Page { HIDDEN, SCREEN, PANEL };
+enum Page { HIDDEN, SCREEN };
 
 Page sPage = HIDDEN;
 
@@ -725,89 +724,9 @@ void drawScreen() {
 
     c.text(sInList    ? "Stick / D-pad: move     B: back"
            : sItem >= 0 ? "Stick / D-pad: move     B: close"
-                        : "Stick / D-pad: move     A: its checks     B: close     L3+R3: small panel",
+                        : "Stick / D-pad: move     A: its checks     B / L3+R3: close",
            40, 680, kDimText, 16);
     c.text("Art and logic: wooferzfg's TWW Randomizer Tracker", 1240, 680, kDimText, 14, 1);
-}
-
-// The small panel in the top right corner, in the game's font as the screen: the counts, and the
-// place Link is in (or the cursor's)
-void drawPanel() {
-    const Snapshot& s = snapshot();
-    const LogicResult& logic = logicResult();
-    ImGuiIO& io = ImGui::GetIO();
-    const float scale = std::min(io.DisplaySize.x / 1280.0f, io.DisplaySize.y / 720.0f);
-    // the layout's right edge on the window's
-    Canvas c{ImGui::GetForegroundDrawList(), ImVec2(io.DisplaySize.x - 1280 * scale, 0), scale, ImGui::GetFont(),
-             18.0f};
-    constexpr float kRight = 1272, kTop = 8, kPad = 10, kLine = 24, kSmall = 15;
-
-    // each line: its parts (text, colour) drawn one after another
-    struct Part {
-        std::string text;
-        ImU32 color;
-    };
-    std::vector<std::vector<Part>> lines;
-    int place = -1;
-    char t[160];
-    if (!s.playing) {
-        lines.push_back({{"Tracker", kAccent}, {"  Start or load a file.", kDimText}});
-    } else if (logic.ready) {
-        snprintf(t, sizeof t, "%d in logic", logic.available);
-        std::vector<Part> first{{"Tracker  ", kAccent}, {t, kAvailable}};
-        snprintf(t, sizeof t, "   %d left", logic.remaining);
-        first.push_back({t, kText});
-        lines.push_back(first);
-        place = s.where >= 0 && s.where < int(logic.areas.size()) ? s.where
-                : sCursor < int(logic.areas.size())                ? sCursor
-                                                                   : -1;
-        if (place >= 0) {
-            const LogicArea& a = logic.areas[place];
-            if (a.locations.empty()) {
-                snprintf(t, sizeof t, "   nothing to check");
-            } else {
-                snprintf(t, sizeof t, "   %d / %d checked", a.checked, int(a.locations.size()));
-            }
-            lines.push_back({{a.name, place == s.where ? kLink : kText}, {t, kDimText}});
-        }
-    } else {
-        int checked = 0, total = 0;
-        for (const Area& a : s.areas) {
-            checked += a.checked;
-            total += a.total;
-        }
-        snprintf(t, sizeof t, "%d / %d checked   %d / 49 sunken", checked, total, s.salvaged);
-        lines.push_back({{"Tracker  ", kAccent}, {t, kText}});
-    }
-
-    float w = c.textWidth("L3+R3: hide", kSmall);
-    for (const std::vector<Part>& line : lines) {
-        float lw = 0;
-        for (const Part& p : line) {
-            lw += c.textWidth(p.text.c_str(), c.fontSize);
-        }
-        w = std::max(w, lw);
-    }
-    const bool marker = place >= 0 && place == s.where;
-    const float markerW = marker ? 22 : 0;
-    w += markerW;
-    const float h = kPad * 2 + kLine * lines.size() + kSmall + 4;
-    const float x0 = kRight - w - kPad * 2;
-    c.rect(x0, kTop, w + kPad * 2, h, kPanel, 8);
-    float y = kTop + kPad;
-    for (size_t i = 0; i < lines.size(); i++) {
-        float x = x0 + kPad;
-        if (i == 1 && marker) {
-            c.linkMarker(x + 7, y + 10, 7, s.atSea || s.where >= 49);
-            x += markerW;
-        }
-        for (const Part& p : lines[i]) {
-            c.text(p.text.c_str(), x, y, p.color);
-            x += c.textWidth(p.text.c_str(), c.fontSize);
-        }
-        y += kLine;
-    }
-    c.text("L3+R3: hide", x0 + kPad, y + 2, kDimText, kSmall);
 }
 
 // ---- pop-ups: what the last checks did -------------------------------------------------------------
@@ -1037,7 +956,7 @@ extern "C" void pc_tracker_overlay_frame(void) {
     notePopups();
     uint32_t pressed = keysPressed();
     if (pressed & kToggle) {
-        setPage(sPage == HIDDEN ? SCREEN : sPage == SCREEN ? PANEL : HIDDEN);
+        setPage(sPage == HIDDEN ? SCREEN : HIDDEN);
     } else if (sPage == SCREEN && (pressed & kBack) != 0) {
         if (sInList) {
             sInList = false;
@@ -1065,9 +984,6 @@ extern "C" void pc_tracker_overlay_frame(void) {
         handleScreenKeys(pressed);
         drawScreen();
     } else {
-        if (sPage == PANEL) {
-            drawPanel();
-        }
         drawPopups();
     }
 }
@@ -1080,9 +996,6 @@ extern "C" void pc_tracker_overlay_draw(void) {
     if (sPage == SCREEN && sArt.tried) {
         drawScreen();
     } else if (sPage != SCREEN) {
-        if (sPage == PANEL) {
-            drawPanel();
-        }
         drawPopups();
     }
 }
