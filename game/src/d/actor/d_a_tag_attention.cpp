@@ -77,13 +77,23 @@ cPhs_State Mthd_Create(void* i_this) {
     return static_cast<Act_c*>(i_this)->_create();
 }
 
+#if TARGET_PC
+// The method table calls these as int functions (process_method_func). A bool return sets only the low
+// byte of the return register on x86-64, so fpcBs_Delete saw garbage instead of TRUE and the tag was never
+// deleted: its room and the play scene never finished deleting (no other sea room loads, entering a
+// building stays black).
+#define MTHD_RET BOOL
+#else
+#define MTHD_RET bool
+#endif
+
 /* 000004A0-000004A8       .text Mthd_Delete__Q214daTagAttention31@unnamed@d_a_tag_attention_cpp@FPv */
-bool Mthd_Delete(void* i_this) {
+MTHD_RET Mthd_Delete(void* i_this) {
     return TRUE;
 }
 
 /* 000004A8-000004C8       .text Mthd_Execute__Q214daTagAttention31@unnamed@d_a_tag_attention_cpp@FPv */
-bool Mthd_Execute(void* i_this) {
+MTHD_RET Mthd_Execute(void* i_this) {
     return static_cast<Act_c*>(i_this)->_execute();
 }
 
