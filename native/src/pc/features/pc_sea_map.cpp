@@ -446,18 +446,15 @@ void seaMapFrame() {
                 drawIsland(dl, no, ImVec2(a.x + cell / 2.0f, a.y + cell / 2.0f), cell,
                            known ? C(96, 150, 70, 235) : C(255, 255, 255, 45), known ? C(60, 40, 20, 200) : C(0, 0, 0, 0));
             }
-            // the checks in logic there (the tracker's), when any: the island's bottom left, its dungeon's bottom
-            // right
+            // the checks in logic there (the tracker's: the island's and its dungeon's together), when any, in
+            // the cell's bottom left
             int island, dungeon;
             sectorChecks(no, island, dungeon);
+            const int open = (island > 0 ? island : 0) + (dungeon > 0 ? dungeon : 0);
             const float fs = std::floor(cell * 0.36f) < 9.0f ? 9.0f : std::floor(cell * 0.36f);
-            if (island > 0) {
-                drawCount(dl, island, ImVec2(a.x + 2.0f, b.y - fs - 1.0f), false, fs, C(0, 0, 0, 170),
+            if (open > 0) {
+                drawCount(dl, open, ImVec2(a.x + 2.0f, b.y - fs - 1.0f), false, fs, C(0, 0, 0, 170),
                           C(140, 205, 255, 255));
-            }
-            if (dungeon > 0) {
-                drawCount(dl, dungeon, ImVec2(b.x - 2.0f, b.y - fs - 1.0f), true, fs, C(0, 0, 0, 170),
-                          C(255, 200, 90, 255));
             }
         }
     }
