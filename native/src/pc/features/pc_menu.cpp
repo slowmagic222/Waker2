@@ -461,6 +461,9 @@ const PcSettingChoice kFbScale[] = {
 };
 const PcSettingChoice kAspect[] = {{"16:9", "16:9 (panorámica)", "16:9 (widescreen)"}, {"4:3", "4:3 (GameCube)"}, {"16:10", "16:10"}};
 const PcSettingChoice kOnOff[] = {{"0", "Desactivado", "Off"}, {"1", "Activado", "On"}};
+// COS_TRACKER_POPUPS (pc_tracker_overlay.cpp)
+const PcSettingChoice kTrackerPopups[] = {{"0", "Desactivados", "Off"}, {"1", "A la izquierda", "Left"},
+                                          {"2", "Arriba, en el centro", "Top centre"}};
 const PcSettingChoice kHdMaxSize[] = {{"auto", "Automático (512 / 1024)", "Automatic (512 / 1024)"}, {"256", "256"}, {"512", "512"},
                                       {"1024", "1024"}, {"full", "Sin límite", "No limit"}};
 // "auto" (the default): on while the 60 fps row is on (docs/FPS60_PLAN.md step E), off at 30 fps;
@@ -676,6 +679,13 @@ const PcSettingDesc kBuiltins[] = {
      "Beedle buying Blue Chu Jelly, the Deluxe Picto Box on a button, Morths out of the map, enemies "
      "killed with Light Arrows (Stalfos, Miniblins, Jalhalla's Poes, Magtails) and Phantom Ganon's "
      "trigger."},
+    {"COS_TRACKER_POPUPS", "Avisos del tracker",
+     "Avisos al jugar, a la izquierda bajo los corazones o arriba en el centro: \"1 location checked!\" al "
+     "abrir un cofre, \"4 checks opened up!\" cuando un objeto abre lugares nuevos (docs/TRACKER.md).",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kTrackerPopups), "1", nullptr, nullptr, 140,
+     "Tracker pop-ups",
+     "Pop-ups while playing, on the left under the hearts or at the top centre: \"1 location checked!\" for "
+     "a check, \"4 checks opened up!\" when an item opens up new places (docs/TRACKER.md)."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",

@@ -123,6 +123,8 @@ include(cmake/sdk.cmake)
 include(cmake/sdk_gf.cmake)
 # Link census (phase 2): `ninja cos_link_census` lists what the non-REL units still need.
 include(cmake/census.cmake)
+# QuickJS, for the in-game tracker's logic (cos_quickjs, linked by cos_pc).
+include(cmake/quickjs.cmake)
 # The game executable (phase 3, step 3.8): `ninja switchwaker` links every module, cos_sdk and Aurora.
 include(cmake/executable.cmake)
 # Layout check (phase 4, step 4.0c): `ninja cos_layout_check` asserts the GameCube offsets of the
