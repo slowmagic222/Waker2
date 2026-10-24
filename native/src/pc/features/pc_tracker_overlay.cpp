@@ -546,8 +546,7 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
         const float x = x0 + (i % kSeaSide) * cw, y = y0 + (i / kSeaSide) * ch;
         if (logic.ready && i < int(logic.areas.size())) {
             const LogicArea& a = logic.areas[i];
-            // the dungeons on this sector's island, on a line of their own at the bottom, the island's
-            // count above it
+            // the island's count at the bottom of every square, the dungeon on that island's above it
             std::vector<const LogicArea*> dungeons;
             for (const DungeonSector& d : kDungeonSectors) {
                 if (a.name == d.island) {
@@ -557,10 +556,11 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
                 }
             }
             char t[16];
-            const float dungeonSize = c.fontSize - 3;
-            const float islandY = y + ch - c.fontSize - 3 - (dungeons.empty() ? 0 : dungeonSize + 1);
+            // small, in the square's bottom corner area, so the chart and its islands show
+            constexpr float islandSize = 12, dungeonSize = 10;
+            const float islandY = y + ch - islandSize - 2;
             snprintf(t, sizeof t, "%d/%d", a.available, a.remaining);
-            c.text(t, x + cw * 0.5f, islandY, colorOf(a.color), 0, 0.5f);
+            c.text(t, x + cw * 0.5f, islandY, colorOf(a.color), islandSize, 0.5f);
             if (!dungeons.empty()) {
                 // "a/b", a little smaller than the island's
                 std::vector<std::string> parts;
@@ -572,7 +572,7 @@ void drawSeaChart(const Canvas& c, const Snapshot& s, const LogicResult& logic) 
                 }
                 const float gap = 6;
                 total += gap * (parts.size() - 1);
-                const float dy = y + ch - dungeonSize - 3;
+                const float dy = islandY - dungeonSize - 1;
                 float tx = x + cw * 0.5f - total * 0.5f;
                 for (size_t k = 0; k < parts.size(); k++) {
                     c.text(parts[k].c_str(), tx, dy, colorOf(dungeons[k]->color), dungeonSize);
