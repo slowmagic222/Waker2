@@ -460,6 +460,8 @@ const PcSettingChoice kFbScale[] = {
     {"1.5", "1280x720 (1.5)"}, {"2.0", "1707x960 (2.0)"},    {"2.25", "1920x1080 (2.25)"},
 };
 const PcSettingChoice kAspect[] = {{"16:9", "16:9 (panorámica)", "16:9 (widescreen)"}, {"4:3", "4:3 (GameCube)"}, {"16:10", "16:10"}};
+const PcSettingChoice kHudScale[] = {{"0.75", "75 %"}, {"0.85", "85 %"}, {"1", "100 % (normal)"},
+                                     {"1.15", "115 %"}, {"1.25", "125 %"}, {"1.5", "150 %"}};
 const PcSettingChoice kOnOff[] = {{"0", "Desactivado", "Off"}, {"1", "Activado", "On"}};
 const PcSettingChoice kHdMaxSize[] = {{"auto", "Automático (512 / 1024)", "Automatic (512 / 1024)"}, {"256", "256"}, {"512", "512"},
                                       {"1024", "1024"}, {"full", "Sin límite", "No limit"}};
@@ -568,6 +570,11 @@ const PcSettingDesc kBuiltins[] = {
      70,
      "Aspect ratio",
      "16:9 widescreen or the GameCube's original 4:3."},
+    {"COS_HUD_SCALE", "Tamaño del HUD",
+     "Corazones, magia, botones y rupias más grandes o más pequeños, cada uno en su esquina. El minimapa no cambia.",
+     PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kHudScale), "1", nullptr, nullptr, 75,
+     "HUD size",
+     "Hearts, magic, buttons and rupees bigger or smaller, each staying in its corner. The minimap keeps its size."},
     {"COS_HD_TEXTURES", "Texturas HD", "Usa el paquete de texturas en alta resolución si está instalado.",
      PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kOnOff), "0", nullptr, nullptr, 80,
      "HD textures",

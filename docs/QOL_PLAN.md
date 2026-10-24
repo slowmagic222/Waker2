@@ -263,3 +263,8 @@ What remains of BetterWW (`4501481`) after this branch, for a follow-up issue:
 - **Invert camera** is not part of the preset: the menu's existing camera rows ("Invertir cámara
   horizontal / vertical") cover it.
 
+HUD size (`COS_HUD_SCALE`, Graphics tab, 75-150 %, default 100 %): the meter's screens (main_parts 1-3) are
+drawn with each part (the outermost pane smaller than half the 2D area) scaled about the nearest corner, edge
+middle or centre (`J2DPane::sPcHudScale`, set around the draws in `dDlst_2DMETER1_c`/`2_c`). The minimap and
+the minigame timers keep their size. With the in-game tracker built in, its screen hides the corner sea map
+and the QoL buttons do nothing while it is open (`pc::tracker::overlayShown`).

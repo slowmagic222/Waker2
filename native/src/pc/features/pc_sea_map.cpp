@@ -327,6 +327,11 @@ bool seaMapVisible() {
     if (!pc_qol(PC_QOL_SEA_MAP) || pc_qol_hud_hidden() || menuOpen() || fpcM_Search(isPlayScene, nullptr) == nullptr) {
         return false;
     }
+#if PC_SEA_MAP_TRACKER
+    if (pc::tracker::overlayShown()) {
+        return false; // the tracker's screen is open (it has its own sea chart)
+    }
+#endif
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     if (player == nullptr) {
         return false;

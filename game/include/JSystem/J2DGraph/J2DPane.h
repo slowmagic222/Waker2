@@ -109,6 +109,14 @@ public:
     void pcSetBoundsLeft(f32 x) { mBounds.i.x = x; }
     void pcSetBoundsRight(f32 x) { mBounds.f.x = x; }
     void pcSetMtxTransX(f32 x) { mMtx[0][3] = x; }
+    // QoL HUD scale (COS_HUD_SCALE, d_meter.cpp): while sPcHudScale is not 1, draw() scales each part of the
+    // screen being drawn (the outermost panes smaller than half the 2D area, with their children) by it,
+    // about the corner, edge middle or centre of the 2D area (sPcHudLeft..sPcHudRight x
+    // sPcHudTop..sPcHudBottom) nearest the part: the hearts stay in the top left, the buttons in the top
+    // right. No clipping meanwhile (the bounds stay unscaled).
+    static f32 sPcHudScale;
+    static f32 sPcHudLeft, sPcHudRight, sPcHudTop, sPcHudBottom;
+    static bool sPcHudInScaled; // drawing inside a scaled part
 #endif
 
 protected:

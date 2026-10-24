@@ -20,6 +20,11 @@
 #include "m_Do/m_Do_MemCard.h"
 #include "m_Do/m_Do_MemCardRWmng.h"
 
+#if __has_include("pc/pc_tracker.h")
+#include "pc/pc_tracker.h" // the in-game tracker (its own pull request): its screen
+#define PC_QOL_TRACKER 1
+#endif
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -59,6 +64,15 @@ bool pressed(PcQol which, Button& b) {
     }
     b.held = held;
     return press;
+}
+
+// The tracker's screen is open: the game is paused under it and its buttons are the tracker's
+bool trackerOpen() {
+#if PC_QOL_TRACKER
+    return pc::tracker::overlayShown();
+#else
+    return false;
+#endif
 }
 
 Button sHudButton;
@@ -349,7 +363,7 @@ void pc_qol_frame(void) {
     if (fpcM_Search(isPlayScene, nullptr) == nullptr) {
         sAuto.known = false; // the title or the file select: the next play starts from what its file has
     }
-    if (pc::menuOpen() || fpcM_Search(isPlayScene, nullptr) == nullptr) {
+    if (pc::menuOpen() || trackerOpen() || fpcM_Search(isPlayScene, nullptr) == nullptr) {
         // the buttons' state is still followed, so a press that opened or closed something is not a press here
         pressed(PC_QOL_HUD_BUTTON, sHudButton);
         pressed(PC_QOL_ITEM_SETS, sItemSetButton);
