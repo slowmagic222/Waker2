@@ -47,6 +47,16 @@ bool d2DBSplinePath::Step() {
             mCurveKey[0] = MIN(mKeyNo + 0, mKeyNum - 1);
             mCurveKey[1] = MIN(mKeyNo + 1, mKeyNum - 1);
             mCurveKey[2] = MIN(mKeyNo + 2, mKeyNum - 1);
+#if TARGET_PC
+            // A path of one frame (an event camera with Timer 1, as when Tott dances on Windfall) makes mStep
+            // (keys - 2) / 0 = inf and t = inf * 0 = NaN, which both fctiwz and cvttss2si turn into 0x80000000.
+            // On the GameCube v[0x80000000 + k] wraps the 32-bit address back to v[k]; on x86-64 it
+            // reads 8 GB below v. Take the same keys the GameCube ends up reading.
+            for (int i = 0; i < 3; i++) {
+                if (mCurveKey[i] < 0)
+                    mCurveKey[i] &= 0x7FFFFFFF;
+            }
+#endif
 
             inv = 1.0f - t;
             mCurveWeight[0] = inv * inv * 0.5f;
