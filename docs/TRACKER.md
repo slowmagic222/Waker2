@@ -34,9 +34,8 @@ against the chart's collect-map number in `game/src/d/d_item.cpp` (all 49 agree)
 Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2.
 
 1. The tracker screen: the game pauses, and the screen shows the tracker's items, its sea chart with each
-   island's checks "in logic / not checked" (with the dungeon on that island under it, on a dark strip:
-   Dragon Roost Cavern on Dragon Roost Island's square, Tower of the Gods and Ganon's Tower on the Tower of the
-   Gods' one), and the dungeons (keys, map, compass, big key, counts), in
+   island's checks "in logic / not checked" (with the dungeon on that island under it, a little smaller:
+   Dragon Roost Cavern on Dragon Roost Island's square; Ganon's Tower only in the dungeons' row), and the dungeons (keys, map, compass, big key, counts), in
    wooferzfg's tracker's own art. The stick or the D-pad moves a cursor over the items, the islands and
    the dungeons. On a place, the list on the right says how many of its checks are checked and names
    them, coloured as the tracker colours them: blue in logic, red not yet, and checked ones grey, ticked
