@@ -48,11 +48,9 @@ Press both sticks in together (L3+R3, on any controller; the Switch's too) or F2
    archives (`[cos] tracker: itemres.arc: ...`), for the menu's frames next. A green ring marks where Link is: the
    sea sector he sails in (on an island's own stages, the last one, dimmer) or the dungeon he is in, and
    the cursor starts there.
-2. A second press: a small panel in the top right corner while the game runs, in the same font: in logic /
-   left, and the place Link is in (checked of its checks).
-3. A third press hides it.
+2. A second press (or B) closes it. While it is open the QoL sea map and the HUD button stand aside.
 
-Pop-ups: while the game runs (panel or not), a pop-up on the left, under the hearts, says what the last
+Pop-ups: while the game runs, a pop-up on the left, under the hearts, says what the last
 checks did: "1 location checked!" with the check's name, and "4 checks opened up!" when an item puts new
 checks in logic, each with the game's sound (the pause menu's select sound, or the secret-solved chime
 when checks opened up). Not for the burst of checks when a file loads. The options menu's Quality of life
@@ -134,7 +132,7 @@ start a seed's file over.
   and a newly checked location moved the totals. The merge's tests (`autotracker.test.js`) pass in the
   tracker's jest.
 - The screen: drawn with Aurora's ImGui in a small SDL harness from the same code (screenshots of the
-  items, the sea chart, a dungeon, the list, the panel and the pop-ups).
+  items, the sea chart, a dungeon, the list and the pop-ups).
 - Not yet: the whole game, on the Deck or the Switch, with a real seed.
 
 ## Plan
@@ -148,8 +146,8 @@ start a seed's file over.
 
 - `native/include/pc/pc_tracker.h`, `native/src/pc/features/pc_tracker.cpp`: the state, built after each
   15th game frame (`pc_frame.cpp`) on a rando disc or while the screen is shown.
-- `native/src/pc/features/pc_tracker_overlay.cpp`: the tracker screen and the small panel (ImGui) and
-  their toggle.
+- `native/src/pc/features/pc_tracker_overlay.cpp`: the tracker screen (ImGui), its toggle and the
+  pop-ups.
 - `native/src/pc/features/pc_tracker_logic.cpp`, `native/cmake/quickjs.cmake`: the tracker's logic in
   QuickJS (quickjs-ng, MIT) on its own thread; the seed's permalink.
 - `scripts/tracker/build_logic.sh`, `scripts/tracker/logic/`: the `tracker-logic/` folder: the logic
