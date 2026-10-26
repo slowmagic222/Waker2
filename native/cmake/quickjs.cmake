@@ -27,6 +27,10 @@ target_include_directories(cos_quickjs SYSTEM PUBLIC "${cos_quickjs_src_SOURCE_D
 target_compile_definitions(cos_quickjs PRIVATE _GNU_SOURCE)
 # its own warnings are not ours (the game's flags come from GameConfig.cmake's directory options)
 target_compile_options(cos_quickjs PRIVATE -w)
+# newlib (the Switch) declares alloca only in <alloca.h>, which cutils.h includes for Linux and macOS only
+if (NINTENDO_SWITCH)
+    target_compile_options(cos_quickjs PRIVATE "SHELL:-include alloca.h")
+endif ()
 set_target_properties(cos_quickjs PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
 find_package(Threads)
 target_link_libraries(cos_quickjs PUBLIC ${CMAKE_THREAD_LIBS_INIT})

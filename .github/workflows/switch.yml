@@ -1,0 +1,121 @@
+# A Switch (homebrew NRO) test build of Waker2, WITHOUT the game disc.
+#
+# scripts/switch/build_native.sh --runtime-assets (docs/SWITCH_BUILD.md, docs/RUNTIME_ASSETS.md), USA disc
+# only (GZLE01, the one wwrando randomizes): the player's disc supplies the data at start-up. The artifact
+# is a zip laid out as the SD card wants it (docs/SWITCH_RANDO.md):
+#   switch/switchwaker/switchwaker.nro                 the game ("SwitchWaker" in the Homebrew Menu)
+#   switch/switchwaker/initial_pipeline_cache.db       the pipeline list
+#   switch/switchwaker/initial_dksh_cache.bin          its shaders, compiled for the Switch's GPU
+#   switch/switchwaker/native/tracker-logic/           the in-game tracker's logic and art (docs/TRACKER.md)
+#   switch/switchwaker/native/user/rando/seeds/        where randomizer seeds (.iso) go
+# plus switchwaker.elf (symbols, for addr2line on a crash) as a second artifact.
+# No seed generator: it needs Python, so seeds are made on a computer.
+#
+# Runs by hand (Actions tab, "Run workflow") or on a push to a claude/* branch that changes this file or
+# the Switch build. The first run builds Dawn from scratch (an hour or more); build/ is cached after it.
+name: switch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths:
+      - '.github/workflows/switch.yml'
+      - 'switch/native/**'
+      - 'scripts/switch/build_native.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: docker/setup-buildx-action@v3
+      - name: Switch build image
+        uses: docker/build-push-action@v6
+        with:
+          context: scripts/switch
+          file: scripts/switch/Containerfile.native
+          tags: localhost/centollos-switch-native-build:2026-10-03
+          load: true
+          cache-from: type=gha,scope=switch-native
+          cache-to: type=gha,mode=max,scope=switch-native
+      - name: Restore build cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/switch-native
+            build/switch-dawn-src
+            build/dksh_cache
+            build/decomp
+            ref/recompcore
+          key: switch-build-${{ github.sha }}
+          restore-keys: switch-build-
+      - name: Inputs (Aurora at the pin, RecompCore)
+        run: |
+          pin=$(sed -n 's/^set(COS_AURORA_COMMIT "\([0-9a-f]*\)".*/\1/p' native/cmake/Aurora.cmake)
+          git clone -q https://github.com/encounter/aurora.git ref/aurora
+          git -C ref/aurora worktree add --detach "$PWD/build/aurora-3227d76" "$pin"
+          git -C build/aurora-3227d76 submodule update --init --recursive
+          native/tools/fetch_recompcore.sh ref/recompcore
+      - name: Build the NRO (runtime assets, no disc, USA)
+        run: SWITCH_CONTAINER_ENGINE=docker scripts/switch/build_native.sh --runtime-assets --jobs 4
+      - name: Save build cache
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/switch-native
+            build/switch-dawn-src
+            build/dksh_cache
+            build/decomp
+            ref/recompcore
+          key: switch-build-${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build the tracker's logic for the game
+        run: scripts/tracker/build_logic.sh out/tracker-logic build/tww-rando-tracker
+      - name: Package
+        run: |
+          sha=$(git rev-parse --short HEAD)
+          d=out/sd/switch/switchwaker
+          mkdir -p "$d/native/user/rando/seeds"
+          cp build/switch-native/switchwaker.nro build/switch-native/initial_pipeline_cache.db \
+              build/switch-native/initial_dksh_cache.bin "$d/"
+          cp -R out/tracker-logic "$d/native/tracker-logic"
+          echo "Put randomizer seeds (.iso from wwrando 1.10.0) here, then pick one in the options menu's Randomizer tab." \
+              > "$d/native/user/rando/seeds/README.txt"
+          cp docs/SWITCH_RANDO.md out/sd/README-waker2-switch.md
+          (cd out/sd && zip -qr "../waker2-switch-$sha.zip" .)
+          mkdir -p out/elf && cp build/switch-native/switchwaker.elf "out/elf/switchwaker-$sha.elf"
+          echo "SHA=$sha" >> "$GITHUB_ENV"
+          ls -la out "$d"
+          sha256sum "$d/switchwaker.nro"
+      - name: Check nothing from the disc is in the package
+        run: |
+          if unzip -Z1 "out/waker2-switch-$SHA.zip" | grep -Ei '\.(iso|gcm|rvz|dol|rel|gci)$'; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: waker2-switch-${{ env.SHA }}
+          path: out/waker2-switch-${{ env.SHA }}.zip
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: waker2-switch-elf-${{ env.SHA }}
+          path: out/elf/switchwaker-${{ env.SHA }}.elf
+          retention-days: 30
