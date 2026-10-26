@@ -279,12 +279,7 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         delete[] ys;
         return nullptr;
     }
-    if (quads == 0) {
-        delete[] ys;
-        return t;  // open water: nothing to draw or stand on
-    }
-
-    // ---- Drawing: triangles by sample row.
+    // ---- Drawing: triangles by sample row (the land and the shallows; the sea bed is not drawn).
     PcRplusPacket& pk = t->packet;
     pk.mVtx = new Vtx[(size_t)quads * 6];
     pk.mRows = n < 256 ? n : 256;
@@ -341,18 +336,17 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
     }
     pk.mTriCount = quads * 2;
 
-    // ---- Collision: a DZB in the disc's layout.
+    // ---- Collision: a DZB in the disc's layout, over the whole room: the land and the sea bed. Every room
+    // needs ground somewhere under any point, or Link, made at a spawn point over open water, waits for ground
+    // forever (daPy_lk_c::makeBgWait) and the game never starts.
     const int nb = (n + BLK - 1) / BLK;  // blocks per side
     // Vertices: every sample (simple, and the indices are the sample grid's).
     const u32 nVtx = (u32)nv * nv;
-    const u32 nTri = (u32)quads * 2;
-    // Blocks: the non-empty ones.
+    const u32 nTri = (u32)n * n * 2;
     int* blkTris = new int[(size_t)nb * nb]();
     for (int j = 0; j < n; j++) {
         for (int i = 0; i < n; i++) {
-            if (keep(i, j)) {
-                blkTris[(j / BLK) * nb + (i / BLK)] += 2;
-            }
+            blkTris[(j / BLK) * nb + (i / BLK)] += 2;
         }
     }
     u32 nBlk = 0;
@@ -414,9 +408,6 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
             blk++;
             for (int j = bj * BLK; j < bj * BLK + BLK && j < n; j++) {
                 for (int i = bi * BLK; i < bi * BLK + BLK && i < n; i++) {
-                    if (!keep(i, j)) {
-                        continue;
-                    }
                     u16 a = (u16)(j * nv + i), b = (u16)((j + 1) * nv + i), c = (u16)(j * nv + i + 1),
                         d = (u16)((j + 1) * nv + i + 1);
                     u16 tv[2][3] = {{a, b, c}, {c, b, d}};
@@ -502,7 +493,8 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         fprintf(stderr, "[rplus] room %d: collision not set\n", roomNo);
     }
     t->dzb = blob;
-    fprintf(stderr, "[rplus] room %d: %d triangles, %u blocks\n", roomNo, pk.mTriCount, nBlk);
+    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision in %u blocks\n", roomNo, pk.mTriCount,
+            nTri, nBlk);
     return t;
 }
 
@@ -515,6 +507,15 @@ void pc_rplus_terrain_draw(PcRplusTerrain* t) {
 
 int pc_rplus_room_actors_off(int roomNo) {
     return strcmp(dComIfGp_getStartStageName(), "sea") == 0 && pc_rplus_sea_room_generated(roomNo);
+}
+
+int pc_rplus_keep_room_actor(const char* name) {
+    // The King of Red Lions: Link starting at sea waits for him (daPy_lk_c::makeBgWait).
+    if (strcmp(name, "Ship") == 0) {
+        fprintf(stderr, "[rplus] kept the room's actor %s\n", name);
+        return 1;
+    }
+    return 0;
 }
 
 int pc_rplus_lod_off(void) {
