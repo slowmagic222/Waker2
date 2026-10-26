@@ -1,0 +1,79 @@
+# Randomizer+: a generated Great Sea
+
+Randomizer+ replaces the Great Sea's islands with a new, generated world: land masses of every size, from
+one-cell rocks to continents across several chart squares. Every NPC, building, cave, fairy fountain and dungeon
+door the randomizer needs is placed somewhere on it. The interiors and dungeons themselves are not changed.
+
+First step: a **logic test**. `scripts/rplus/` generates worlds offline and checks that each one can be beaten. It
+doesn't touch the game yet. How the world looks comes later and will use the game's own textures and terrain
+pieces.
+
+## What a world has to contain
+
+`scripts/rplus/anchors.py` sorts every one of wwrando's 320 item locations by what the player has to reach to get
+it:
+
+| | Count | Where the generator puts it |
+|---|---|---|
+| Interior doors (houses, shops, Rito Aerie, Forest Haven, cabana, pirate ship ...) | 16 | lowland or shore of land of some size |
+| Secret cave doors | 20 | hills and cliffs |
+| Great Fairy fountains | 6 | hills and cliffs |
+| Dungeon entrance doors (DRC, FW, ET, WT) | 4 | land of their biome (volcanic, forest, rock), one per land |
+| NPCs outdoors (Tott, Maggie, Zunari, Mila, Kamo, Ivan ...) | 10 | lowland, spread over many lands |
+| Outdoor landmarks (lighthouse, town gate, wind shrine, Tingle Tower, postboxes, withered trees ...) | 8 | shore or anywhere on land |
+| Puzzle chests on the terrain | 13 | hills and peaks |
+| Ships and objects at sea (Beedle, Salvage Corp, Gorons, Ghost Ship, Islet of Steel, Cyclos ...) | 8 + 51 | open water |
+| Sunken treasure | 49 | open water in its chart square (the charts point at squares) |
+| Kept as they are | 2 | Forsaken Fortress (room 1), Tower of the Gods with Hyrule (room 26) |
+| Dungeon locations | 96 | unchanged, behind their doors |
+
+These 47 interior stages sit behind doors: `python3 scripts/rplus/anchors.py --csv` prints the full table, with
+each door's interior stage, the actors that give the items, the original island and the obstacle at the door.
+
+## How a world is made (`worldgen.py`)
+
+1. **Land.** Noisy blobs on a 84x84 cell grid (12 cells per chart square), between about 45 and 60 of them,
+   tiny to huge. Large ones get extra lobes so they aren't round. The two kept squares stay open water.
+2. **Biomes and terrain obstacles.** Each sizeable biome gets at least one land of reasonable size. Some lands get
+   cliffs all round (Hookshot, Grappling Hook or Deku Leaf to land), a blocked path up (boulder, heavy stone,
+   cracked wall, gap, cliff step, gorge) or a summit you need an item to reach.
+3. **Anchors.** Link's house (the start) goes on open land. Forest Haven, the Forbidden Woods door and the
+   small-island chest share one forest land, because you reach the Woods by gliding from Forest Haven. The
+   transparent chest goes on the lighthouse's land. Everything else is spread out, with fewer anchors per land
+   where there are already many. Each land with two or more anchors gets a postbox. Four withered trees go on four
+   lands.
+4. **Logic.** Each anchor's requirement is what it takes to reach its site (landing, path up, peak) AND the
+   obstacle kept at its door from wwrando's macros (the boulder in front of a cave, the ice over the Fire
+   Mountain cave ...). The two are combined in wwrando's own `Can Access ... Entrance on ...` macros, or in each
+   location's need if the anchor has no door macro.
+5. **Items.** An assumed fill places the dungeon keys in their dungeons, then the progression items, using
+   wwrando's default progression options. The seed passes when every placed item can be collected from the start
+   and Ganondorf can be beaten. If a world can't be filled, the generator makes a new one.
+
+`wwlogic.py` reads wwrando's `logic/item_locations.txt` and `logic/macros.txt` as data. None of wwrando's code
+runs, so the same rules can move to C++ later, which the Switch needs because it has no Python.
+
+## Running it
+
+```sh
+export WWRANDO_DIR=/path/to/wwrando        # a checkout of the pinned wwrando (9775811); only its logic/ is read
+python3 scripts/rplus/worldgen.py --seed 7 --out build/rplus   # world.json, spoiler.txt, map.png
+python3 scripts/rplus/worldgen.py --test 200                   # many seeds, report how many are beatable
+```
+
+`world.json` contains each land (biome, size, chart squares, obstacles), each anchor's cell, chart square, sea
+room, sea position in game units and requirement, the sea objects and the item placement. The in-game loader
+will read this file.
+
+## Not done yet
+
+- **The game side.** The game doesn't use the world yet. Next comes a loader that builds the terrain of each sea
+  room from `world.json` (mesh and collision made in memory, see `dBgW_NewSet`), sets door exits to the interior
+  stages and places the NPCs and objects as actors.
+- **Item placement on the disc.** wwrando writes items into the stage files of their original rooms. A generated
+  world needs those items to follow their anchors: the loader gives each actor its item from `world.json`.
+- **NPC code that knows its island.** About 150 places in the game check a room number or the stage `sea`
+  (`dIsleRoom_...`). Each moved NPC has to be checked.
+- **Windfall's town sidequests** (Sam's decorations, Mila's night walk, the Kane gate statues) need a village
+  around them. Right now they are only placed as points.
+- Options other than wwrando's defaults: trick levels, more progression types, swordless.
