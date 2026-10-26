@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <vector>
 
 namespace {
 
@@ -340,15 +341,45 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
     // ---- Collision: a DZB in the disc's layout, over the whole room: the land and the sea bed. Every room
     // needs ground somewhere under any point, or Link, made at a spawn point over open water, waits for ground
     // forever (daPy_lk_c::makeBgWait) and the game never starts.
+    // Shore walls: where a dry quad (a corner above the sea) meets a wet one, an upright wall on their edge from
+    // under the water to just above it, facing the sea. The beach's slope alone counts as ground, which the boat
+    // doesn't stop at (it sailed straight through the land).
     const int nb = (n + BLK - 1) / BLK;  // blocks per side
-    // Vertices: every sample (simple, and the indices are the sample grid's).
-    const u32 nVtx = (u32)nv * nv;
-    const u32 nTri = (u32)n * n * 2;
+    auto dry = [&](int i, int j) {
+        return Y(i, j) > 0.0f || Y(i + 1, j) > 0.0f || Y(i, j + 1) > 0.0f || Y(i + 1, j + 1) > 0.0f;
+    };
+    struct Wall {
+        int blk;
+        float px, pz, qx, qz;  // the edge, ordered so the wall faces the sea
+    };
+    std::vector<Wall> walls;
+    for (int j = 0; j < n; j++) {
+        for (int i = 0; i < n; i++) {
+            if (!dry(i, j)) {
+                continue;
+            }
+            const float x0e = bx + i * step, x1e = bx + (i + 1) * step;
+            const float z0e = bz + j * step, z1e = bz + (j + 1) * step;
+            const int blk = (j / BLK) * nb + (i / BLK);
+            // (p, q) with the sea on the left of p -> q seen from above, x east and z south: see the normal below.
+            if (j > 0 && !dry(i, j - 1)) walls.push_back({blk, x0e, z0e, x1e, z0e});  // sea to the north
+            if (j < n - 1 && !dry(i, j + 1)) walls.push_back({blk, x1e, z1e, x0e, z1e});  // south
+            if (i > 0 && !dry(i - 1, j)) walls.push_back({blk, x0e, z1e, x0e, z0e});  // west
+            if (i < n - 1 && !dry(i + 1, j)) walls.push_back({blk, x1e, z0e, x1e, z1e});  // east
+        }
+    }
+    constexpr float WALL_BOTTOM = -400.0f, WALL_TOP = 60.0f;
+    // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall.
+    const u32 nVtx = (u32)nv * nv + (u32)walls.size() * 4;
+    const u32 nTri = (u32)n * n * 2 + (u32)walls.size() * 2;
     int* blkTris = new int[(size_t)nb * nb]();
     for (int j = 0; j < n; j++) {
         for (int i = 0; i < n; i++) {
             blkTris[(j / BLK) * nb + (i / BLK)] += 2;
         }
+    }
+    for (const Wall& w : walls) {
+        blkTris[w.blk] += 2;
     }
     u32 nBlk = 0;
     for (int b = 0; b < nb * nb; b++) {
@@ -399,6 +430,17 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
             o.f32at(at + 8, bz + j * step);
         }
     }
+    for (size_t w = 0; w < walls.size(); w++) {
+        const Wall& wl = walls[w];
+        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {WALL_BOTTOM, WALL_TOP, WALL_BOTTOM, WALL_TOP},
+                    vz[4] = {wl.pz, wl.pz, wl.qz, wl.qz};
+        for (int k = 0; k < 4; k++) {
+            u32 at = offV + ((u32)nv * nv + (u32)w * 4 + k) * 12;
+            o.f32at(at, vx[k]);
+            o.f32at(at + 4, vy[k]);
+            o.f32at(at + 8, vz[k]);
+        }
+    }
     u32 tri = 0, blk = 0;
     for (int bj = 0; bj < nb; bj++) {
         for (int bi = 0; bi < nb; bi++) {
@@ -425,6 +467,25 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
                         o.u16at(at + 8, 0);
                         tri++;
                     }
+                }
+            }
+            // The block's shore walls: (p bottom, p top, q bottom) and (q bottom, p top, q top). The normal
+            // (v1 - v0) x (v2 - v0) = up x (q - p), which points to the left of p -> q: the sea.
+            const int thisBlk = bj * nb + bi;
+            for (size_t w = 0; w < walls.size(); w++) {
+                if (walls[w].blk != thisBlk) {
+                    continue;
+                }
+                const u16 v = (u16)((u32)nv * nv + (u32)w * 4);
+                const u16 tv[2][3] = {{v, (u16)(v + 1), (u16)(v + 2)}, {(u16)(v + 2), (u16)(v + 1), (u16)(v + 3)}};
+                for (int k = 0; k < 2; k++) {
+                    u32 at = offT + tri * 10;
+                    o.u16at(at, tv[k][0]);
+                    o.u16at(at + 2, tv[k][1]);
+                    o.u16at(at + 4, tv[k][2]);
+                    o.u16at(at + 6, (u16)G_STONE);
+                    o.u16at(at + 8, 0);
+                    tri++;
                 }
             }
         }
@@ -494,8 +555,8 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         fprintf(stderr, "[rplus] room %d: collision not set\n", roomNo);
     }
     t->dzb = blob;
-    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision in %u blocks\n", roomNo, pk.mTriCount,
-            nTri, nBlk);
+    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision (%zu shore walls) in %u blocks\n", roomNo,
+            pk.mTriCount, nTri, walls.size(), nBlk);
     return t;
 }
 
@@ -545,8 +606,9 @@ void requestRoomLoad(int roomNo) {
 } // namespace
 
 int pc_rplus_keep_room_actor(const char* name) {
-    // The King of Red Lions: Link starting at sea waits for him (daPy_lk_c::makeBgWait).
-    if (strcmp(name, "Ship") == 0) {
+    // The King of Red Lions (Link starting at sea waits for him, daPy_lk_c::makeBgWait) and the sea itself
+    // (d_a_sea.cpp: the water, its waves and swimming are its l_cloth).
+    if (strcmp(name, "Ship") == 0 || strcmp(name, "sea") == 0) {
         fprintf(stderr, "[rplus] kept the room's actor %s\n", name);
         return 1;
     }

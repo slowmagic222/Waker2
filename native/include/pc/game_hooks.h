@@ -298,7 +298,7 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** bgw);
 void pc_rplus_terrain_draw(PcRplusTerrain* terrain);
 /* dStage_dt_c_roomReLoader: 1 when the room's own actors stay out (a generated sea room). */
 int pc_rplus_room_actors_off(int roomNo);
-/* 1 for an actor of a generated sea room that is still made (by its stage name: the ship). */
+/* 1 for an actor of a generated sea room that is still made (by its stage name: the ship, the sea). */
 int pc_rplus_keep_room_actor(const char* name);
 /* daLodbg create: 1 when the far islands of the original sea stay out. */
 int pc_rplus_lod_off(void);
