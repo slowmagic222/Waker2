@@ -757,7 +757,10 @@ def main():
   json.dump(describe(world, logic, assignment, placement), open(os.path.join(args.out, "world.json"), "w"),
             indent=1)
   write_spoiler(os.path.join(args.out, "spoiler.txt"), world, logic, assignment, placement)
-  draw_map(os.path.join(args.out, "map.png"), world)
+  try:
+    draw_map(os.path.join(args.out, "map.png"), world)
+  except ImportError:
+    print("no Pillow: map.png not drawn")
   write_rpw(os.path.join(args.out, "world.rpw"), world)
   print("seed %d: %d lands, %d anchors placed, beatable; wrote %s" %
         (args.seed, len(world.lands), len(world.place), args.out))
