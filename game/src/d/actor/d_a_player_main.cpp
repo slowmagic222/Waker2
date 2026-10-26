@@ -36,6 +36,7 @@
 #include "helpers/endian.h"
 #include "pc/pc_qol.h"
 #include "pc/pc_rando.h"
+#include "pc/game_hooks.h"
 #endif
 #include "d/d_material.h"
 #include "JSystem/J3DGraphLoader/J3DAnmLoader.h"
@@ -12522,6 +12523,10 @@ cPhs_State daPy_lk_c::makeBgWait() {
     }
 #endif
 
+#if TARGET_PC
+    // Randomizer+: the original island's spawn point may be inside the generated land.
+    pc_rplus_spawn_lift(&current.pos);
+#endif
     mAcch.CrrPos(*dComIfG_Bgsp());
 
     if (

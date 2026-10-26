@@ -302,6 +302,9 @@ int pc_rplus_room_actors_off(int roomNo);
 int pc_rplus_keep_room_actor(const char* name);
 /* daLodbg create: 1 when the far islands of the original sea stay out. */
 int pc_rplus_lod_off(void);
+/* daPy_lk_c::makeBgWait: a spawn point of the original island under the generated land is lifted onto it
+   (Link would wait for ground under him forever). */
+void pc_rplus_spawn_lift(class cXyz* pos);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);

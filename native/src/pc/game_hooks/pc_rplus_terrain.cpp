@@ -16,6 +16,7 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
+#include "d/d_stage.h"
 #include "f_op/f_op_actor_mng.h"
 #include "SSystem/SComponent/c_bg_s.h"
 #include "JSystem/J3DGraphBase/J3DPacket.h"
@@ -509,6 +510,40 @@ int pc_rplus_room_actors_off(int roomNo) {
     return strcmp(dComIfGp_getStartStageName(), "sea") == 0 && pc_rplus_sea_room_generated(roomNo);
 }
 
+namespace {
+
+// Asks the room control to load room roomNo and its RTBL neighbours (one room a call, as dStage_RoomCheck does
+// every frame from the ground under Link).
+void requestRoomLoad(int roomNo) {
+    roomRead_class* rr = dComIfGp_getStageRoom();
+    if (rr == nullptr) {
+        return;
+    }
+    int entry = -1;
+    for (int i = 0; i < rr->num && entry != roomNo; i++) {
+        roomRead_data_class* d = rr->m_entries[i];
+        u8* rooms = d->m_rooms;
+        for (int k = 0; k < d->num; k++) {
+            if (dStage_roomRead_dt_c_GetLoadRoomIndex(rooms[k]) == roomNo) {
+                entry = i;  // an entry with the room; the room's own entry (index roomNo) wins
+                break;
+            }
+        }
+    }
+    static int logged = -1;
+    if (logged != roomNo) {
+        logged = roomNo;
+        fprintf(stderr, "[rplus] loading the start room %d (room table entry %d)\n", roomNo, entry);
+    }
+    if (entry < 0) {
+        return;
+    }
+    roomRead_data_class* d = rr->m_entries[entry];
+    dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
+}
+
+} // namespace
+
 int pc_rplus_keep_room_actor(const char* name) {
     // The King of Red Lions: Link starting at sea waits for him (daPy_lk_c::makeBgWait).
     if (strcmp(name, "Ship") == 0) {
@@ -520,6 +555,30 @@ int pc_rplus_keep_room_actor(const char* name) {
 
 int pc_rplus_lod_off(void) {
     return pc_rplus_active();
+}
+
+void pc_rplus_spawn_lift(cXyz* pos) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    const float gx = (pos->x - x0) / cs, gy = (pos->z - z0) / cs;
+    const int n = pc_rplus_squares() * pc_rplus_cells();
+    if (gx < 0 || gy < 0 || gx >= n || gy >= n) {
+        return;
+    }
+    const int room = ((int)gy / pc_rplus_cells()) * pc_rplus_squares() + ((int)gx / pc_rplus_cells()) + 1;
+    if (!pc_rplus_sea_room_generated(room)) {
+        return;
+    }
+    const float ground = heightAt(gx, gy);
+    if (pos->y < ground + 10.0f) {
+        fprintf(stderr, "[rplus] spawn point %.0f %.0f %.0f is under the land: lifted to %.0f\n", pos->x, pos->y,
+                pos->z, ground + 10.0f);
+        pos->y = ground + 10.0f;
+    }
 }
 
 void pc_rplus_place_player(int roomNo) {
@@ -542,9 +601,11 @@ void pc_rplus_place_player(int roomNo) {
     player->old.pos = pos;
     player->speedF = 0.0f;
     player->speed = cXyz(0.0f, 0.0f, 0.0f);
-    // Held there until the start room's own land is loaded (the rooms load around Link).
+    // Held there until the start room's own land is loaded. The game loads rooms from the ground under Link
+    // (dStage_RoomCheck), and there is none until the start room is in, so its load is asked for here.
     const int startRoom = (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
     if (roomNo != startRoom) {
+        requestRoomLoad(startRoom);
         return;
     }
     placed = true;
