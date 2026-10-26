@@ -374,6 +374,6 @@ nx_create_nro(cos_nro
         TARGET switchwaker
         OUTPUT "${CMAKE_BINARY_DIR}/${COS_SWITCH_NRO_NAME}.nro"
         NACP cos_native.nacp
-        # Original art drawn by scripts/switch/make_icon.py; the HOME-menu forwarder uses it too
+        # Waker2 icon (Dillon's image, 256x256 baseline JPEG; make_icon.py drew the earlier one); the HOME-menu forwarder uses it too
         # (scripts/switch/build_forwarder.sh).
         ICON "${CMAKE_CURRENT_SOURCE_DIR}/icon/icon.jpg")
