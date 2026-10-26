@@ -3,6 +3,7 @@
 #include "pc_internal.h"
 #include "pc/pc_settings.h"
 #include "pc/pc_aspect.h"
+#include "pc/pc_rplus.h"
 #include "pc/pc_seedgen.h"
 
 #include <atomic>
@@ -154,6 +155,8 @@ void pc_harness_init(int argc, char* argv[]) {
 
     // The options menu's "Seed to play" (pc_seedgen.h, docs/SEEDGEN.md) sets or clears COS_RANDO_DISC.
     pc_seedgen_boot();
+    // The Randomizer+ tab's "World to play" and "Save files" (pc_rplus.h), after the seed is known.
+    pc_rplus_boot();
     gConfig.disc = envString("COS_DISC");
     gConfig.randoDisc = envString("COS_RANDO_DISC");
     gConfig.smoke = envString("COS_SMOKE");

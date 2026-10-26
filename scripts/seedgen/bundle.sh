@@ -5,8 +5,8 @@
 #
 #   scripts/seedgen/bundle.sh <out dir> [work dir]
 #
-# <out dir> gets python/, wwrando/, models/ (empty: the player's custom models go there) and
-# waker2_seedgen.py. The game looks for it as seedgen/ next to its executable (or COS_SEEDGEN).
+# <out dir> gets python/, wwrando/, models/ (empty: the player's custom models go there),
+# waker2_seedgen.py and rplus/ (Randomizer+'s world generator, docs/RANDOMIZER_PLUS.md). The game looks for it as seedgen/ next to its executable (or COS_SEEDGEN).
 # Needs git, a C compiler (gclib's speedups are built from source) and network access to PyPI and
 # GitHub. About 200 MB.
 set -euo pipefail
@@ -66,6 +66,8 @@ grep -viE '^(QtPy|PySide6|PyQt5|-r)' "$out/wwrando/requirements.txt" > "$work/re
 "$py" -c "import pyfastyaz0yay0, pyfastbti, pyfasttextureutils, PIL, numpy, ruamel.yaml"
 
 cp "$here/waker2_seedgen.py" "$out/"
+mkdir -p "$out/rplus"
+cp "$here"/../rplus/*.py "$out/rplus/"
 mkdir -p "$out/models"
 cp "$out/wwrando/models/About Custom Models.txt" "$out/models/" 2>/dev/null || true
 # Drop bytecode caches and pip's leftovers to keep the package small.
@@ -75,4 +77,5 @@ rm -rf "$out/python/lib/python$PYTHON_VERSION/test" "$out/python/lib/python$PYTH
 
 "$py" "$out/waker2_seedgen.py" describe --wwrando "$out/wwrando" --models "$out/models" > "$work/describe.tsv"
 grep -m1 "^version" "$work/describe.tsv"
+WWRANDO_DIR="$out/wwrando" "$py" "$out/rplus/worldgen.py" --seed 1 --out "$work/rplus-test"
 du -sh "$out"
