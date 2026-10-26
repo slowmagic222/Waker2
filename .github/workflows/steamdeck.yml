@@ -31,6 +31,9 @@ on:
       - 'native/src/pc/features/pc_qol*'
       - 'native/src/pc/features/pc_sea_map*'
       - 'native/src/pc/features/pc_climb*'
+      - 'native/src/pc/features/pc_rplus*'
+      - 'native/src/pc/game_hooks/pc_rplus*'
+      - 'scripts/rplus/**'
 
 permissions:
   contents: read
@@ -104,6 +107,9 @@ jobs:
           strip out/waker2/switchwaker || true
           # The in-game seed generator (docs/SEEDGEN.md): Python 3.12 + wwrando, about 190 MB.
           scripts/seedgen/bundle.sh out/waker2/seedgen build/seedgen-work
+          # Randomizer+ (docs/RANDOMIZER_PLUS.md): a test world, seed 7, from wwrando's logic in the bundle.
+          WWRANDO_DIR=out/waker2/seedgen/wwrando python3 scripts/rplus/worldgen.py --seed 7 --out out/waker2/rplus
+          mv out/waker2/rplus/world.rpw out/waker2/rplus/world-seed7.rpw
           tar -C out -czf "out/waker2-steamdeck-$sha.tar.gz" waker2
           echo "NAME=waker2-steamdeck-$sha" >> "$GITHUB_ENV"
           ls -la out out/waker2
