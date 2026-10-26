@@ -61,6 +61,19 @@ PEAK_GATES = [
 ]
 
 
+# Buildings and townsfolk that belong in a village (the rest of the NPCs wander the islands on their own).
+TOWN = {"jail", "chu_jelly_shop", "school", "lenzo_house", "house_of_wealth", "cafe_bar", "auction", "battlesquid",
+        "mesa_house", "orca_house", "pirate_ship", "sam", "town_gate", "mila", "killer_bees", "pompie_vera", "kamo",
+        "minenco", "linda_anton", "maggie", "zunari"}
+
+_SYL = ["ka", "lo", "mi", "ra", "su", "to", "ne", "wa", "be", "ri", "do", "fa", "go", "le", "pu", "zi"]
+
+
+def village_name(rng):
+  return ("".join(rng.choice(_SYL) for _ in range(rng.randint(2, 3)))).capitalize() + " " + \
+    rng.choice(["Town", "Village", "Harbor", "Cove", "Hamlet", "Landing"])
+
+
 def room_of(cx, cy):
   return (cy // CELLS) * SQUARES + (cx // CELLS) + 1
 
@@ -291,12 +304,18 @@ class World:
       if not self.put(by_id[aid], self.free_cells(upland + lowland, lands=fh_land)):
         return False
 
+    if not self.found_villages():
+      return False
+
     order = {"dungeon": 0, "cave": 1, "fountain": 2, "house": 3, "landmark": 4, "npc": 5, "puzzle": 6}
     rest = [a for a in todo if a.id not in self.place]
     rest.sort(key=lambda a: order[a.kind])
     for a in rest:
       if a.id in ("postbox", "withered_trees", "transparent_chest"):
         continue
+      if a.id in TOWN or a.id == "lighthouse":
+        if self.put_in_village(a):
+          continue
       if a.kind == "dungeon":
         cells = self.free_cells(upland, biome=a.biome, min_area=9) or self.free_cells(upland, min_area=9)
         cells = [c for c in cells if not any(by_id[x].kind == "dungeon" for x in self.land_of[c].anchors)]
@@ -322,16 +341,14 @@ class World:
     if not self.put(by_id["transparent_chest"], self.free_cells(lowland + upland, lands=lh)):
       return False
 
-    # Postboxes: one on every land with two or more anchors; mail needs any one of them.
+    # Postboxes: one in every village and one by Link's house; mail needs any one of them.
     self.postboxes = []
-    for l in self.lands:
-      if len(l.anchors) >= 2:
-        cells = [c for c in l.cells if c not in self.used and self.level[c] in lowland] or \
-                [c for c in l.cells if c not in self.used]
-        if cells:
-          c = self.rng.choice(cells)
-          self.used.add(c)
-          self.postboxes.append(c)
+    for cells in [v["cells"] for v in self.villages] + [self.start_land.cells]:
+      cells = [c for c in cells if c not in self.used]
+      if cells:
+        c = self.rng.choice(cells)
+        self.used.add(c)
+        self.postboxes.append(c)
     # Withered trees: four, on four different lands. The quest needs all of them.
     self.trees = []
     lands = [l for l in self.lands if l.area >= 3]
@@ -351,6 +368,45 @@ class World:
       join = " | " if aid == "postbox" else " & "
       self.place[aid] = {"cells": cells, "lands": [self.land_of[c].id for c in cells],
                          "gate": join.join("(%s)" % g for g, _ in gates), "why": ""}
+    return True
+
+  def found_villages(self):
+    """Villages: a different number in different places every seed, each a few buildings and townsfolk."""
+    rng = self.rng
+    cands = [c for l in self.lands if l.area >= 9 for c in l.cells
+             if c not in self.used and self.level[c] in ("low", "shore")]
+    rng.shuffle(cands)
+    want = rng.randint(3, 6)
+    self.villages = []
+    for c in cands:
+      if len(self.villages) == want:
+        break
+      if any(math.dist(c, v["center"]) < 10 for v in self.villages):
+        continue
+      land = self.land_of[c]
+      cells = [d for d in land.cells if d not in self.used and self.level[d] in ("low", "shore")
+               and math.dist(c, d) <= 3.5]
+      if len(cells) < 5:
+        continue
+      self.villages.append({"id": len(self.villages), "name": village_name(rng), "center": c, "land": land.id,
+                            "cells": cells, "houses": rng.randint(2, 4), "members": []})
+    return len(self.villages) >= 2
+
+  def put_in_village(self, a):
+    is_house = a.kind == "house"
+    vs = [v for v in self.villages if any(c not in self.used for c in v["cells"])
+          and (not is_house or sum(1 for m in v["members"] if m[1] == "house") < v["houses"])]
+    if a.id == "mila":  # the thief walks between houses
+      vs = [v for v in vs if sum(1 for m in v["members"] if m[1] == "house") >= 2] or vs
+    if not vs:
+      return False
+    v = min(vs, key=lambda v: len(v["members"]) + self.rng.random())
+    cells = [c for c in v["cells"] if c not in self.used]
+    if a.id in ("lighthouse", "pirate_ship"):
+      cells = [c for c in cells if self.level[c] == "shore"] or cells
+    self.put(a, [self.rng.choice(cells)])
+    v["members"].append((a.id, a.kind))
+    self.place[a.id]["village"] = v["id"]
     return True
 
   def water_cells(self, room=None):
@@ -516,7 +572,10 @@ def describe(world, logic, assignment, placement):
   out = {"seed": world.request_seed, "world_seed": world.seed, "grid": {"squares": SQUARES, "cells_per_square": CELLS,
                                       "square_units": SQUARE_UNITS},
          "prefab_rooms": {str(r): by_id[a].name for r, a in PREFAB_ROOMS.items()},
-         "lands": [], "anchors": [], "sea": [], "items": placement}
+         "lands": [], "anchors": [], "sea": [], "items": placement,
+         "villages": [{"id": v["id"], "name": v["name"], "center": list(v["center"]),
+                       "square": chart_name(room_of(*v["center"])), "members": [m[0] for m in v["members"]]}
+                      for v in world.villages]}
   for l in world.lands:
     out["lands"].append({"id": l.id, "size": l.size_name(), "cells": len(l.cells), "biome": l.biome,
                          "landing": l.landing[0], "path_up": l.upper[0], "peak": l.peak[0],
@@ -528,7 +587,8 @@ def describe(world, logic, assignment, placement):
     out["anchors"].append({"id": aid, "kind": a.kind, "name": a.name, "stage": a.stage, "actors": list(a.actors),
                            "at": [{"cell": list(c), "square": chart_name(room_of(*c)), "room": room_of(*c),
                                    "level": world.level[c], "pos": cell_units(*c)} for c in cells],
-                           "gate": p["gate"], "why": p["why"], "checks": a.locations})
+                           "gate": p["gate"], "why": p["why"], "checks": a.locations,
+                           "village": p.get("village")})
   for sid, c in world.sea_place.items():
     out["sea"].append({"id": sid, "cell": list(c), "square": chart_name(room_of(*c)), "pos": cell_units(*c)})
   return out
@@ -537,6 +597,11 @@ def describe(world, logic, assignment, placement):
 def write_spoiler(path, world, logic, assignment, placement):
   by_id = {a.id: a for a in A.ANCHORS}
   lines = ["Randomizer+ seed %d (world %d)" % (world.request_seed, world.seed), ""]
+  lines.append("Villages (%d):" % len(world.villages))
+  for v in world.villages:
+    lines.append("  %s (%s): %s" % (v["name"], chart_name(room_of(*v["center"])),
+                                    ", ".join(by_id[m].name for m, _ in v["members"]) or "empty"))
+  lines.append("")
   lines.append("Lands (%d):" % len(world.lands))
   for l in sorted(world.lands, key=lambda l: -l.area):
     if not l.anchors:
@@ -584,6 +649,11 @@ def draw_map(path, world, scale=10):
     p = i * CELLS * scale
     d.line([p, 0, p, W], fill=(70, 130, 190))
     d.line([0, p, W, p], fill=(70, 130, 190))
+  for v in world.villages:
+    x, y = v["center"][0] * scale + scale // 2, v["center"][1] * scale + scale // 2
+    r = int(3.8 * scale)
+    d.ellipse([x - r, y - r, x + r, y + r], outline=(255, 240, 160), width=2)
+    d.text((x - r, y - r - 12), v["name"], fill=(255, 240, 160))
   for sid, (cx, cy) in world.sea_place.items():
     x, y = cx * scale + scale // 2, cy * scale + scale // 2
     col = (150, 200, 255) if sid.startswith("salvage:") else (255, 255, 255)

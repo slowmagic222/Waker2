@@ -37,16 +37,21 @@ each door's interior stage, the actors that give the items, the original island 
 2. **Biomes and terrain obstacles.** Each sizeable biome gets at least one land of reasonable size. Some lands get
    cliffs all round (Hookshot, Grappling Hook or Deku Leaf to land), a blocked path up (boulder, heavy stone,
    cracked wall, gap, cliff step, gorge) or a summit you need an item to reach.
-3. **Anchors.** Link's house (the start) goes on open land. Forest Haven, the Forbidden Woods door and the
+3. **Villages.** Between 3 and 6 of them, each with a generated name, in a different place every seed. Each
+   takes 2 to 4 of the town buildings (jail, shops, school, Lenzo, House of Wealth, cafe, auction, Battlesquid,
+   Mesa, Orca, the pirate ship) and the townsfolk whose quests need a town around them (Sam, Kane's gate, Mila,
+   Ivan, Pompie and Vera, Kamo, Minenco, Linda and Anton, Maggie, Zunari), and the lighthouse goes on a village
+   shore.
+4. **Anchors.** Link's house (the start) goes on open land. Forest Haven, the Forbidden Woods door and the
    small-island chest share one forest land, because you reach the Woods by gliding from Forest Haven. The
    transparent chest goes on the lighthouse's land. Everything else is spread out, with fewer anchors per land
    where there are already many. Each land with two or more anchors gets a postbox. Four withered trees go on four
    lands.
-4. **Logic.** Each anchor's requirement is what it takes to reach its site (landing, path up, peak) AND the
+5. **Logic.** Each anchor's requirement is what it takes to reach its site (landing, path up, peak) AND the
    obstacle kept at its door from wwrando's macros (the boulder in front of a cave, the ice over the Fire
    Mountain cave ...). The two are combined in wwrando's own `Can Access ... Entrance on ...` macros, or in each
    location's need if the anchor has no door macro.
-5. **Items.** An assumed fill places the dungeon keys in their dungeons, then the progression items, using
+6. **Items.** An assumed fill places the dungeon keys in their dungeons, then the progression items, using
    wwrando's default progression options. The seed passes when every placed item can be collected from the start
    and Ganondorf can be beaten. If a world can't be filled, the generator makes a new one.
 
@@ -74,6 +79,6 @@ will read this file.
   world needs those items to follow their anchors: the loader gives each actor its item from `world.json`.
 - **NPC code that knows its island.** About 150 places in the game check a room number or the stage `sea`
   (`dIsleRoom_...`). Each moved NPC has to be checked.
-- **Windfall's town sidequests** (Sam's decorations, Mila's night walk, the Kane gate statues) need a village
-  around them. Right now they are only placed as points.
+- **Link's new house** as an Animal Crossing-style home: unlockable furniture and pictures tied to in-game events,
+  a music player. Its own phase after the first playable world.
 - Options other than wwrando's defaults: trick levels, more progression types, swordless.
