@@ -23,6 +23,7 @@
 #include "d/actor/d_a_sea.h"
 #if TARGET_PC
 #include "pc/pc_harness.h"
+#include "pc/game_hooks.h"
 #endif
 
 /* 80040900-80040938       .text set__18dStage_nextStage_cFPCcScsScSc */
@@ -2262,6 +2263,11 @@ void dStage_dt_c_roomReLoader(void* i_data, dStage_dt_c* i_stage, int param_2) {
         {"TGDR", dStage_roomDrtgInfoInit},
     };
 
+#if TARGET_PC
+    // Randomizer+: a generated sea room has none of its island's actors.
+    if (pc_rplus_room_actors_off(param_2))
+        return;
+#endif
     dStage_dt_c_decode(i_data, i_stage, l_funcTable, ARRAY_SIZE(l_funcTable));
     layerLoader(i_data, i_stage, param_2);
 }

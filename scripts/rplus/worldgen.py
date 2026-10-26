@@ -594,6 +594,41 @@ def describe(world, logic, assignment, placement):
   return out
 
 
+BIOME_LETTER = {"grass": "g", "forest": "f", "rock": "r", "volcanic": "v", "snow": "s", "sand": "d"}
+
+
+def write_rpw(path, world):
+  """The world for the game (native/src/pc/features/pc_rplus.cpp): plain text, one record a line.
+
+  rplus 1
+  seed <seed> <world seed>
+  grid <squares> <cells per square>
+  prefab <room>                         a sea room kept as it is
+  h <row> <v> <v> ...                   cell heights of one row, 0 = water, else 1..1000
+  b <row> <letters>                     cell biomes of one row: . water, g grass, f forest, r rock,
+                                        v volcanic, s snow, d sand
+  start <cx> <cy>                       the start cell (Link's house)
+  anchor <id> <kind> <stage|-> <cx> <cy> <level>
+  """
+  out = ["rplus 1", "seed %d %d" % (world.request_seed, world.seed), "grid %d %d" % (SQUARES, CELLS)]
+  for room in sorted(PREFAB_ROOMS):
+    out.append("prefab %d" % room)
+  for cy in range(N):
+    out.append("h %d %s" % (cy, " ".join(str(max(1, int(round(world.height[(cx, cy)] * 1000))))
+                                       if (cx, cy) in world.height else "0" for cx in range(N))))
+  for cy in range(N):
+    out.append("b %d %s" % (cy, "".join(BIOME_LETTER[world.land_of[(cx, cy)].biome] if (cx, cy) in world.height
+                                        else "." for cx in range(N))))
+  sx, sy = world.place["link_house"]["cell"]
+  out.append("start %d %d" % (sx, sy))
+  by_id = {a.id: a for a in A.ANCHORS}
+  for aid, p in world.place.items():
+    a = by_id[aid]
+    for c in p.get("cells") or [p["cell"]]:
+      out.append("anchor %s %s %s %d %d %s" % (aid, a.kind, a.stage or "-", c[0], c[1], world.level[c]))
+  open(path, "w").write("\n".join(out) + "\n")
+
+
 def write_spoiler(path, world, logic, assignment, placement):
   by_id = {a.id: a for a in A.ANCHORS}
   lines = ["Randomizer+ seed %d (world %d)" % (world.request_seed, world.seed), ""]
@@ -723,6 +758,7 @@ def main():
             indent=1)
   write_spoiler(os.path.join(args.out, "spoiler.txt"), world, logic, assignment, placement)
   draw_map(os.path.join(args.out, "map.png"), world)
+  write_rpw(os.path.join(args.out, "world.rpw"), world)
   print("seed %d: %d lands, %d anchors placed, beatable; wrote %s" %
         (args.seed, len(world.lands), len(world.place), args.out))
   return 0

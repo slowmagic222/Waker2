@@ -13,6 +13,9 @@
 #include "JSystem/JKernel/JKRExpHeap.h"
 #include "JSystem/J3DGraphLoader/J3DModelLoader.h"
 #include <stdio.h>
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 
 #if VERSION == VERSION_DEMO
 inline daLodbg_c::daLodbg_c() {
@@ -550,11 +553,19 @@ BOOL daLodbg_c::execute() {
 
 /* 00001274-00001294       .text daLodbg_Draw__FP9daLodbg_c */
 static BOOL daLodbg_Draw(daLodbg_c* i_this) {
+#if TARGET_PC
+    if (pc_rplus_lod_off()) // Randomizer+: the original sea's far islands are not in the world
+        return TRUE;
+#endif
     return i_this->draw();
 }
 
 /* 00001294-000012BC       .text daLodbg_Execute__FP9daLodbg_c */
 static BOOL daLodbg_Execute(daLodbg_c* i_this) {
+#if TARGET_PC
+    if (pc_rplus_lod_off())
+        return TRUE;
+#endif
     return i_this->execute();
 }
 

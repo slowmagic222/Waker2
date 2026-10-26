@@ -284,4 +284,24 @@ bool pc_mail_sort_throw();
 /* J3DDrawBuffer::entryMatSort: `joined` is about to be drawn with `into`'s list. */
 void pc_mail_sort_merged(J3DMatPacket* into, J3DMatPacket* joined);
 
+/* ---- Randomizer+ terrain (pc/pc_rplus.h, docs/RANDOMIZER_PLUS.md), native/src/pc/game_hooks/
+   pc_rplus_terrain.cpp ---------------------------------------------------------------------------- */
+
+class dBgW;
+struct PcRplusTerrain;
+
+/* daBg_c::createHeap: in a sea room the Randomizer+ world generates, the room's land made from the world
+   (allocated in the current heap) in place of its island; *bgw gets its collision (NULL on open water).
+   NULL elsewhere: the room loads its own model and room.dzb. */
+PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** bgw);
+/* daBg_c::draw: draws it (the BG list is set). */
+void pc_rplus_terrain_draw(PcRplusTerrain* terrain);
+/* dStage_dt_c_roomReLoader: 1 when the room's own actors stay out (a generated sea room). */
+int pc_rplus_room_actors_off(int roomNo);
+/* daLodbg create: 1 when the far islands of the original sea stay out. */
+int pc_rplus_lod_off(void);
+/* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
+   start cell's room is loaded (once a game). */
+void pc_rplus_place_player(int roomNo);
+
 #endif /* PC_GAME_HOOKS_H */

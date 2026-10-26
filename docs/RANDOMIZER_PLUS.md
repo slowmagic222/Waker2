@@ -70,6 +70,33 @@ python3 scripts/rplus/worldgen.py --test 200                   # many seeds, rep
 room, sea position in game units and requirement, the sea objects and the item placement. The in-game loader
 will read this file.
 
+## In the game (first step: the land)
+
+With `COS_RPLUS_WORLD=<path to world.rpw>` (in `[dev]` of `native/user/settings.ini`, or the environment) the game
+reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the Great Sea:
+
+- every sea room except the two kept ones (Forsaken Fortress, Tower of the Gods) has the world's land instead of
+  its island: `daBg_c::createHeap` asks `pc_rplus_terrain_create` (`native/src/pc/game_hooks/pc_rplus_terrain.cpp`),
+  which builds the surface from the cell heights (bilinear between cell centres, 4 samples a cell, a little noise),
+  its collision as a DZB made in memory (passed through `cBgS::ConvDzb` like a room's `room.dzb`), and a draw
+  packet with vertex colours by biome (grass, forest, rock, volcanic, snow, sand beaches), light baked in two tones;
+- the generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`), so no NPC, chest or door of the
+  old island is left floating;
+- the far-away island models (`d_a_lod_bg.cpp`) are off;
+- Link is put on the start cell (where Link's house will be) once the sea is loaded.
+
+To try it on a new file, skipping the intro:
+
+```ini
+[dev]
+COS_RPLUS_WORLD=/path/to/world.rpw
+COS_BOOT_STAGE=sea:44:8
+COS_BOOT_PRESET=sailing
+```
+
+Doors, NPCs, villages and items are not placed in the game yet: this step is only the land, to see it and walk and
+sail on it.
+
 ## Not done yet
 
 - **The game side.** The game doesn't use the world yet. Next comes a loader that builds the terrain of each sea
