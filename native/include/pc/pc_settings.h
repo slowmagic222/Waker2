@@ -48,7 +48,8 @@ typedef enum PcSettingTab {
     PC_SETTING_TAB_DEBUG = 3,       /* "Depuración" */
     PC_SETTING_TAB_CONTROLS = 4,    /* "Controles" (pc_button_remap.h, issue #15) */
     PC_SETTING_TAB_RANDO = 5,       /* "Randomizer" (pc_seedgen.h): its rows are pc_seedgen's own */
-    PC_SETTING_TABS = 6
+    PC_SETTING_TAB_RPLUS = 6,       /* "Randomizer+" (pc_rplus.h): its rows are pc_rplus_menu's own */
+    PC_SETTING_TABS = 7
 } PcSettingTab;
 
 typedef enum PcOperationMode {

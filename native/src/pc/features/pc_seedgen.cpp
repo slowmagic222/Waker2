@@ -55,16 +55,14 @@ const char* T(const char* es, const char* en) {
 
 // ---- paths ----------------------------------------------------------------------------------------
 
+} // namespace
+
 // <user dir>: the folder of the options menu's settings.ini.
 std::string userDir() {
     const std::string p = pc_settings_path();
     const size_t slash = p.rfind('/');
     return slash == std::string::npos ? std::string(".") : p.substr(0, slash);
 }
-std::string randoDir() { return userDir() + "/rando"; }
-std::string iniPath() { return randoDir() + "/seedgen.ini"; }
-std::string seedsDir() { return randoDir() + "/seeds"; }
-
 // COS_SEEDGEN, else seedgen/ next to the executable.
 std::string genDir() {
     if (const char* d = getenv("COS_SEEDGEN"); d != nullptr && d[0] != '\0') {
@@ -88,6 +86,12 @@ std::string pythonPath() {
     }
     return genDir() + "/python/bin/python3";
 }
+
+namespace {
+
+std::string randoDir() { return userDir() + "/rando"; }
+std::string iniPath() { return randoDir() + "/seedgen.ini"; }
+std::string seedsDir() { return randoDir() + "/seeds"; }
 
 bool isFile(const std::string& path) {
     struct stat st;
@@ -1189,6 +1193,29 @@ bool takeSeedReady() {
 void restartIntoSeed() {
     std::lock_guard<std::mutex> lock(sMu);
     restartGame();
+}
+
+bool canGenerate() {
+    return kCanGenerate;
+}
+
+int playRow() {
+    std::lock_guard<std::mutex> lock(sMu);
+    loadLocked();
+    buildRowsLocked();
+    for (int i = 0; i < (int)sRows.size(); i++) {
+        if (sRows[i].type == RowType::Play) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool playPending() {
+    std::lock_guard<std::mutex> lock(sMu);
+    loadLocked();
+    const std::string play = valueOf("play");
+    return play != "" && (play == "none" ? "" : play) != runningPlay();
 }
 
 } // namespace pc::seedgen

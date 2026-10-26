@@ -94,6 +94,23 @@ COS_BOOT_STAGE=sea:44:8
 COS_BOOT_PRESET=sailing
 ```
 
+### The Randomizer+ tab
+
+The options menu has a **Randomizer+** tab (`native/src/pc/features/pc_rplus_menu.cpp`):
+
+- **Make a world**: runs `worldgen.py` (bundled in `seedgen/rplus/` by `scripts/seedgen/bundle.sh`, run by the
+  same bundled Python as the Randomizer tab) with a random number, into `user/rando/rplus/<number>/`, and makes it
+  the world to play. At the title screen the game restarts into it at once. Not on the Switch (no Python): there,
+  copy worlds to `user/rando/rplus/<name>/world.rpw`.
+- **World to play**: the launcher's (`COS_RPLUS_WORLD`), off, or any world in `user/rando/rplus/`.
+- **Seed to play**: the Randomizer tab's row, here too.
+- **Save files**: shared (one memory card) or own for each seed: a card per randomizer seed and world in
+  `user/saves/<seed>[+<world>]/`, with its 3 files.
+- **Restart with these**: restarts the game (Linux) with the choices above.
+
+The choices are kept in `user/rando/rplus.ini`; `pc_rplus_boot` applies them at start (`COS_RPLUS_WORLD`, and
+`COS_SAVE_DIR` for the card's folder, given to Aurora in `pc_aurora_init`).
+
 Doors, NPCs, villages and items are not placed in the game yet: this step is only the land, to see it and walk and
 sail on it.
 

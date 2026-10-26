@@ -37,8 +37,36 @@ void pc_rplus_start_cell(int* cx, int* cy);
 /* The world's seed, for the log and the file select. */
 unsigned int pc_rplus_seed(void);
 
+/* From pc_harness_init, right after pc_seedgen_boot: applies the Randomizer+ tab's choices kept in
+ * <user dir>/rando/rplus.ini to the environment: "World to play" sets or clears COS_RPLUS_WORLD, and
+ * "Save files: own for each seed" sets COS_SAVE_DIR (<user dir>/saves/<seed>[+<world>]/), the memory
+ * card's folder pc_aurora_init gives Aurora. */
+void pc_rplus_boot(void);
+
 #ifdef __cplusplus
 }
+
+#include <string>
+
+/* The options menu's Randomizer+ tab (pc_rplus_menu.cpp), by row index, as pc_seedgen.h's tab. Worlds
+ * are made by scripts/rplus/worldgen.py (bundled in seedgen/rplus/, run by seedgen's Python) into
+ * <user dir>/rando/rplus/<number>/world.rpw. */
+namespace pc::rplus_menu {
+
+enum class RowStyle { Header, Action, Value };
+
+int rowCount();
+RowStyle rowStyle(int row);
+std::string rowLabel(int row);
+std::string rowValue(int row);
+std::string rowHelp(int row);
+/* dir 0: A; -1 / 1: left / right. */
+void activate(int row, int dir);
+std::string takeToast();
+/* True once after a world was made (it is now the world to play). */
+bool takeWorldReady();
+
+} // namespace pc::rplus_menu
 #endif
 
 #endif /* PC_RPLUS_H */

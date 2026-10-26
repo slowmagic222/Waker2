@@ -38,6 +38,7 @@
 #include "pc/pc_button_remap.h"
 #include "pc/pc_controls.h"
 #include "pc/pc_qol.h"
+#include "pc/pc_rplus.h"
 #include "pc/pc_seedgen.h"
 #include "features/pc_button_remap_map.h"
 
@@ -735,7 +736,8 @@ enum class RowKind {
     QolOriginal,
     Remap,
     RemapRestore,
-    Rando // a row of the Randomizer tab (pc_seedgen.h), by its index there
+    Rando, // a row of the Randomizer tab (pc_seedgen.h), by its index there
+    Rplus  // a row of the Randomizer+ tab (pc_rplus.h), by its index there
 };
 
 struct Row {
@@ -746,11 +748,12 @@ struct Row {
 
 // Indexed by PcSettingTab; kTabOrder is the order on screen (and of L/R).
 const char* const kTabNames[PC_SETTING_TABS] = {"Gráficos", "Rendimiento", "Calidad de vida", "Depuración",
-                                                "Controles", "Randomizer"};
+                                                "Controles", "Randomizer", "Randomizer+"};
 const char* const kTabNamesEn[PC_SETTING_TABS] = {"Graphics", "Performance", "Quality of life", "Debug",
-                                                  "Controls", "Randomizer"};
+                                                  "Controls", "Randomizer", "Randomizer+"};
 const int kTabOrder[PC_SETTING_TABS] = {PC_SETTING_TAB_GRAPHICS, PC_SETTING_TAB_CONTROLS, PC_SETTING_TAB_PERFORMANCE,
-                                        PC_SETTING_TAB_QOL, PC_SETTING_TAB_DEBUG, PC_SETTING_TAB_RANDO};
+                                        PC_SETTING_TAB_QOL, PC_SETTING_TAB_DEBUG, PC_SETTING_TAB_RANDO,
+                                        PC_SETTING_TAB_RPLUS};
 
 // The position on screen of a tab.
 int tabPosition(int tab) {
@@ -811,6 +814,14 @@ std::vector<Row> rowsOf(int tab) {
         const int count = seedgen::rowCount();
         for (int i = 0; i < count; i++) {
             rows.push_back({RowKind::Rando, nullptr, i});
+        }
+        return rows;
+    }
+    if (tab == PC_SETTING_TAB_RPLUS) {
+        // Randomizer+ worlds, the seed and the save files to play (pc_rplus.h).
+        const int count = rplus_menu::rowCount();
+        for (int i = 0; i < count; i++) {
+            rows.push_back({RowKind::Rplus, nullptr, i});
         }
         return rows;
     }
@@ -1139,12 +1150,16 @@ void activate(const Row& r, int dir) {
     case RowKind::Rando:
         seedgen::activate(r.action, dir);
         break;
+    case RowKind::Rplus:
+        rplus_menu::activate(r.action, dir);
+        break;
     }
 }
 
-// The Randomizer tab's section titles are not stops for up/down.
+// The Randomizer and Randomizer+ tabs' section titles are not stops for up/down.
 bool isHeader(const Row& r) {
-    return r.kind == RowKind::Rando && seedgen::rowStyle(r.action) == seedgen::RowStyle::Header;
+    return (r.kind == RowKind::Rando && seedgen::rowStyle(r.action) == seedgen::RowStyle::Header) ||
+           (r.kind == RowKind::Rplus && rplus_menu::rowStyle(r.action) == rplus_menu::RowStyle::Header);
 }
 
 // Pressed this frame, or held long enough to repeat (directions only).
@@ -1234,7 +1249,8 @@ void handleInput(uint32_t keys) {
     if (p & (kLeft | kRight)) {
         const Row& r = rows[row];
         if (r.kind == RowKind::Setting || r.kind == RowKind::EditMode ||
-            (r.kind == RowKind::Rando && seedgen::rowStyle(r.action) == seedgen::RowStyle::Value)) {
+            (r.kind == RowKind::Rando && seedgen::rowStyle(r.action) == seedgen::RowStyle::Value) ||
+            (r.kind == RowKind::Rplus && rplus_menu::rowStyle(r.action) == rplus_menu::RowStyle::Value)) {
             activate(r, (p & kLeft) ? -1 : 1);
         }
     }
@@ -1258,6 +1274,7 @@ std::string rowLabel(const Row& r) {
     case RowKind::RemapRestore: return T("Restaurar controles por defecto", "Restore default controls");
     case RowKind::Remap: return settingLabel(r.desc);
     case RowKind::Rando: return seedgen::rowLabel(r.action);
+    case RowKind::Rplus: return rplus_menu::rowLabel(r.action);
     case RowKind::Setting: break;
     }
     std::string s = settingLabel(r.desc);
@@ -1291,6 +1308,7 @@ std::string rowValue(const Row& r) {
         return choiceLabel(r.desc, pc::remap::inputValue((pc::remap::Input)input));
     }
     case RowKind::Rando: return seedgen::rowValue(r.action);
+    case RowKind::Rplus: return rplus_menu::rowValue(r.action);
     case RowKind::Setting: break;
     }
     return choiceLabel(r.desc, pc_settings_get_mode(r.desc->key, rowMode(r.desc)));
@@ -1356,6 +1374,7 @@ std::string rowHelp(const Row& r) {
                  "Puts every action back on its usual button. Outside the game: deleting the COS_PAD_ lines of "
                  "settings.ini does the same.");
     case RowKind::Rando: return seedgen::rowHelp(r.action);
+    case RowKind::Rplus: return rplus_menu::rowHelp(r.action);
     case RowKind::Remap:
         if (r.action == m.captureAction) {
             return T("Pulsa el botón que hará esta acción; si ya hacía otra, se intercambian. Menos cancela.",
@@ -1918,6 +1937,16 @@ void menuFrame() {
     // at once from the title screen (in the game it waits for "Seed to play": the game is not saved).
     if (const std::string news = seedgen::takeToast(); !news.empty()) {
         toast(news);
+    }
+    if (const std::string news = rplus_menu::takeToast(); !news.empty()) {
+        toast(news);
+    }
+    if (rplus_menu::takeWorldReady()) {
+        if (inPlay()) {
+            toast(T("Mundo listo: Randomizer+ > Reiniciar con esto", "World ready: Randomizer+ > Restart with these"));
+        } else {
+            seedgen::restartIntoSeed();
+        }
     }
     if (seedgen::takeSeedReady()) {
         if (inPlay()) {

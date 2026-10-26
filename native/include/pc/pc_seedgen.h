@@ -59,6 +59,15 @@ bool takeSeedReady();
 /* Restarts the game into the seed to play (Linux); elsewhere, or if that fails, a toast says to. */
 void restartIntoSeed();
 
+/* For the Randomizer+ tab (pc_rplus_menu.cpp), which makes its worlds with the same bundled Python and
+ * shows the "Seed to play" row too. */
+std::string userDir();   /* the folder of settings.ini */
+std::string genDir();    /* seedgen/ next to the executable, or COS_SEEDGEN */
+std::string pythonPath();
+bool canGenerate();      /* a process can be started here (not on the Switch) */
+int playRow();           /* the "Seed to play" row's index */
+bool playPending();      /* "Seed to play" names another disc than this run's: a restart applies it */
+
 } // namespace pc::seedgen
 #endif
 
