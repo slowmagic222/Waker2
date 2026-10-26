@@ -23,6 +23,9 @@
 #include "JSystem/JKernel/JKRSolidHeap.h"
 #include "JSystem/JUtility/JUTAssert.h"
 #include "stdio.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 
 /* 800D8434-800D8478       .text setArcName__6daBg_cFv */
 const char* daBg_c::setArcName() {
@@ -158,6 +161,24 @@ BOOL daBg_c::createHeap() {
     const char * arcName = setArcName();
     u32 roomNo = fopAcM_GetParam(this);
 
+#if TARGET_PC
+    // Randomizer+: a generated sea room has the world's land in place of its island (no model, our collision).
+    mpRplusTerrain = pc_rplus_terrain_create(roomNo, &bgw);
+    if (mpRplusTerrain != NULL) {
+        for (int i = 0; i < 4; i++) {
+            bg[i].model = NULL;
+            bg[i].btk = NULL;
+            bg[i].brk = NULL;
+            bg[i].mpTevStr = NULL;
+        }
+        if (bgw != NULL) {
+            dStage_roomControl_c::setBgW(roomNo, bgw);
+            bgw->SetPriority((cBgW::PRIORITY)0);
+        }
+        return TRUE;
+    }
+#endif
+
     BgModel * bgm = bg;
     for (int i = 0; i < 4; bgm++, i++) {
         J3DModelData * modelData = (J3DModelData *) dComIfG_getStageRes(arcName, l_modelName[i]);
@@ -261,6 +282,9 @@ BOOL daBg_c::draw() {
 
     dComIfGd_setListBG();
     mDoLib_clipper::changeFar(100000.0f);
+#if TARGET_PC
+    pc_rplus_terrain_draw(mpRplusTerrain);
+#endif
 
     for (s32 i = 0; i < 4; i++, bgm++) {
         model = bgm->model;
@@ -290,6 +314,10 @@ static BOOL daBg_Draw(daBg_c* i_this) {
 }
 
 BOOL daBg_c::execute() {
+#if TARGET_PC
+    if (mpRplusTerrain != NULL)
+        pc_rplus_place_player(fopAcM_GetParam(this));
+#endif
     if (mUnloadTimer != 0) {
 #if VERSION <= VERSION_JPN
         mUnloadTimer = 0;
