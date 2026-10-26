@@ -82,6 +82,8 @@ and depende3000, and the SwitchWaker contributors.
 | [hactool](https://github.com/SciresM/hactool) | in the devkitPro image (check) | verifies the forwarder NSP (build tool only) | ISC |
 | [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | `b943862` | HD texture pack converter (`native/tools/hd_pack`) | MIT or Unlicense (bc7e.ispc: Apache-2.0, not built) |
 | [decomp-toolkit](https://github.com/encounter/decomp-toolkit) (`dtk`) | the decomp's pin | asset header generation from the player's disc (`native/tools/gen_assets.sh`) | MIT OR Apache-2.0 (check) |
+| [wwrando](https://github.com/LagoLunatic/wwrando) with [gclib](https://github.com/LagoLunatic/gclib) | `9775811` | the in-game seed generator's `seedgen/` (`scripts/seedgen/bundle.sh`, docs/SEEDGEN.md), shipped unchanged in the Linux package | MIT (gclib: MIT, check) |
+| [CPython](https://www.python.org) 3.12, as built by [python-build-standalone](https://github.com/astral-sh/python-build-standalone), and wwrando's requirements (ruamel.yaml, Pillow, NumPy, imagequant, appdirs, tqdm, certifi; gclib's PyFastBTI, PyFastTextureUtils, PyFastYaz0Yay0) | `uv`'s latest 3.12 when the package is built; the requirements files' pins | runs wwrando in `seedgen/` | PSF-2.0 (CPython); the packages under their own licenses (check) |
 
 ## Binaries
 

@@ -7,8 +7,8 @@
 // and gets no controller input (Aurora's PADBlockInput; the buttons still held when it closes are
 // ignored until released). Other scenes (title, name entry) keep running behind it, without input.
 //
-// One ImGui window with five tabs, Gráficos, Controles, Rendimiento, Calidad de vida and Depuración
-// (in that order on screen, kTabOrder), navigated by the controller (D-pad or stick: row and value;
+// One ImGui window with six tabs, Gráficos, Controles, Rendimiento, Calidad de vida, Depuración and
+// Randomizer (in that order on screen, kTabOrder; the last one's rows are pc_seedgen.h's), navigated by the controller (D-pad or stick: row and value;
 // A: change / confirm; B: back / close; L/R: tab), the keyboard (arrows, Enter, Esc, Q/E) or the mouse
 // (click a tab, a row, a value). The menu reads the controllers itself (SDL gamepads, labels of the
 // face buttons respected, so A is A on a Switch-style layout too), plus the COS_INPUT script in
@@ -38,6 +38,7 @@
 #include "pc/pc_button_remap.h"
 #include "pc/pc_controls.h"
 #include "pc/pc_qol.h"
+#include "pc/pc_seedgen.h"
 #include "features/pc_button_remap_map.h"
 
 #include "d/d_com_inf_game.h"
@@ -733,22 +734,23 @@ enum class RowKind {
     QolBetterWW,
     QolOriginal,
     Remap,
-    RemapRestore
+    RemapRestore,
+    Rando // a row of the Randomizer tab (pc_seedgen.h), by its index there
 };
 
 struct Row {
     RowKind kind;
     const PcSettingDesc* desc = nullptr;
-    int action = -1; // RowKind::Remap: the pc::remap::Action of desc
+    int action = -1; // RowKind::Remap: the pc::remap::Action of desc; RowKind::Rando: the row's index
 };
 
 // Indexed by PcSettingTab; kTabOrder is the order on screen (and of L/R).
 const char* const kTabNames[PC_SETTING_TABS] = {"Gráficos", "Rendimiento", "Calidad de vida", "Depuración",
-                                                "Controles"};
+                                                "Controles", "Randomizer"};
 const char* const kTabNamesEn[PC_SETTING_TABS] = {"Graphics", "Performance", "Quality of life", "Debug",
-                                                  "Controls"};
+                                                  "Controls", "Randomizer"};
 const int kTabOrder[PC_SETTING_TABS] = {PC_SETTING_TAB_GRAPHICS, PC_SETTING_TAB_CONTROLS, PC_SETTING_TAB_PERFORMANCE,
-                                        PC_SETTING_TAB_QOL, PC_SETTING_TAB_DEBUG};
+                                        PC_SETTING_TAB_QOL, PC_SETTING_TAB_DEBUG, PC_SETTING_TAB_RANDO};
 
 // The position on screen of a tab.
 int tabPosition(int tab) {
@@ -803,6 +805,15 @@ bool inPlay() {
 
 std::vector<Row> rowsOf(int tab) {
     std::vector<Row> rows;
+    if (tab == PC_SETTING_TAB_RANDO) {
+        // The in-game seed generator's rows (pc_seedgen.h), built from wwrando's own options.
+        seedgen::tabShown();
+        const int count = seedgen::rowCount();
+        for (int i = 0; i < count; i++) {
+            rows.push_back({RowKind::Rando, nullptr, i});
+        }
+        return rows;
+    }
     if (tab == PC_SETTING_TAB_GRAPHICS) {
         rows.push_back({RowKind::EditMode});
     }
@@ -1125,7 +1136,15 @@ void activate(const Row& r, int dir) {
             toast(T("Controles por defecto restaurados", "Default controls restored"));
         }
         break;
+    case RowKind::Rando:
+        seedgen::activate(r.action, dir);
+        break;
     }
+}
+
+// The Randomizer tab's section titles are not stops for up/down.
+bool isHeader(const Row& r) {
+    return r.kind == RowKind::Rando && seedgen::rowStyle(r.action) == seedgen::RowStyle::Header;
 }
 
 // Pressed this frame, or held long enough to repeat (directions only).
@@ -1199,12 +1218,14 @@ void handleInput(uint32_t keys) {
     }
     int& row = m.row[m.tab];
     row = std::min(row, (int)rows.size() - 1);
-    if (p & kUp) {
-        row = (row + (int)rows.size() - 1) % (int)rows.size();
-        m.scrollToRow = true;
-    }
-    if (p & kDown) {
-        row = (row + 1) % (int)rows.size();
+    if (p & (kUp | kDown)) {
+        const int step = (p & kUp) ? (int)rows.size() - 1 : 1;
+        for (int n = 0; n < (int)rows.size(); n++) {
+            row = (row + step) % (int)rows.size();
+            if (!isHeader(rows[row])) {
+                break;
+            }
+        }
         m.scrollToRow = true;
     }
     if (p & kConfirm) {
@@ -1212,7 +1233,8 @@ void handleInput(uint32_t keys) {
     }
     if (p & (kLeft | kRight)) {
         const Row& r = rows[row];
-        if (r.kind == RowKind::Setting || r.kind == RowKind::EditMode) {
+        if (r.kind == RowKind::Setting || r.kind == RowKind::EditMode ||
+            (r.kind == RowKind::Rando && seedgen::rowStyle(r.action) == seedgen::RowStyle::Value)) {
             activate(r, (p & kLeft) ? -1 : 1);
         }
     }
@@ -1235,6 +1257,7 @@ std::string rowLabel(const Row& r) {
     case RowKind::QolOriginal: return T("Valores originales", "Original values");
     case RowKind::RemapRestore: return T("Restaurar controles por defecto", "Restore default controls");
     case RowKind::Remap: return settingLabel(r.desc);
+    case RowKind::Rando: return seedgen::rowLabel(r.action);
     case RowKind::Setting: break;
     }
     std::string s = settingLabel(r.desc);
@@ -1267,6 +1290,7 @@ std::string rowValue(const Row& r) {
         const int input = pc_button_remap_current(r.action);
         return choiceLabel(r.desc, pc::remap::inputValue((pc::remap::Input)input));
     }
+    case RowKind::Rando: return seedgen::rowValue(r.action);
     case RowKind::Setting: break;
     }
     return choiceLabel(r.desc, pc_settings_get_mode(r.desc->key, rowMode(r.desc)));
@@ -1331,6 +1355,7 @@ std::string rowHelp(const Row& r) {
                  "de settings.ini hace lo mismo.",
                  "Puts every action back on its usual button. Outside the game: deleting the COS_PAD_ lines of "
                  "settings.ini does the same.");
+    case RowKind::Rando: return seedgen::rowHelp(r.action);
     case RowKind::Remap:
         if (r.action == m.captureAction) {
             return T("Pulsa el botón que hará esta acción; si ya hacía otra, se intercambian. Menos cancela.",
@@ -1449,8 +1474,18 @@ void drawMenu() {
             valueX = std::min(labelW + ImGui::GetFontSize() * 1.5f, ImGui::GetContentRegionAvail().x * 0.6f);
             int& row = m.row[m.tab];
             row = rows.empty() ? 0 : std::min(row, (int)rows.size() - 1);
+            if (!rows.empty() && isHeader(rows[row])) {
+                // A stop the rows changed under (the Randomizer tab's options arrived): the next row.
+                for (int n = 0; n < (int)rows.size() && isHeader(rows[row]); n++) {
+                    row = (row + 1) % (int)rows.size();
+                }
+            }
             for (int i = 0; i < (int)rows.size(); i++) {
                 const Row& r = rows[i];
+                if (isHeader(r)) {
+                    ImGui::TextColored(kAccent, "%s", rowLabel(r).c_str());
+                    continue;
+                }
                 const bool locked =
                     (r.kind == RowKind::Setting || r.kind == RowKind::Remap) && pc_settings_locked(r.desc->key);
                 ImGui::PushID(i);
@@ -1468,6 +1503,13 @@ void drawMenu() {
                 const std::string value = rowValue(r);
                 ImGui::TextColored(i == row ? kAccent : ImVec4(1, 1, 1, 1), "%s%s%s", i == row ? "< " : "",
                                    value.c_str(), i == row ? " >" : "");
+                if (const int32_t rgb = r.kind == RowKind::Rando ? seedgen::rowColor(r.action) : -1; rgb >= 0) {
+                    // The Randomizer tab's player colors: a swatch after the value.
+                    ImGui::SameLine();
+                    const ImVec4 c(((rgb >> 16) & 0xFF) / 255.0f, ((rgb >> 8) & 0xFF) / 255.0f, (rgb & 0xFF) / 255.0f, 1.0f);
+                    ImGui::ColorButton("##swatch", c, ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker,
+                                       ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize()));
+                }
                 if (locked) {
                     ImGui::PopStyleColor();
                 }
@@ -1872,6 +1914,19 @@ void menuFrame() {
     const uint32_t keys = (sSmoke.on ? readScript() : 0) | readGamepads() | readKeyboard();
     captureFrame();
     handleInput(keys);
+    // The seed generator (pc_seedgen.h) runs on with the menu closed: its news, and a new seed played
+    // at once from the title screen (in the game it waits for "Seed to play": the game is not saved).
+    if (const std::string news = seedgen::takeToast(); !news.empty()) {
+        toast(news);
+    }
+    if (seedgen::takeSeedReady()) {
+        if (inPlay()) {
+            toast(T("Semilla lista: Randomizer > Semilla a jugar, A reinicia en ella",
+                    "Seed ready: Randomizer > Seed to play, A restarts into it"));
+        } else {
+            seedgen::restartIntoSeed();
+        }
+    }
     if (!m.open) {
         return;
     }
