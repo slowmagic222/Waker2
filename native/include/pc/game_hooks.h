@@ -298,6 +298,9 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** bgw);
 void pc_rplus_terrain_draw(PcRplusTerrain* terrain);
 /* daBg_c::draw of room roomNo: in the room Link is in, the land of the generated rooms not drawn by their own. */
 void pc_rplus_far_draw(int roomNo);
+/* d_a_sea get_wave_max: room roomNo's wave height (the stage's MULT); a generated sea room gets open sea's where
+   its island drew its own water (0). */
+int pc_rplus_wave_max(int roomNo, int wave);
 /* dStage_dt_c_roomReLoader: 1 when the room's own actors stay out (a generated sea room). */
 int pc_rplus_room_actors_off(int roomNo);
 /* 1 for an actor of a generated sea room that is still made (by its stage name: the ship, the sea). */

@@ -92,7 +92,12 @@ int get_wave_max(int roomNo) {
     dStage_Mult_info* entry = multi->m_entries;
     for (int i = 0; i < multi->num; i++, entry++)
         if (roomNo == entry->mRoomNo)
+#if TARGET_PC
+            // Randomizer+: a generated sea room has open sea where an island drew its own water.
+            return pc_rplus_wave_max(roomNo, entry->mWaveMax);
+#else
             return entry->mWaveMax;
+#endif
 
     return 10;
 }

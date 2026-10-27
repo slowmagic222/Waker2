@@ -643,10 +643,23 @@ void requestRoomLoad(int roomNo) {
         return;
     }
     roomRead_data_class* d = rr->m_entries[entry];
-    dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
+    int ok = dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
+    static int tries = 0;
+    if (++tries <= 5 || tries % 300 == 0) {
+        fprintf(stderr, "[rplus] room load for room %d (entry %d, %d rooms): %s (try %d)\n", roomNo, entry, d->num,
+                ok ? "asked" : "busy", tries);
+    }
 }
 
 } // namespace
+
+int pc_rplus_wave_max(int roomNo, int wave) {
+    if (wave == 0 && pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "sea") == 0 &&
+        pc_rplus_sea_room_generated(roomNo)) {
+        return 30;
+    }
+    return wave;
+}
 
 int pc_rplus_keep_room_actor(const char* name) {
     // The King of Red Lions (Link starting at sea waits for him, daPy_lk_c::makeBgWait) and the sea itself
@@ -791,6 +804,12 @@ void pc_rplus_place_player(int roomNo) {
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     if (player == nullptr) {
         return;
+    }
+    if (roomNo == dComIfGp_roomControl_getStayNo() && !dComIfGp_roomControl_checkStatusFlag(0, 0x01)) {
+        // Room 0 is the whole sea's floor, one group a square: the ground under the boat out of the loaded
+        // squares, which loads the square sailed into (dStage_RoomCheck). It comes with each square's room table
+        // entry, which is asked for here until it is in.
+        requestRoomLoad(roomNo);
     }
     if (roomNo == dComIfGp_roomControl_getStayNo()) {
         // Where Link is about every two seconds (in the run logs, for the land, water and respawn checks).
