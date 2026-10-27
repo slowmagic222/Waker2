@@ -83,7 +83,7 @@ bool dBgS::ChkMoveBG_NoDABg(cBgS_PolyInfo& polyInfo) {
 
 /* 800A046C-800A0604       .text GetPolyId0__4dBgSFiiiUlUl */
 int dBgS::GetPolyId0(int bg_index, int poly_index, int defv, u32 mask, u32 shift) {
-    JUT_ASSERT(0x349, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x349, 0 <= bg_index && bg_index < BG_ID_MAX);
     if (!m_chk_element[bg_index].ChkUsed())
         return defv;
 
@@ -118,7 +118,7 @@ int dBgS::GetPolyColor(cBgS_PolyInfo& polyInfo) {
 /* 800A0708-800A07F4       .text GetGrpRoomInfId__4dBgSFR13cBgS_PolyInfo */
 int dBgS::GetGrpRoomInfId(cBgS_PolyInfo& polyInfo) {
     s32 bg_index = polyInfo.GetBgIndex();
-    JUT_ASSERT(0x3a9, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x3a9, 0 <= bg_index && bg_index < BG_ID_MAX);
     if (!m_chk_element[bg_index].ChkUsed())
         return 0xFF;
 
@@ -153,7 +153,7 @@ u32 dBgS::ChkGrpInf(cBgS_PolyInfo& polyInfo, u32 mask) {
 
 /* 800A08C0-800A0A5C       .text GetPolyId1__4dBgSFiiiUlUl */
 int dBgS::GetPolyId1(int bg_index, int poly_index, int defv, u32 mask, u32 shift) {
-    JUT_ASSERT(0x414, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x414, 0 <= bg_index && bg_index < BG_ID_MAX);
     if (!m_chk_element[bg_index].ChkUsed())
         return defv;
 
@@ -238,7 +238,7 @@ int dBgS::GetGroundCode(cBgS_PolyInfo& polyInfo) {
 
 /* 800A0BE0-800A0D7C       .text GetPolyId2__4dBgSFiiiUlUl */
 int dBgS::GetPolyId2(int bg_index, int poly_index, int defv, u32 mask, u32 shift) {
-    JUT_ASSERT(0x4c1, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x4c1, 0 <= bg_index && bg_index < BG_ID_MAX);
     if (!m_chk_element[bg_index].ChkUsed())
         return defv;
 
@@ -278,7 +278,7 @@ s32 dBgS::GetRoomId(cBgS_PolyInfo& polyInfo) {
         return -1;
 
     s32 id = polyInfo.GetBgIndex();
-    JUT_ASSERT(0x51b, 0 <= id && id < 256);
+    JUT_ASSERT(0x51b, 0 <= id && id < BG_ID_MAX);
 
     if (!ChkPolySafe(polyInfo))
         return -1;
@@ -297,7 +297,7 @@ s32 dBgS::GetRoomId(cBgS_PolyInfo& polyInfo) {
 /* 800A0F88-800A111C       .text ChkPolyHSStick__4dBgSFR13cBgS_PolyInfo */
 u32 dBgS::ChkPolyHSStick(cBgS_PolyInfo& polyInfo) {
     s32 bg_index = (u16)polyInfo.GetBgIndex();
-    JUT_ASSERT(0x583, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x583, 0 <= bg_index && bg_index < BG_ID_MAX);
     if (!m_chk_element[bg_index].ChkUsed())
         return FALSE;
 
@@ -437,7 +437,7 @@ void dBgS::MoveBgCrrPos(cBgS_PolyInfo& polyInfo, bool accept, cXyz* pos, csXyz* 
         return;
 
     s32 bg_index = polyInfo.GetBgIndex();
-    JUT_ASSERT(1911, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(1911, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     if (m_chk_element[bg_index].ChkUsed()) {
         dBgW* bgwp = (dBgW*)m_chk_element[bg_index].m_bgw_base_ptr;
@@ -453,7 +453,7 @@ void dBgS::MoveBgTransPos(cBgS_PolyInfo& polyInfo, bool accept, cXyz* pos, csXyz
         return;
 
     s32 bg_index = polyInfo.GetBgIndex();
-    JUT_ASSERT(1956, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(1956, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     if (m_chk_element[bg_index].ChkUsed()) {
         dBgW* bgwp = (dBgW*)m_chk_element[bg_index].m_bgw_base_ptr;
@@ -469,7 +469,7 @@ void dBgS::MoveBgMatrixCrrPos(cBgS_PolyInfo& polyInfo, bool accept, cXyz* pos, c
         return;
 
     s32 bg_index = polyInfo.GetBgIndex();
-    JUT_ASSERT(1999, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(1999, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     if (m_chk_element[bg_index].ChkUsed()) {
         dBgW* bgwp = (dBgW*)m_chk_element[bg_index].m_bgw_base_ptr;
@@ -518,7 +518,7 @@ void dBgS_MoveBGProc_Trans(dBgW* pbgw, void*, cBgS_PolyInfo& polyInfo, bool, cXy
 /* 800A1DF8-800A1ED0       .text RideCallBack__4dBgSFR13cBgS_PolyInfoP10fopAc_ac_c */
 void dBgS::RideCallBack(cBgS_PolyInfo& polyInfo, fopAc_ac_c* ac) {
     s32 bg_index = polyInfo.GetBgIndex();
-    JUT_ASSERT(0x881, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x881, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     dBgW* bgwp = (dBgW*)m_chk_element[bg_index].m_bgw_base_ptr;
     if (bgwp->ChkUsed() && bgwp->GetRideCallback() != NULL)
@@ -528,7 +528,7 @@ void dBgS::RideCallBack(cBgS_PolyInfo& polyInfo, fopAc_ac_c* ac) {
 /* 800A1ED0-800A1FD8       .text PushPullCallBack__4dBgSFR13cBgS_PolyInfoP10fopAc_ac_csQ24dBgW13PushPullLabel */
 fopAc_ac_c* dBgS::PushPullCallBack(cBgS_PolyInfo& polyInfo, fopAc_ac_c* ac, s16 inf, dBgW::PushPullLabel lbl) {
     s32 bg_index = polyInfo.GetBgIndex();
-    JUT_ASSERT(0x8a2, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x8a2, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     dBgW* bgwp = (dBgW*)m_chk_element[bg_index].m_bgw_base_ptr;
     if (!bgwp->ChkUsed())

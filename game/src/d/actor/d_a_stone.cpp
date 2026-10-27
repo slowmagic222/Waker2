@@ -873,7 +873,7 @@ void Act_c::se_fall_water() {
         if (bgs_arr[i] != NULL)
 #endif
         {
-            if (bgs_arr[i]->GetBgIndex() >= 0 && bgs_arr[i]->GetBgIndex() < 0x100) {
+            if (bgs_arr[i]->GetBgIndex() >= 0 && bgs_arr[i]->GetBgIndex() < BG_ID_MAX) {
                 uVar4 = dComIfG_Bgsp()->GetMtrlSndId(*bgs_arr[i]);
                 break;
             }
@@ -893,7 +893,7 @@ void Act_c::se_fall_lava() {
     s32 uVar3 = 0x17;
 
     for (s32 i = 0; i < 2; i++) {
-        if (bgs_arr[i]->GetBgIndex() >= 0 && bgs_arr[i]->GetBgIndex() < 0x100) {
+        if (bgs_arr[i]->GetBgIndex() >= 0 && bgs_arr[i]->GetBgIndex() < BG_ID_MAX) {
             uVar3 = dComIfG_Bgsp()->GetMtrlSndId(*bgs_arr[i]);
             break;
         }

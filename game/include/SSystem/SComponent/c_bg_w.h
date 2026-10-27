@@ -7,6 +7,7 @@
 #include "SSystem/SComponent/c_m3d_g_aab.h"
 #include "SSystem/SComponent/c_m3d_g_pla.h"
 #include "SSystem/SComponent/c_bg_w_tri_elm.h"
+#include "SSystem/SComponent/c_bg_s_poly_info.h"
 #include "dolphin/mtx/mtx.h"
 #include "helpers/endian_ssystem.h"
 #include "helpers/offset_ptr.h"
@@ -23,12 +24,12 @@ public:
     virtual ~cBgW_BgId() {}
 
     cBgW_BgId() { Ct(); }
-    void Ct() { m_id = 0x100; }
+    void Ct() { m_id = BG_ID_MAX; }
 
     int GetId() const { return m_id; }
     void SetId(int id) { m_id = id; }
     bool ChkUsed() const {
-        if (m_id >= 0 && m_id < 0x100) {
+        if (m_id >= 0 && m_id < BG_ID_MAX) {
             return true;
         }
         return false;

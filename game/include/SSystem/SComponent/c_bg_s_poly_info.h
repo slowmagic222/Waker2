@@ -6,6 +6,15 @@
 #include "f_pc/f_pc_manager.h"
 #include "global.h"
 
+// How many collision bodies (cBgW) the game holds at once; this number is also "none" for a body's id and a poly's
+// bg index. Randomizer+'s generated squares load several at a time, each with its land and its solid props
+// (palms, big trees, chests, boulders), past the GameCube's 256.
+#if TARGET_PC
+#define BG_ID_MAX 1024
+#else
+#define BG_ID_MAX 256
+#endif
+
 class cBgW;
 
 class cBgS_PolyInfo {
@@ -21,7 +30,7 @@ public:
     }
     void ClearPi() {
         mPolyIndex = -1;
-        mBgIndex = 0x100;
+        mBgIndex = BG_ID_MAX;
         mpBgW = NULL;
         mActorId = fpcM_ERROR_PROCESS_ID_e;
     }
@@ -45,21 +54,21 @@ public:
     int GetPolyIndex() const { return mPolyIndex; }
     int GetBgIndex() const { return mBgIndex; }
     bool ChkSetInfo() const {
-        if (mPolyIndex == 0xFFFF || mBgIndex == 0x100) {
+        if (mPolyIndex == 0xFFFF || mBgIndex == BG_ID_MAX) {
             return false;
         }
 
         return true;
     }
     bool ChkSetInf() const {
-        if (mPolyIndex == 0xFFFF || mBgIndex == 0x100) {
+        if (mPolyIndex == 0xFFFF || mBgIndex == BG_ID_MAX) {
             return false;
         }
 
         return true;
     }
     bool ChkBgIndex() const {
-        if (mBgIndex == 0x100) {
+        if (mBgIndex == BG_ID_MAX) {
             return false;
         }
         return true;

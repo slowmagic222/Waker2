@@ -3427,7 +3427,7 @@ void Act_c::se_fall_water() {
 #if VERSION > VERSION_DEMO
             polyInfoArr[i] != NULL &&
 #endif
-            polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < 0x100)
+            polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < BG_ID_MAX)
         {
             materialSoundId = dComIfG_Bgsp()->GetMtrlSndId(*polyInfoArr[i]);
             break;
@@ -3447,7 +3447,7 @@ void Act_c::se_fall_lava() {
 
     u32 materialSoundId = 0x17;
     for (s32 i = 0; i < ARRAY_SSIZE(polyInfoArr); i++) {
-        if (polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < 0x100) {
+        if (polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < BG_ID_MAX) {
             materialSoundId = dComIfG_Bgsp()->GetMtrlSndId(*polyInfoArr[i]);
             break;
         }
@@ -3466,7 +3466,7 @@ void Act_c::se_break(cBgS_PolyInfo* arg1) {
 
     u32 materialSoundId = 0;
     for (s32 i = 0; i < ARRAY_SSIZE(polyInfoArr); i++) {
-        if (polyInfoArr[i] != NULL && polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < 0x100) {
+        if (polyInfoArr[i] != NULL && polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < BG_ID_MAX) {
             materialSoundId = dComIfG_Bgsp()->GetMtrlSndId(*polyInfoArr[i]);
             break;
         }

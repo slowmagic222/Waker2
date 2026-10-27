@@ -810,7 +810,7 @@ void Act_c::se_fall_water() {
             continue;
 #endif
         int bg_index = temp[i]->GetBgIndex();
-        if (bg_index >= 0 && bg_index < 0x100) {
+        if (bg_index >= 0 && bg_index < BG_ID_MAX) {
             mtrlSndId = dComIfG_Bgsp()->GetMtrlSndId(*temp[i]);
             break;
         }
