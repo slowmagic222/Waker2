@@ -110,7 +110,7 @@ const s16 kMovable[] = {
     fpcNm_NPC_PM1_e,    fpcNm_NPC_KP1_e,  fpcNm_NPC_PF1_e,  fpcNm_NPC_GP1_e,  fpcNm_NPC_KF1_e,  fpcNm_NPC_TT_e,
     fpcNm_NPC_HR_e,     fpcNm_NPC_HO_e,   fpcNm_NPC_MK_e,   fpcNm_NPC_UK_e,   fpcNm_NPC_CO1_e,  fpcNm_NPC_MT_e,
     fpcNm_NPC_MN_e,     fpcNm_NPC_AH_e,   fpcNm_NPC_PHOTO_e, fpcNm_NPC_KG1_e, fpcNm_NPC_KG2_e,  fpcNm_NPC_GK1_e,
-    fpcNm_NPC_AC1_e,    fpcNm_NPC_HI1_e,  fpcNm_NPC_TC_e,   fpcNm_NPC_RSH1_e, fpcNm_NPC_ZK1_e,  fpcNm_NPC_DS1_e,
+    fpcNm_NPC_AC1_e,    fpcNm_NPC_HI1_e,  fpcNm_NPC_RSH1_e, fpcNm_NPC_ZK1_e,  fpcNm_NPC_DS1_e,
     fpcNm_NPC_BMCON1_e,
 };
 
@@ -131,7 +131,7 @@ struct AnchorNpc {
 const AnchorNpc kAnchorNpcs[] = {
     {"killer_bees", fpcNm_NPC_MK_e},    {"maggie", fpcNm_NPC_KP1_e},        {"tott", fpcNm_NPC_TT_e},
     {"zunari", fpcNm_NPC_RSH1_e},       {"barrel_shooting", fpcNm_NPC_KG2_e}, {"flight_platform", fpcNm_NPC_BMCON1_e},
-    {"tingle_tower", fpcNm_NPC_TC_e},   {"lighthouse", fpcNm_NPC_PEOPLE_e}, {"sam", fpcNm_NPC_PEOPLE_e},
+    {"lighthouse", fpcNm_NPC_PEOPLE_e}, {"sam", fpcNm_NPC_PEOPLE_e},
     {"town_gate", fpcNm_NPC_PEOPLE_e},  {"mila", fpcNm_NPC_PEOPLE_e},       {"pompie_vera", fpcNm_NPC_PEOPLE_e},
     {"kamo", fpcNm_NPC_PEOPLE_e},       {"minenco", fpcNm_NPC_PEOPLE_e},    {"linda_anton", fpcNm_NPC_PEOPLE_e},
 };
