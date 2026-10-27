@@ -1539,6 +1539,35 @@ aramCmapDatPnt_t* dMenu_Fmap_c::getGridNumToCmapDatPnt(int i_gridIdx) {
 
 /* 801B37B0-801B392C       .text setDispIslandPos__12dMenu_Fmap_cFScSc */
 void dMenu_Fmap_c::setDispIslandPos(s8 i_x, s8 i_y) {
+#if TARGET_PC
+    // Randomizer+: a generated square's picture is the whole square (pc_rplus_fmap_texture), centred and as big
+    // as the square, shown wherever the square has land (not only where the disc had an island).
+    static fopMsgM_f2d_class sIslandSize = {-1.0f, -1.0f};
+    if (sIslandSize.x < 0.0f) {
+        sIslandSize = mR01bPane.mSizeOrig;
+    }
+    char name[16];
+    sprintf(name, "R%02X_b.bti", i_x + (i_y + 3) * 7 + 3 + 1);
+    if (int made = pc_rplus_fmap_texture(name, mChkPntTxt_p, 0x2c00); made >= 0) {
+        mTsw1Pane.pane->hide();
+        if (made == 0) {
+            mR01bPane.pane->hide();
+            return;
+        }
+        mR01bPane.mSizeOrig.x = mClbPane.mSizeOrig.x - 50.0f;
+        mR01bPane.mSizeOrig.y = mClbPane.mSizeOrig.y - 50.0f;
+        mR01bPane.mSize = mR01bPane.mSizeOrig;
+        mDispIslandPosX = 0;
+        mDispIslandPosY = 0;
+        setIslandPos(&mR01bPane, 0.0f, 0.0f);
+        ((J2DPicture*)mR01bPane.pane)->changeTexture(mChkPntTxt_p, 0);
+        ((J2DPicture*)mR01gPane.pane)->changeTexture(mChkPntTxt_p, 0);
+        mR01bPane.pane->show();
+        return;
+    }
+    mR01bPane.mSizeOrig = sIslandSize;
+    mR01bPane.mSize = sIslandSize;
+#endif
     s8 i = dMap_getCheckPointUseGrid(i_x, i_y);
     if (i != -1) {
         s16 x;
