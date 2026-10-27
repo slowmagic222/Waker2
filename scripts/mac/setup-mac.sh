@@ -124,12 +124,14 @@ say "Configure and build"
 #   pkg-config off, so Aurora fetches and builds its own arm64 copies.
 # - Command Line Tools older than 26 ship a libc++ where std::jthread / std::stop_token are experimental
 #   (Aurora's lib/thread.hpp needs them): add -fexperimental-library only when a test program needs it.
-CXXFLAGS_EXTRA=""
+# - Aurora's lib/system_info.cpp tests TARGET_OS_MAC without including <TargetConditionals.h>, which older
+#   Command Line Tools (16.x) don't pull in through other headers: include it everywhere.
+CXXFLAGS_EXTRA="-include TargetConditionals.h"
 tmp=$(mktemp -d)
 printf '#include <thread>\n#include <stop_token>\nint main(){std::jthread t([](std::stop_token){}); return 0;}\n' > "$tmp/t.cpp"
 if ! c++ -std=c++20 -arch arm64 "$tmp/t.cpp" -o "$tmp/t" >/dev/null 2>&1; then
     if c++ -std=c++20 -fexperimental-library -arch arm64 "$tmp/t.cpp" -o "$tmp/t" >/dev/null 2>&1; then
-        CXXFLAGS_EXTRA="-fexperimental-library"
+        CXXFLAGS_EXTRA="$CXXFLAGS_EXTRA -fexperimental-library"
         echo "libc++ has std::jthread only as experimental: building with -fexperimental-library"
     else
         rm -rf "$tmp"
