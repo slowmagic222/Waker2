@@ -740,9 +740,10 @@ void requestRoomLoad(int roomNo) {
     }
     roomRead_data_class* d = rr->m_entries[entry];
     int ok = dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
-    static int tries = 0, lastOk = -1;
-    if (++tries <= 5 || tries % 300 == 0 || ok != lastOk) {
+    static int tries = 0, lastOk = -1, lastRoom = -1;
+    if (++tries <= 5 || ok != lastOk || roomNo != lastRoom) {
         lastOk = ok;
+        lastRoom = roomNo;
         fprintf(stderr, "[rplus] room load for room %d (entry %d, %d rooms): %s (try %d)\n", roomNo, entry, d->num,
                 ok ? "asked" : "busy", tries);
     }
@@ -928,6 +929,9 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
 int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe) {
     if (!pc_rplus_active() || strcmp(stage, "sea") != 0 || room != CABANA_ROOM || point != CABANA_OUT_POINT) {
         return 0;
+    }
+    if (dComIfGp_isEnableNextStage()) {
+        return 1;  // already on the way (Link stands on the exit floor for a few frames)
     }
     cXyz door;
     s16 ang;

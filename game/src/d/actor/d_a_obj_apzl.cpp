@@ -938,7 +938,12 @@ cPhs_State daObjApzl_c::_create(){
     fopAcM_ct(this, daObjApzl_c);
     cPhs_State phase_state = dComIfG_resLoad(&mPhs, "Apzl");
     if (phase_state == cPhs_COMPLEATE_e) {
+#if TARGET_PC
+        // The 64-bit models' display lists need about 0x300 more than twice the disc's estimate.
+        if (!fopAcM_entrySolidHeap(this, CheckCreateHeap, 0x1600)) {
+#else
         if (!fopAcM_entrySolidHeap(this, CheckCreateHeap, 0x1460)) {
+#endif
             return cPhs_ERROR_e;
         } else {
             CreateInit();
