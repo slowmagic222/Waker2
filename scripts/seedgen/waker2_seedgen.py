@@ -237,6 +237,24 @@ class CmdLineArgs:
     test = None
 
 
+# Randomizer+ (docs/RANDOMIZER_PLUS.md): progression only where the generated world has the place. Its land has the
+# houses, caves, fountains, dungeon doors and NPCs, but not yet the islands' puzzle chests and landmarks (the Wind
+# Shrine, Tingle's tower, the lighthouse...), the open sea's platforms, submarines and ships, or a mailbox; their
+# locations get no progress items, so a seed stays beatable.
+RPLUS_OFF = (
+    "progression_island_puzzles", "progression_misc", "progression_free_gifts", "progression_expensive_purchases",
+    "progression_minigames", "progression_short_sidequests", "progression_long_sidequests", "progression_mail",
+    "progression_platforms_rafts", "progression_submarines", "progression_big_octos_gunboats",
+    "progression_eye_reef_chests", "progression_triforce_charts", "progression_treasure_charts",
+)
+
+
+def rplus_options(options):
+    for name in RPLUS_OFF:
+        options[name] = False
+    return options
+
+
 def generate(args):
     setup_wwrando(args.wwrando, args.models)
     from randomizer import WWRandomizer
@@ -247,6 +265,8 @@ def generate(args):
     seed = values.get("seed", "").strip()
     if args.permalink:
         seed, options = WWRandomizer.decode_permalink(args.permalink, options)
+    if args.rplus:
+        options = rplus_options(options)
     if not seed:
         seed = seedgen.make_random_seed_name()
     os.makedirs(args.output, exist_ok=True)
@@ -308,6 +328,8 @@ def main():
             p.add_argument("--clean-iso", required=True)
             p.add_argument("--output", required=True)
             p.add_argument("--dry", action="store_true", help="logs only, no ISO (a test without a disc)")
+            p.add_argument("--rplus", action="store_true",
+                           help="for a Randomizer+ world: no progress items where the world has no place yet")
     args = parser.parse_args()
     try:
         {"describe": describe, "generate": generate, "permalink": permalink}[args.command](args)

@@ -106,6 +106,11 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   islands and some dungeons. `COS_RPLUS_NPCS=0` or `COS_RPLUS_ENEMIES=0` leaves them out.
 - **Start gear**: a file with no sword gets the logic's start items at sea (Hero's Sword, shield, Wind Waker,
   Wind's Requiem, Ballad of Gales, Song of Passing, sail, magic).
+- **Squares near Link**: the sea's room table loads each square with only the sea floor; `requestRoomLoad` adds
+  up to three squares Link is within 22000 units of (dropped past 34000), so an island over a square's edge has its
+  props, people and doors on both sides.
+- **Enemy camps** (`placeCamps`): up to two a room on open flat land away from the start and towns: a campfire
+  (`Fire`, no switch), three to five Bokoblins round it facing in, sometimes a Moblin, two pots.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models
@@ -146,6 +151,9 @@ Items are not placed in the game yet.
 
 - **Textures** on the land (vertex colours only so far), a corner minimap for generated squares, the Ballad of
   Gales' warp spots on the generated land.
+- **Places not built yet**: the islands' puzzle chests and landmarks (Wind Shrine, Tingle's tower, lighthouse...),
+  the open sea's platforms, submarines and ships, a mailbox. A seed made in game with a Randomizer+ world loaded
+  (`waker2_seedgen.py generate --rplus`) puts no progress items there (`RPLUS_OFF`), so it stays beatable.
 - **Item placement on the disc.** wwrando writes items into the stage files of their original rooms. A generated
   world needs those items to follow their anchors: the loader gives each actor its item from `world.json`.
 - **NPC code that knows its island.** About 150 places in the game check a room number or the stage `sea`

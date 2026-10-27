@@ -6,6 +6,7 @@
 #include "pc_internal.h"
 
 #include "pc/pc_seedgen.h"
+#include "pc/pc_rplus.h"
 #include "pc/pc_settings.h"
 
 #include <algorithm>
@@ -622,6 +623,9 @@ void startGenerateLocked() {
     saveLocked();
     std::vector<std::string> args = baseArgs("generate");
     args.insert(args.end(), {"--settings", iniPath(), "--clean-iso", gConfig.disc, "--output", seedsDir()});
+    if (pc_rplus_active()) {
+        args.push_back("--rplus");  // only places the generated world has get progress items
+    }
     if (const char* dry = getenv("COS_SEEDGEN_DRY"); dry != nullptr && strcmp(dry, "1") == 0) {
         args.push_back("--dry"); // a test: the logs only, no disc read or written
     }
