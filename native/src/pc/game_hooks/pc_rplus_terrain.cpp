@@ -1176,6 +1176,12 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
         }
     }
     if (door == nullptr || (player != nullptr && best > 3000.0f * 3000.0f)) {
+        static int logged = -1;
+        if (logged != exitId) {
+            logged = exitId;
+            fprintf(stderr, "[rplus] exit 0x%X: no generated door near Link (nearest %.0f away)\n", exitId,
+                    door == nullptr ? -1.0f : sqrtf(best));
+        }
         return 0;  // not by one of ours: a kept island's own exit
     }
     if (dComIfGp_isEnableNextStage()) {
