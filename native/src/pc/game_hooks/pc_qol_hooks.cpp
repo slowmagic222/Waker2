@@ -12,7 +12,9 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_meter.h"
 #include "d/d_stage.h"
+#include "JAZelAudio/JAIZelBasic.h"
 #include "JAZelAudio/JAZelAudio_SE.h"
+#include "JSystem/JAudio/JAISound.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "f_pc/f_pc_manager.h"
 #include "f_pc/f_pc_name.h"
@@ -371,7 +373,26 @@ const char* pc_qol_notice(void) {
     return sAuto.noticeFrames > 0 ? (pc::pc_ui_spanish() ? "Guardado" : "Saved") : nullptr;
 }
 
+// COS_QOL_NO_MUSIC: the background music (the main and second BGM and the streamed one) at volume 0 on a
+// volume line of its own, which the game never sets, so its fades and mutes still work and the sound
+// effects keep playing. Each frame, so a new song is silenced as it starts and a change shows at once.
+static void musicFrame() {
+    JAIZelBasic* zel = JAIZelBasic::getInterface();
+    if (zel == nullptr) {
+        return;
+    }
+    const float volume = strcmp(pc_settings_get("COS_QOL_NO_MUSIC"), "1") == 0 ? 0.0f : 1.0f;
+    constexpr u8 kLine = 19; // the last of the 20 volume lines (JAISequenceMgr.h, JAIStreamMgr.h)
+    JAISound* const sounds[] = {zel->mpMainBgmSound, zel->mpSubBgmSound, zel->mpStreamBgmSound};
+    for (JAISound* sound : sounds) {
+        if (sound != nullptr) {
+            sound->setVolume(volume, 0, kLine);
+        }
+    }
+}
+
 void pc_qol_frame(void) {
+    musicFrame();
     if (fpcM_Search(isPlayScene, nullptr) == nullptr) {
         sAuto.known = false; // the title or the file select: the next play starts from what its file has
     }

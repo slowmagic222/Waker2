@@ -270,3 +270,6 @@ drawn with each part (the outermost pane smaller than half the 2D area) scaled a
 middle or centre (`J2DPane::sPcHudScale`, set around the draws in `dDlst_2DMETER1_c`/`2_c`). The minimap and
 the minigame timers keep their size. With the in-game tracker built in, its screen hides the corner sea map
 and the QoL buttons do nothing while it is open (`pc::tracker::overlayShown`).
+
+Music off (`COS_QOL_NO_MUSIC`, QoL tab, off by default): `pc_qol_frame` sets volume line 19 (one the game never
+uses) of the main, second and streamed BGM to 0 each frame; the sound effects keep playing.
