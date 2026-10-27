@@ -1506,7 +1506,7 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
         }
 #if TARGET_PC
         // Randomizer+: Link starts on the generated world's start cell, in its room.
-        pc_rplus_start_point(&appen->base.parameters, &appen->base.position);
+        pc_rplus_start_point(&appen->base.parameters, &appen->base.position, &appen->base.angle.y);
 #endif
     }
 
@@ -2297,6 +2297,8 @@ void dStage_dt_c_roomReLoader(void* i_data, dStage_dt_c* i_stage, int param_2) {
     layerLoader(i_data, i_stage, param_2);
 #if TARGET_PC
     l_rplusRoomActors = false;
+    // Randomizer+: the generated world's own actors in this room (Link's home's door).
+    pc_rplus_room_actors(param_2);
 #endif
 }
 
@@ -2409,6 +2411,12 @@ void dStage_roomControl_c::SetTimePass(int i_timepass) {
 /* 8004360C-80043900       .text dStage_changeSceneExitId__FR13cBgS_PolyInfofUlSc */
 int dStage_changeSceneExitId(cBgS_PolyInfo& i_poly, f32 i_speed, u32 i_mode, s8 i_roomNo) {
     int exit_id = dComIfG_Bgsp()->GetExitId(i_poly);
+#if TARGET_PC
+    // Randomizer+: a door of the generated world (its own exit id; the sea room's SCLS doesn't have it).
+    if (pc_rplus_exit(exit_id, i_speed, i_mode)) {
+        return 1;
+    }
+#endif
     if (exit_id == 0x3E || exit_id == 0x3B) {
         fopAc_ac_c* actor_p = dComIfG_Bgsp()->GetActorPointer(i_poly);
         int arg0 = IkadaGetRoomNoArg0(actor_p);
@@ -2470,6 +2478,13 @@ int dStage_changeScene(int i_exitId, f32 speed, u32 mode, s8 room_no) {
 
     stage_scls_info_class* scls_info = &scls->m_entries[i_exitId];
     s32 wipe = dStage_sclsInfo_getWipe(scls_info);
+#if TARGET_PC
+    // Randomizer+: an interior's way back to its original island goes to its door in the generated world.
+    if (pc_rplus_exit_return(scls_info->mStage, scls_info->mStart, scls_info->mRoom, speed, mode,
+                             wipe == 15 ? 0 : wipe)) {
+        return 1;
+    }
+#endif
 
     dComIfGp_setNextStage(scls_info->mStage, scls_info->mStart, scls_info->mRoom, -1, speed, mode,
                           TRUE, wipe == 15 ? 0 : wipe);

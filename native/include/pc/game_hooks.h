@@ -316,9 +316,16 @@ void pc_rplus_spawn_lift(class cXyz* pos);
 /* dStage_Create / dStage_playerInit: the start cell's room while Link's first spawn at sea is still to be moved
    there (the room the stage loads first), else -1. */
 int pc_rplus_start_room(void);
-/* dStage_playerInit: the first time Link enters the sea, his spawn moves to the world's start cell, and the
-   spawn's room (which the stage loads first) to the start cell's room. */
-void pc_rplus_start_point(u32* params, class cXyz* pos);
+/* dStage_playerInit: the first time Link enters the sea his spawn moves to the world's start cell (and on coming
+   out of a moved door, to that door), and the spawn's room (which the stage loads first) to that cell's room. */
+void pc_rplus_start_point(u32* params, class cXyz* pos, s16* angleY);
+/* dStage_changeSceneExitId: 1 when exit id exitId is a generated door's (it set the next stage). */
+int pc_rplus_exit(int exitId, f32 speed, u32 mode);
+/* dStage_changeScene: 1 when the exit to (stage, point, room) is an interior's way back to a door that the
+   generated world moved (it set the next stage: the door's room, Link in front of it). */
+int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe);
+/* dStage_dt_c_roomReLoader of room roomNo: the generated world's actors there (Link's home's door). */
+void pc_rplus_room_actors(int roomNo);
 /* dStage_setShipPos: in a generated sea room, the boat's spot moved to the nearest open water (from the start cell
    in the start room, else from the room's own spot), facing away from the land. */
 void pc_rplus_ship_pos(int roomNo, class cXyz* pos, s16* angle);
