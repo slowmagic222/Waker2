@@ -2948,29 +2948,20 @@ int pc_rplus_home_unlocked(void) {
     return pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "Abesso") == 0;
 }
 
-// Link's home (the cabana) emptied for him to make his own: its dishes, pots and tubs become things to carry
-// about instead, picked by where each stood (stools, buckets, barrels, pots, small crates), and none of those
-// break there (pc_rplus_home_unbreakable).
-int pc_rplus_home_actor(char* name, u32* params) {
+// Link's home (the cabana) emptied for him to make his own: its dishes, pots and tubs are left out, and the decor he
+// has found stands there instead (pc_rplus_decor.cpp), round where they stood.
+int pc_rplus_home_actor(const char* name, const cXyz& pos) {
     if (!pc_rplus_home_unlocked()) {
         return 0;
     }
     static const char* const kGone[] = {"MPot", "MKoppu", "Ptubo", "Kmtub"};
-    bool gone = false;
     for (const char* g : kGone) {
-        gone = gone || strncmp(name, g, 8) == 0;
+        if (strncmp(name, g, 8) == 0) {
+            pc_rplus_decor_home_slot(pos);
+            return 1;
+        }
     }
-    if (!gone) {
-        return 0;
-    }
-    static const char* const kCarry[] = {"Ostool", "Okioke", "Ktaru", "kotubo", "ootubo1", "Hbox2S"};
-    static int n = 0;
-    const char* pick = kCarry[(hash2(n++, (int)pc_rplus_seed()) >> 4) % 6];
-    memset(name, 0, 8);
-    strncpy(name, pick, 8);
-    *params = 0x007F3F3Fu;  // no item, no switch (shown at once), no saved item
-    fprintf(stderr, "[rplus] home: a %s to carry about\n", pick);
-    return 1;
+    return 0;
 }
 
 int pc_rplus_home_unbreakable(void) {
@@ -3367,6 +3358,7 @@ void pc_rplus_room_actors(int roomNo) {
     if (pc_rplus_sea_room_generated(roomNo)) {
         scatterProps(roomNo);
         pc_rplus_life_room(roomNo);
+        pc_rplus_decor_room(roomNo);
     }
     for (const GenDoor& gd : genDoors()) {
         if (gd.seaRoom != roomNo) {

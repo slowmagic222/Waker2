@@ -14,6 +14,9 @@
 #include "f_op/f_op_kankyo_mng.h"
 #include "f_op/f_op_camera.h"
 #include "m_Do/m_Do_mtx.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 
 namespace daStone {
 cXyz Act_c::M_axis = cXyz::BaseZ;
@@ -508,6 +511,14 @@ void Act_c::damaged(int arg1) {
 /* 00001F00-00002058       .text damage_cc_proc__Q27daStone5Act_cFv */
 bool Act_c::damage_cc_proc() {
     bool iVar3 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, the decor doesn't break.
+    if (pc_rplus_home_unbreakable()) {
+        mCyl.ClrAtHit();
+        mCyl.ClrTgHit();
+        return false;
+    }
+#endif
 
     if (mCyl.ChkAtHit()) {
         mCyl.ClrAtHit();
@@ -592,6 +603,17 @@ bool Act_c::damage_bg_proc() {
 bool Act_c::damage_bg_proc_directly() {
     bool uVar7 = mAcch.ChkGroundHit();
     bool iVar9 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, a thrown rock lands and stays whole (as d_a_tsubo's).
+    if (pc_rplus_home_unbreakable()) {
+        if (m674 == 2 && (uVar7 || mAcch.ChkWallHit() || mAcch.ChkRoofHit())) {
+            cam_lockoff();
+            mode_wait_init();
+        }
+        m688 = current.pos.y;
+        return false;
+    }
+#endif
     bool cVar4;
     bool uVar8;
     bool cVar3;

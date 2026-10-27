@@ -368,9 +368,13 @@ bool seaMapVisible() {
 
 } // namespace
 
-// COS_QOL_AUTOSAVE's notice (pc_qol_notice): a word in the bottom-left corner for two seconds.
+// COS_QOL_AUTOSAVE's notice (pc_qol_notice): a word in the bottom-left corner for two seconds; Randomizer+'s house
+// decor just found (pc_rplus_decor_notice) the same way.
 void noticeFrame() {
-    const char* notice = pc_qol_notice();
+    const char* notice = pc_rplus_decor_notice();
+    if (notice == nullptr) {
+        notice = pc_qol_notice();
+    }
     if (notice == nullptr) {
         return;
     }

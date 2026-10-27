@@ -11492,6 +11492,8 @@ BOOL daPy_lk_c::execute() {
         (this->*mCurProcFunc)();
     }
     pcClimbFrame();
+    // Randomizer+: house decor found about the world, and the cabana's pieces (pc_rplus_decor.cpp)
+    pc_rplus_decor_frame();
     
     playTextureAnime();
     cXyz sp14 = current.pos;

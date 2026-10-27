@@ -18,6 +18,7 @@
 #include "SSystem/SComponent/c_counter.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "pc/game_hooks.h"
 #endif
 
 u32 daBoko_c::m_bound_se[] = {
@@ -802,8 +803,10 @@ BOOL daBoko_c::execute() {
         // Rando (pc_rando.h; wwrando flexible_item_locations.asm check_phantom_ganons_sword_should_disappear, REL
         // 0x2A90): once the door is broken with Phantom Ganon's sword (3A08), his swords go, except in the maze
         // (GanonJ), where the sword shows the way
+        // Randomizer+: nor does one that is house decor (pc_rplus_decor.cpp)
         if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_3A08) &&
-            !(pc_rando_active() && strcmp(dComIfGp_getStartStageName(), "GanonJ") == 0)) {
+            !(pc_rando_active() && strcmp(dComIfGp_getStartStageName(), "GanonJ") == 0) &&
+            !pc_rplus_decor_owns(fopAcM_GetID(this))) {
 #else
         if (dComIfGs_isEventBit(dSv_event_flag_c::UNK_3A08)) {
 #endif

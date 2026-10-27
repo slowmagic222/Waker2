@@ -122,8 +122,21 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
 - **Open-air chests** (`placeChests`, `COS_RPLUS_CHESTS=0` to leave out): each puzzle anchor gets its home island's
   disc chest (from the room's TRES), on the highest open ground near the anchor, as a plain chest (its switch,
   lighthouse or enemy puzzle is not built). Its item and save flag are the disc's.
-- **Link's home** (the cabana, `Abesso`, unlocked): its dishes, pots and tubs become things to carry instead
-  (stools, buckets, barrels, pots, small crates: `pc_rplus_home_actor`), which land whole when thrown there.
+- **Link's home** (the cabana, `Abesso`, unlocked): its dishes, pots and tubs are left out (`pc_rplus_home_actor`)
+  for the house decor Link finds.
+- **House decor** (`pc_rplus_decor.cpp`, `COS_RPLUS_DECOR=0` to leave the world's pickups out): 183 pieces, every
+  carryable thing that is not an item (the 16 `d_a_tsubo` types: pots, jug, barrel, stool, skull, bucket, seeds,
+  crate, stone figures, Kutani pot; small rocks, a boulder and a stone head; three pigs; the five Tingle statues;
+  seven Tower of the Gods stones and statues; the six enemy weapons) and the Nintendo Gallery's 134 figurines on
+  their pedestals. Six (pot, large pot, barrel, stool, bucket, crate) are Link's from the start; each other piece
+  stands on its own open, gentle spot in a generated room (the seed's) until Link lifts it or walks up to it (a
+  notice, and a figurine goes home at once). In the cabana every piece found stands where Link last set it down,
+  else on the next free spot of rings round where the cabana's pots stood; nothing breaks there (sword, bomb or
+  throw: `d_a_tsubo`, `d_a_stone`, `d_a_stone2`, which also stands again where it lands), and a figurine is lifted
+  and set down like a Tingle statue (`daObjFigure_c::pcDecorExecute`). At most `COS_RPLUS_DECOR_FIGURES` (48)
+  figurines stand there at once, the last found. What was found and where it stands is kept per save file in
+  `rplus-decor-<seed>-<slot>.txt` next to the memory card, written with the save (`dSv_info_c::memory_to_card`)
+  and read with the file (`card_to_memory`).
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models
@@ -171,6 +184,6 @@ Items are not placed in the game yet.
   world needs those items to follow their anchors: the loader gives each actor its item from `world.json`.
 - **NPC code that knows its island.** About 150 places in the game check a room number or the stage `sea`
   (`dIsleRoom_...`). Each moved NPC has to be checked.
-- **Link's new house** as an Animal Crossing-style home: unlockable furniture and pictures tied to in-game events,
-  a music player. Its own phase after the first playable world.
+- **Link's new house** as an Animal Crossing-style home: the house decor is in (above); furniture and pictures
+  tied to in-game events, decor in chests and the shop, and a music player are not.
 - Options other than wwrando's defaults: trick levels, more progression types, swordless.
