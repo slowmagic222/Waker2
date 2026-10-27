@@ -392,6 +392,7 @@ public:
     // Pieces drawn (and culled) on their own: a cell's quads each, and the house.
     struct Chunk {
         int first, tris;
+        int kind;               // 0 ground and buildings, 1 cliffs running along x, 2 along z
         float cx, cy, cz, rad;  // bounding sphere
     };
     std::vector<Chunk> mChunks;
@@ -448,6 +449,52 @@ const u8* detailTexture() {
         }
     }
     return sDetailTex;
+}
+
+// The cliffs' rock: a 64 x 64 I8 texture, tileable, of strata (bands across t, wavy along s), a few cracks
+// down them and grit. Tiled by world position: s along the cliff (x or z), t up it.
+alignas(32) u8 sRockTex[TEX_N * TEX_N];
+
+const u8* rockTexture() {
+    static bool made = false;
+    if (made) {
+        return sRockTex;
+    }
+    made = true;
+    auto h2 = [](int i, int j, int salt) {
+        u32 h = (u32)i * 374761393u + (u32)j * 668265263u + (u32)salt * 2246822519u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return ((h ^ (h >> 16)) & 0xFFFF) / 65535.0f;
+    };
+    auto wrapNoise = [&](float fx, float fy, int cx, int cy, int salt) {
+        const float sx = fx * cx / TEX_N, sy = fy * cy / TEX_N;
+        const int ix = (int)floorf(sx), iy = (int)floorf(sy);
+        float tx = sx - ix, ty = sy - iy;
+        tx = tx * tx * (3 - 2 * tx);
+        ty = ty * ty * (3 - 2 * ty);
+        auto v = [&](int i, int j) { return h2(((i % cx) + cx) % cx, ((j % cy) + cy) % cy, salt); };
+        return (v(ix, iy) * (1 - tx) + v(ix + 1, iy) * tx) * (1 - ty) +
+               (v(ix, iy + 1) * (1 - tx) + v(ix + 1, iy + 1) * tx) * ty;
+    };
+    for (int y = 0; y < TEX_N; y++) {
+        for (int x = 0; x < TEX_N; x++) {
+            // Strata: the row bent by a slow wave along s, then banded.
+            const float wy = y + (wrapNoise((float)x, 0.0f, 4, 1, 11) - 0.5f) * 10.0f;
+            const float layer = wrapNoise(0.0f, wy, 1, 8, 12);
+            const float seam = fabsf(sinf(wy * 3.14159f * 8.0f / TEX_N));  // dark lines between layers
+            float v = 150.0f + layer * 70.0f - (seam < 0.18f ? 45.0f : 0.0f);
+            // Cracks: a few dark runs down the face.
+            const float crack = wrapNoise((float)x, (float)y, 16, 2, 13);
+            if (crack > 0.80f) {
+                v -= 40.0f;
+            }
+            v += (wrapNoise((float)x, (float)y, 32, 32, 14) - 0.5f) * 40.0f;  // grit
+            v = v < 40.0f ? 40.0f : v > 255.0f ? 255.0f : v;
+            const int tile = (y / 4) * (TEX_N / 8) + (x / 8);
+            sRockTex[tile * 32 + (y % 4) * 8 + (x % 8)] = (u8)v;
+        }
+    }
+    return sRockTex;
 }
 
 } // namespace
@@ -508,6 +555,10 @@ void PcRplusPacket::draw() {
         sDrawn = 0;
     }
     constexpr int FRAME_TRIS = 150000;
+    GXTexObj rockTex;
+    GXInitTexObj(&rockTex, (void*)rockTexture(), TEX_N, TEX_N, GX_TF_I8, GX_REPEAT, GX_REPEAT, GX_FALSE);
+    GXInitTexObjLOD(&rockTex, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+    int kindSet = 0;
     for (const Chunk& c : mChunks) {
         if (c.tris == 0) {
             continue;
@@ -529,6 +580,20 @@ void PcRplusPacket::draw() {
             continue;
         }
         sDrawn += c.tris;
+        if (c.kind != kindSet) {
+            kindSet = c.kind;
+            if (kindSet == 0) {
+                GXLoadTexObj(&tex, GX_TEXMAP0);
+                GXLoadTexMtxImm(texMtx, GX_TEXMTX0, GX_MTX2x4);
+            } else {
+                constexpr float ks = 1.0f / 700.0f, kt = 1.0f / 520.0f;
+                Mtx rockMtx = {{kindSet == 1 ? ks : 0.0f, 0.0f, kindSet == 2 ? ks : 0.0f, 0.0f},
+                               {0.0f, kt, 0.0f, 0.0f},
+                               {0.0f, 0.0f, 0.0f, 1.0f}};
+                GXLoadTexObj(&rockTex, GX_TEXMAP0);
+                GXLoadTexMtxImm(rockMtx, GX_TEXMTX0, GX_MTX2x4);
+            }
+        }
         const Vtx* v = mVtx + c.first * 3;
         const int n = c.tris * 3;
         GXBegin(GX_TRIANGLES, GX_VTXFMT0, (u16)n);
@@ -898,7 +963,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     std::vector<Vtx> dv;
     dv.reserve((size_t)n * n + house.size() * 6);
     // A chunk of the triangles from `first` (in triangles) to the end so far, with its bounding sphere.
-    auto closeChunk = [&](int first) {
+    auto closeChunk = [&](int first, int kind) {
         const int last = (int)(dv.size() / 3);
         if (last <= first) {
             return;
@@ -912,7 +977,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             }
         }
         const float ex = mx[0] - mn[0], ey = mx[1] - mn[1], ez = mx[2] - mn[2];
-        pk.mChunks.push_back({first, last - first, (mn[0] + mx[0]) * 0.5f, (mn[1] + mx[1]) * 0.5f,
+        pk.mChunks.push_back({first, last - first, kind, (mn[0] + mx[0]) * 0.5f, (mn[1] + mx[1]) * 0.5f,
                               (mn[2] + mx[2]) * 0.5f, 0.5f * sqrtf(ex * ex + ey * ey + ez * ez)});
     };
     const float lx = 0.42f, ly = 0.80f, lz = 0.42f;  // light direction (normalised enough)
@@ -954,54 +1019,55 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             dv.push_back({px[k], py[k], pz[k], (u8)(col.r * tk), (u8)(col.g * tk), (u8)(col.b * tk), 0xFF});
         }
     };
+    // Cliffs go in their own chunks, by which way they run (the rock texture's s is x or z): cliffX / cliffZ.
+    std::vector<Vtx> cliffX, cliffZ;
     auto emitCliff = [&](const Cliff& c) {
-        // Rock: the face broken into columns and rows, each point pushed in or out by noise of its world position
-        // (so neighbouring pieces meet), set back under the upper shelf's edge (a lip) and out at the foot (scree);
-        // coloured in layers, lit by which way each bit faces. The collision is the plain upright wall.
+        // Rock: the face in columns and three rows. Each point is pushed in or out along the way downhill there
+        // (from the mesh's e around it, not this piece's own facing), by noise of its world position: the pieces
+        // of a cliff share their end points, so they meet with no gap. The face leans back a little, set in under
+        // the upper shelf's edge and out at the foot (scree, under the lower shelf). Coloured in layers; the rock
+        // texture adds strata. The collision is the plain upright wall.
         const float dx = c.qx - c.px, dz = c.qz - c.pz, l = sqrtf(dx * dx + dz * dz);
         if (l <= 0.0f) {
-            return 0;
+            return;
         }
-        if (far) {
-            // Far away: the plain face.
-            const float px[2][3] = {{c.px, c.qx, c.qx}, {c.px, c.qx, c.px}};
-            const float py[2][3] = {{c.y0 - 40.0f, c.y0 - 40.0f, c.y1}, {c.y0 - 40.0f, c.y1, c.y1}};
-            const float pz[2][3] = {{c.pz, c.qz, c.qz}, {c.pz, c.qz, c.pz}};
-            const Rgb rock = biomeColour('r');
-            for (int t2 = 0; t2 < 2; t2++) {
-                for (int k = 0; k < 3; k++) {
-                    dv.push_back({px[t2][k], py[t2][k], pz[t2][k], (u8)(rock.r * 0.8f), (u8)(rock.g * 0.8f),
-                                  (u8)(rock.b * 0.8f), 0xFF});
-                }
-            }
-            return 2;
-        }
-        const float nx = dz / l, nz = -dx / l;  // out, toward the lower shelf
+        std::vector<Vtx>& out = fabsf(dx) >= fabsf(dz) ? cliffX : cliffZ;
+        const float snx = dz / l, snz = -dx / l;  // this piece's facing, if the slope gives none
         const float yb = c.y0 - 40.0f, h = c.y1 - yb;
-        // Coarse: every vertex is pushed to the GPU each frame (a room drew 46k triangles, past Aurora's buffers,
-        // at 140 x 130).
-        const int cols = std::max(1, (int)ceilf(l / 300.0f)), rows = 2;
+        const int cols = far ? 1 : std::max(1, (int)ceilf(l / 260.0f)), rows = far ? 1 : 3;
         const Rgb rock = biomeColour('r');
         auto at = [&](int ci, int ri, float* o, float* tint) {
             const float t = (float)ci / cols, r = (float)ri / rows;
             const float x = c.px + dx * t, z = c.pz + dz * t, y = yb + h * r;
-            float off = (vnoise(x * 0.004f + y * 0.002f, z * 0.004f - y * 0.003f, 181) - 0.5f) * 80.0f +
-                        (vnoise(x * 0.0009f, z * 0.0009f + y * 0.001f, 187) - 0.5f) * 70.0f;
+            float nx = snx, nz = snz;
+            if (!far) {
+                const float d = 400.0f / cs, gx = (x - x0) / cs, gz = (z - z0) / cs;
+                const float ex = meshE(gx - d, gz) - meshE(gx + d, gz), ez = meshE(gx, gz - d) - meshE(gx, gz + d);
+                const float el = sqrtf(ex * ex + ez * ez);
+                if (el > 1e-3f) {
+                    nx = ex / el;
+                    nz = ez / el;
+                }
+            }
+            float off;
             if (ri == rows) {
-                off = -28.0f;  // under the shelf's edge
+                off = -45.0f;  // under the shelf's edge
             } else if (ri == 0) {
-                off = 20.0f + vnoise(x * 0.003f, z * 0.003f, 191) * 30.0f;
+                off = 25.0f + vnoise(x * 0.003f, z * 0.003f, 191) * 35.0f;
             } else {
-                off -= 12.0f;
+                off = (vnoise(x * 0.004f + y * 0.002f, z * 0.004f - y * 0.003f, 181) - 0.5f) * 90.0f +
+                      (vnoise(x * 0.0009f, z * 0.0009f + y * 0.001f, 187) - 0.5f) * 80.0f + (0.5f - r) * 50.0f;
+            }
+            if (far) {
+                off = 0.0f;
             }
             o[0] = x + nx * off;
-            o[1] = y + (ri > 0 && ri < rows ? (vnoise(x * 0.006f, z * 0.006f + y * 0.004f, 193) - 0.5f) * 50.0f : 0.0f);
+            o[1] = y + (ri > 0 && ri < rows ? (vnoise(x * 0.006f, z * 0.006f + y * 0.004f, 193) - 0.5f) * 60.0f : 0.0f);
             o[2] = z + nz * off;
-            // Layers: bands along the height, wavy along the cliff; lighter near the top.
+            // Layers: bands along the height, wavy along the cliff; darker at the foot, lighter up top.
             const float band = vnoise(y * 0.011f + x * 0.0004f, z * 0.0004f, 197);
-            *tint = (0.72f + band * 0.32f) * (0.9f + 0.18f * r);
+            *tint = (0.70f + band * 0.30f) * (0.82f + 0.3f * r);
         };
-        int tris = 0;
         for (int ci = 0; ci < cols; ci++) {
             for (int ri = 0; ri < rows; ri++) {
                 float p[4][3], tn[4];
@@ -1020,21 +1086,21 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                     }
                     // Facing out of the rock either way round.
                     const float lit = fabsf(fx * lx + fy * ly + fz * lz);
-                    const float tone = lit > 0.5f ? 1.0f : 0.72f;
+                    const float tone = lit > 0.5f ? 1.0f : 0.74f;
                     for (int k : q) {
                         const float m = tone * tn[k];
-                        dv.push_back({p[k][0], p[k][1], p[k][2], (u8)std::min(255.0f, rock.r * m),
-                                      (u8)std::min(255.0f, rock.g * m), (u8)std::min(255.0f, rock.b * m), 0xFF});
+                        out.push_back({p[k][0], p[k][1], p[k][2], (u8)std::min(255.0f, rock.r * m),
+                                       (u8)std::min(255.0f, rock.g * m), (u8)std::min(255.0f, rock.b * m), 0xFF});
                     }
-                    tris++;
                 }
             }
         }
-        return tris;
     };
     for (int cj = 0; cj < n; cj += SUB) {
       for (int ci = 0; ci < n; ci += SUB) {
         const int first = (int)(dv.size() / 3);
+        cliffX.clear();
+        cliffZ.clear();
         for (int j = cj; j < std::min(n, cj + SUB); j++) {
           for (int i = ci; i < std::min(n, ci + SUB); i++) {
             if (!keep(i, j)) {
@@ -1060,7 +1126,13 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             }
           }
         }
-        closeChunk(first);
+        closeChunk(first, 0);
+        for (int kind = 1; kind <= 2; kind++) {
+            const std::vector<Vtx>& cv2 = kind == 1 ? cliffX : cliffZ;
+            const int f2 = (int)(dv.size() / 3);
+            dv.insert(dv.end(), cv2.begin(), cv2.end());
+            closeChunk(f2, kind);
+        }
       }
     }
     pk.mTriCount = (int)(dv.size() / 3);
@@ -1074,7 +1146,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             dv.push_back({p[0], p[1], p[2], h.r, h.g, h.b, 0xFF});
         }
         if ((hq + 1) % 64 == 0 || hq + 1 == house.size()) {
-            closeChunk(houseFirst);
+            closeChunk(houseFirst, 0);
             houseFirst = (int)(dv.size() / 3);
         }
     }
@@ -2713,7 +2785,7 @@ const PropKind kProps[P_COUNT] = {
 };
 // What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 512 trees,
 // shared by the rooms loaded at once) and how many plain actors it makes.
-const int kPoolBudget[4] = {2600, 300, 70, 70};
+const int kPoolBudget[4] = {3000, 320, 90, 100};
 constexpr float PROP_STEP = 420.0f;  // the candidate spots' spacing
 
 // The drawn land's height.
@@ -2791,8 +2863,9 @@ void scatterProps(int roomNo) {
             doors.push_back(&gd);
         }
     }
-    // The candidate spots on land, nearest the room's doors and towns first (each with a little jitter in its
-    // order), so a room's budget goes first where people are.
+    // The candidate spots on land: those near the room's doors and towns first (nearest first, with a little
+    // jitter), taking at most half of each budget, then the rest of the land in a random order, so the far side of
+    // an island gets its share.
     struct Spot {
         float x, z, y, key;
         u32 h;
@@ -2828,7 +2901,10 @@ void scatterProps(int roomNo) {
             for (const Town& t : L.towns) {
                 near = std::min(near, (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z));
             }
-            spots.push_back({x, z, y, sqrtf(near) * (0.75f + 0.5f * ((h >> 20) & 0xFF) / 256.0f), h});
+            constexpr float NEAR = 3000.0f;
+            const float jit = (hash2((int)h, 0x77) & 0xFFFFFF) / 16777216.0f;
+            const float dn = sqrtf(near);
+            spots.push_back({x, z, y, dn < NEAR ? dn / NEAR * (0.75f + 0.25f * jit) : 1.0f + jit, h});
         }
     }
     std::sort(spots.begin(), spots.end(), [](const Spot& a, const Spot& b) { return a.key < b.key; });
@@ -2914,7 +2990,7 @@ void scatterProps(int roomNo) {
         }
         const PropKind& kind = kProps[id];
         const int cost = kind.pool == 3 ? 1 : kind.cost;
-        if (used[kind.pool] + cost > kPoolBudget[kind.pool]) {
+        if (used[kind.pool] + cost > (sp.key < 1.0f ? kPoolBudget[kind.pool] / 2 : kPoolBudget[kind.pool])) {
             continue;
         }
         const int gi = std::min(gside - 1, std::max(0, (int)((x - bx) / GRID)));
