@@ -123,7 +123,7 @@ float cellRugged(int cx, int cy) {
 
 // The natural height at grid position (gx, gy) in cells from the world's corner. The cells' heights blended smoothly (on a
 // grid bent by noise, so coasts wander instead of following the cells), then on land: rolling hills everywhere,
-// ridges and terraces (steep risers, flat tops) where the biome is rugged, and small bumps.
+// ridges where the biome is rugged, and small bumps. The ground made from it rises in shelves (tierY).
 float naturalY(float gx, float gy) {
     // (fbm's spread is narrow: about 0.5 +- 0.1, so the bends are some 0.4 cells broad and 0.15 fine.)
     const float wx = gx + (fbm(gx * 0.35f, gy * 0.35f, 11, 3) - 0.5f) * 4.0f +
@@ -149,14 +149,6 @@ float naturalY(float gx, float gy) {
     // Ridges: the creases of noise, sharp on top.
     const float r = 1.0f - fabsf(fbm(gx * 0.8f, gy * 0.8f, 57, 3) * 2.0f - 1.0f);
     h += r * r * r * 1500.0f * rug * inland;
-    // Terraces: flat shelves with steep risers between (as steep as Link can still walk up on this mesh).
-    if (rug > 0.0f && h > 0.0f) {
-        const float step = 1100.0f;
-        const float k = h / step, base = floorf(k), f = k - base;
-        const float sharp = f < 0.72f ? 0.0f : (f - 0.72f) / 0.28f;
-        const float t = (base + sharp * sharp * (3.0f - 2.0f * sharp)) * step;
-        h = h + (t - h) * fminf(1.0f, rug * 1.2f) * inland;
-    }
     // Bumps.
     h += (fbm(gx * 3.0f, gy * 3.0f, 73, 2) - 0.5f) * 140.0f * inland;
     return LAND_BASE + fmaxf(h, 5.0f * inland);
@@ -164,9 +156,76 @@ float naturalY(float gx, float gy) {
 
 float shapeGround(float gx, float gy, float y);
 
-// The ground's height: the natural height, levelled where the world builds (shapeGround, with the doors).
-float heightAt(float gx, float gy) {
+// The natural height levelled where the world builds (shapeGround: towns, buildings): the land's "e", which the
+// ground's shelves are made from.
+float eAt(float gx, float gy) {
     return shapeGround(gx, gy, naturalY(gx, gy));
+}
+
+// Shelves: above the lowland the ground rises in tiers, each nearly flat (keeping SHELF of the rise under it), with
+// a cliff where e crosses into the next (TIER_H of e, so a cliff is TIER_H * (1 - SHELF) high). The beach and
+// tier 1 join smoothly, so every island can be walked onto from the sea; higher tiers are reached by the stairs
+// built where paths cross their cliffs (Layout::ramps).
+constexpr float TIER1 = LAND_BASE + 420.0f;
+constexpr float TIER_H = 760.0f;
+constexpr float SHELF = 0.22f;
+
+int tierOf(float e) {
+    return e < TIER1 ? 0 : 1 + (int)floorf((e - TIER1) / TIER_H);
+}
+// Where tier k starts in e (k >= 1).
+float tierStart(int k) {
+    return TIER1 + (k - 1) * TIER_H;
+}
+// Tier k's ground for e: linear in e within the tier.
+float tierY(int k, float e) {
+    return k <= 0 ? e : tierStart(k) + (e - tierStart(k)) * SHELF;
+}
+
+// e at the world's mesh sample (i, j) (SUB a cell), kept once worked out: the mesh, the collision and every height
+// asked for read the same values. Cleared when the layout (its levelled ground) is made again.
+std::vector<float> sGridE;
+int sGridN = 0;
+
+void clearGridE() {
+    sGridE.clear();
+    sGridN = 0;
+}
+
+float gridE(int i, int j) {
+    const int n = pc_rplus_squares() * pc_rplus_cells() * SUB + 1;
+    if (i < 0 || j < 0 || i >= n || j >= n || n > 4096) {
+        return eAt((float)i / SUB, (float)j / SUB);
+    }
+    if (sGridN != n || sGridE.empty()) {
+        sGridE.assign((size_t)n * n, NAN);
+        sGridN = n;
+    }
+    float& v = sGridE[(size_t)j * n + i];
+    if (std::isnan(v)) {
+        v = eAt((float)i / SUB, (float)j / SUB);
+    }
+    return v;
+}
+
+// e at (gx, gy) as the mesh has it: linear over each of a quad's two triangles (split on the (i+1, j)-(i, j+1)
+// diagonal, as drawn), so the tiers' edges are the straight lines the mesh draws.
+float meshE(float gx, float gy) {
+    const float sx = gx * SUB, sy = gy * SUB;
+    const int i = (int)floorf(sx), j = (int)floorf(sy);
+    const float tx = sx - i, ty = sy - j;
+    if (tx + ty <= 1.0f) {
+        const float a = gridE(i, j);
+        return a + (gridE(i + 1, j) - a) * tx + (gridE(i, j + 1) - a) * ty;
+    }
+    const float d = gridE(i + 1, j + 1);
+    return d + (gridE(i, j + 1) - d) * (1.0f - tx) + (gridE(i + 1, j) - d) * (1.0f - ty);
+}
+
+// The ground's height at (gx, gy) in cells from the world's corner: exactly the drawn and solid ground.
+float heightAt(float gx, float gy) {
+    const float e = meshE(gx, gy);
+    return tierY(tierOf(e), e);
 }
 
 // The ground's height at world position (x, z).
@@ -254,6 +313,11 @@ struct Fence {
     float x0, z0, x1, z1;
     int kind;
 };
+// Stairs up a cliff where a path climbs it: from the bottom (bx, bz) on the lower shelf at by to the top (tx, tz)
+// just over the cliff's edge at ty, half wide.
+struct Ramp {
+    float bx, bz, tx, tz, by, ty, half;
+};
 float segDist2(const Seg& sg, float x, float z) {
     const float dx = sg.x1 - sg.x0, dz = sg.z1 - sg.z0, l2 = dx * dx + dz * dz;
     float t = l2 > 0.0f ? ((x - sg.x0) * dx + (z - sg.z0) * dz) / l2 : 0.0f;
@@ -274,6 +338,7 @@ const std::vector<Deco>& layoutDecos();
 // What the ground is made into at (x, z): 0 the land's own, 1 a path, 2 a town's plaza.
 int groundMark(float x, float z);
 const std::vector<Fence>& layoutFences();
+const std::vector<Ramp>& layoutRamps();
 // Where Link starts (the start town's plaza, or land by the start cell) and its room.
 int startSpot(float* x, float* z);
 
@@ -571,6 +636,129 @@ void fenceQuads(const Fence& f, std::vector<HouseQuad>& out) {
     }
 }
 
+// Stairs: treads and risers from the bottom to the top, and a stone side under each step down to the shelf.
+void rampQuads(const Ramp& rp, std::vector<HouseQuad>& out) {
+    const float dx = rp.tx - rp.bx, dz = rp.tz - rp.bz, len = sqrtf(dx * dx + dz * dz);
+    if (len < 1.0f) {
+        return;
+    }
+    const float ux = dx / len, uz = dz / len, nx = -uz * rp.half, nz = ux * rp.half;
+    const int steps = std::max(4, (int)((rp.ty - rp.by) / 45.0f));
+    auto put = [&](const float (&q)[4][3], u8 r, u8 g, u8 b) {
+        HouseQuad h;
+        memcpy(h.p, q, sizeof(q));
+        h.r = r;
+        h.g = g;
+        h.b = b;
+        out.push_back(h);
+    };
+    const float base = rp.by - 80.0f;
+    for (int k = 0; k < steps; k++) {
+        const float t0 = len * k / steps, t1 = len * (k + 1) / steps;
+        const float y0 = rp.by + (rp.ty - rp.by) * k / steps, y1 = rp.by + (rp.ty - rp.by) * (k + 1) / steps;
+        const float ax = rp.bx + ux * t0, az = rp.bz + uz * t0, bx = rp.bx + ux * t1, bz = rp.bz + uz * t1;
+        // Riser at t0 from y0 to y1, tread from t0 to t1 at y1.
+        put({{ax - nx, y0, az - nz}, {ax + nx, y0, az + nz}, {ax + nx, y1, az + nz}, {ax - nx, y1, az - nz}}, 150, 142, 128);
+        put({{ax - nx, y1, az - nz}, {ax + nx, y1, az + nz}, {bx + nx, y1, bz + nz}, {bx - nx, y1, bz - nz}}, 200, 192, 176);
+        // Sides.
+        put({{ax - nx, base, az - nz}, {bx - nx, base, bz - nz}, {bx - nx, y1, bz - nz}, {ax - nx, y1, az - nz}}, 132, 126, 116);
+        put({{ax + nx, base, az + nz}, {bx + nx, base, bz + nz}, {bx + nx, y1, bz + nz}, {ax + nx, y1, az + nz}}, 132, 126, 116);
+    }
+}
+
+// A point of a mesh triangle with its e (gi: its sample's index in the room's grid, or -1 for a point made on an edge).
+struct TP {
+    float x, z, e;
+    int gi;
+};
+// The point on p-q where e is t, worked out from the same end whichever way the edge is walked, so neighbouring
+// triangles get the very same point.
+TP crossE(const TP& p, const TP& q, float t) {
+    const bool flip = q.x < p.x || (q.x == p.x && q.z < p.z);
+    const TP& a = flip ? q : p;
+    const TP& b = flip ? p : q;
+    const float s = (t - a.e) / (b.e - a.e);
+    return {a.x + (b.x - a.x) * s, a.z + (b.z - a.z) * s, t, -1};
+}
+// Keeps the part of a convex polygon with e >= t (above) or e <= t.
+void clipE(std::vector<TP>& poly, float t, bool above) {
+    std::vector<TP> out;
+    const size_t n = poly.size();
+    for (size_t a = 0; a < n; a++) {
+        const TP& p = poly[a];
+        const TP& q = poly[(a + 1) % n];
+        const bool pin = above ? p.e >= t : p.e <= t, qin = above ? q.e >= t : q.e <= t;
+        if (pin) {
+            out.push_back(p);
+        }
+        if (pin != qin && p.e != q.e) {
+            out.push_back(crossE(p, q, t));
+        }
+    }
+    poly.swap(out);
+}
+// A triangle's ground on one tier (its points' heights are tierY(tier, e)).
+struct Piece {
+    int tier;
+    std::vector<TP> v;
+};
+// A cliff: upright from y0 (the lower shelf) to y1 (the upper one) along p -> q, facing (q - p turned: (dz, -dx))
+// the lower shelf.
+struct Cliff {
+    float px, pz, qx, qz, y0, y1;
+};
+// A mesh triangle cut where its e crosses into another tier: a piece per tier and a cliff on each crossing above
+// tier 1 (the lowland rises smoothly into tier 1).
+void splitTri(const TP (&t)[3], std::vector<Piece>& pieces, std::vector<Cliff>& cliffs) {
+    const int k0 = tierOf(t[0].e), k1 = tierOf(t[1].e), k2 = tierOf(t[2].e);
+    const int kmin = std::min(k0, std::min(k1, k2)), kmax = std::max(k0, std::max(k1, k2));
+    if (kmin == kmax) {
+        pieces.push_back({kmin, {t[0], t[1], t[2]}});
+        return;
+    }
+    for (int k = kmin; k <= kmax; k++) {
+        Piece pc{k, {t[0], t[1], t[2]}};
+        if (k > kmin) {
+            clipE(pc.v, tierStart(k), true);
+        }
+        if (k < kmax) {
+            clipE(pc.v, tierStart(k + 1), false);
+        }
+        if (pc.v.size() >= 3) {
+            pieces.push_back(pc);
+        }
+    }
+    // e's slope over the triangle, to face each cliff downhill.
+    const float dx1 = t[1].x - t[0].x, dz1 = t[1].z - t[0].z, de1 = t[1].e - t[0].e;
+    const float dx2 = t[2].x - t[0].x, dz2 = t[2].z - t[0].z, de2 = t[2].e - t[0].e;
+    const float det = dx1 * dz2 - dx2 * dz1;
+    if (det == 0.0f) {
+        return;
+    }
+    const float ga = (de1 * dz2 - de2 * dz1) / det, gb = (dx1 * de2 - dx2 * de1) / det;
+    for (int k = std::max(kmin + 1, 2); k <= kmax; k++) {
+        const float th = tierStart(k);
+        TP pts[2];
+        int np = 0;
+        for (int a = 0; a < 3 && np < 2; a++) {
+            const TP& p = t[a];
+            const TP& q = t[(a + 1) % 3];
+            if ((p.e < th) != (q.e < th)) {
+                pts[np++] = crossE(p, q, th);
+            }
+        }
+        if (np < 2) {
+            continue;
+        }
+        Cliff c{pts[0].x, pts[0].z, pts[1].x, pts[1].z, tierY(k - 1, th), tierStart(k)};
+        if ((c.qz - c.pz) * ga - (c.qx - c.px) * gb > 0.0f) {
+            std::swap(c.px, c.qx);
+            std::swap(c.pz, c.qz);
+        }
+        cliffs.push_back(c);
+    }
+}
+
 // A generated room's land: the drawing, and with o_bgw its collision (allocated in the current heap, the room's).
 // Without o_bgw only the drawing, from the host's heap: a far room's land, drawn while its own room isn't.
 PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
@@ -589,31 +777,40 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     roomCentre(roomNo, &rx, &rz);
     const float bx = rx - ROOM_UNITS * 0.5f, bz = rz - ROOM_UNITS * 0.5f;  // the room's north-west corner
 
-    // Samples.
+    // Samples: e, and the ground's height there.
+    float* es = new float[(size_t)nv * nv];
     float* ys = new float[(size_t)nv * nv];
-    if (ys == nullptr) {
+    if (es == nullptr || ys == nullptr) {
+        delete[] es;
+        delete[] ys;
         return nullptr;
     }
     for (int j = 0; j < nv; j++) {
         for (int i = 0; i < nv; i++) {
-            ys[j * nv + i] = heightAt(gx0 + (float)i / SUB, gy0 + (float)j / SUB);
+            const float e = gridE(gx0 * SUB + i, gy0 * SUB + j);
+            es[j * nv + i] = e;
+            ys[j * nv + i] = tierY(tierOf(e), e);
         }
     }
     auto Y = [&](int i, int j) { return ys[j * nv + i]; };
     auto keep = [&](int i, int j) {
         return Y(i, j) > KEEP_Y || Y(i + 1, j) > KEEP_Y || Y(i, j + 1) > KEEP_Y || Y(i + 1, j + 1) > KEEP_Y;
     };
-
-    // Kept quads, in collision block order.
-    int quads = 0;
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
-            quads += keep(i, j) ? 1 : 0;
-        }
-    }
+    auto tp = [&](int i, int j) { return TP{bx + i * step, bz + j * step, es[j * nv + i], j * nv + i}; };
+    // A quad's two triangles (as the collision has them), each cut into its tiers' pieces and cliffs.
+    std::vector<Piece> pieces;
+    std::vector<Cliff> cliffs;
+    auto quadPieces = [&](int i, int j, int tri) {
+        pieces.clear();
+        cliffs.clear();
+        const TP a = tp(i, j), b = tp(i, j + 1), c = tp(i + 1, j), d = tp(i + 1, j + 1);
+        const TP t0[3] = {a, b, c}, t1[3] = {c, b, d};
+        splitTri(tri == 0 ? t0 : t1, pieces, cliffs);
+    };
 
     PcRplusTerrain* t = far ? new (std::malloc(sizeof(PcRplusTerrain))) PcRplusTerrain() : new PcRplusTerrain();
     if (t == nullptr) {
+        delete[] es;
         delete[] ys;
         return nullptr;
     }
@@ -655,95 +852,128 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         q.b = 40;
         house.push_back(q);
     }
-    const size_t nDrawVtx = (size_t)quads * 6 + house.size() * 6;
-    pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * nDrawVtx + 1) : new Vtx[nDrawVtx];
+    for (const Ramp& rp : layoutRamps()) {
+        if (inRoom((rp.bx + rp.tx) * 0.5f, (rp.bz + rp.tz) * 0.5f)) {
+            rampQuads(rp, house);
+        }
+    }
+    std::vector<Vtx> dv;
+    dv.reserve((size_t)n * n + house.size() * 6);
     pk.mRows = n < 256 ? n : 256;
-    Vtx* out = pk.mVtx;
     const float lx = 0.42f, ly = 0.80f, lz = 0.42f;  // light direction (normalised enough)
+    auto emitTri = [&](const float (&px)[3], const float (&py)[3], const float (&pz)[3]) {
+        // Normal (v1 - v0) x (v2 - v0), up for this winding.
+        float ax = px[1] - px[0], ay = py[1] - py[0], az = pz[1] - pz[0];
+        float qx = px[2] - px[0], qy = py[2] - py[0], qz = pz[2] - pz[0];
+        float nx = ay * qz - az * qy, ny = az * qx - ax * qz, nz = ax * qy - ay * qx;
+        float len = sqrtf(nx * nx + ny * ny + nz * nz);
+        if (len > 0) {
+            nx /= len; ny /= len; nz /= len;
+        }
+        float lit = nx * lx + ny * ly + nz * lz;
+        float tone = lit > 0.55f ? 1.0f : 0.72f;  // two tones, as the game's toon light
+        for (int k = 0; k < 3; k++) {
+            const float gxw = (px[k] - x0) / cs, gyw = (pz[k] - z0) / cs;
+            char b = biomeNear(gxw, gyw);
+            Rgb col = biomeColour(b);
+            if (py[k] < LAND_BASE + 60.0f) {
+                col = biomeColour('d');
+            } else if (ny < 0.75f && b != 's') {
+                col = biomeColour('r');
+            } else {
+                // Patches: the grass (and the rest) lighter and darker in broad soft blotches.
+                const float patch = vnoise(px[k] * 0.00035f, pz[k] * 0.00035f, 131) * 0.6f +
+                                    vnoise(px[k] * 0.0012f, pz[k] * 0.0012f, 137) * 0.4f;
+                const float m = 0.86f + patch * 0.26f;
+                col.r = (u8)std::min(255.0f, col.r * m);
+                col.g = (u8)std::min(255.0f, col.g * m);
+                col.b = (u8)std::min(255.0f, col.b * m);
+                const int mark = groundMark(px[k], pz[k]);
+                if (mark == 1) {
+                    col = {172, 136, 92};   // a dirt path
+                } else if (mark == 2) {
+                    col = {196, 188, 172};  // the plaza's paving
+                }
+            }
+            float tk = tone * (py[k] < 0.0f ? 0.85f : 1.0f);
+            dv.push_back({px[k], py[k], pz[k], (u8)(col.r * tk), (u8)(col.g * tk), (u8)(col.b * tk), 0xFF});
+        }
+    };
+    auto emitCliff = [&](const Cliff& c) {
+        // Rock, lit by which way it faces; a little lighter at the top, and in bands that differ cliff to cliff.
+        const float dx = c.qx - c.px, dz = c.qz - c.pz, l = sqrtf(dx * dx + dz * dz);
+        if (l <= 0.0f) {
+            return 0;
+        }
+        const float lit = (dz / l) * lx + (-dx / l) * lz;
+        const float tone = lit > 0.1f ? 0.95f : 0.7f;
+        const float vary = 0.9f + 0.2f * vnoise(c.px * 0.0009f, c.pz * 0.0009f, 151);
+        const Rgb rock = biomeColour('r');
+        auto shade = [&](float k) { return Vtx{0, 0, 0, (u8)std::min(255.0f, rock.r * k), (u8)std::min(255.0f, rock.g * k),
+                                               (u8)std::min(255.0f, rock.b * k), 0xFF}; };
+        Vtx lo = shade(tone * vary * 0.82f), hi = shade(tone * vary * 1.04f);
+        const float yb = c.y0 - 40.0f;
+        Vtx v[4] = {lo, hi, hi, lo};
+        const float pts[4][3] = {{c.px, yb, c.pz}, {c.px, c.y1, c.pz}, {c.qx, c.y1, c.qz}, {c.qx, yb, c.qz}};
+        for (int k = 0; k < 4; k++) {
+            v[k].x = pts[k][0];
+            v[k].y = pts[k][1];
+            v[k].z = pts[k][2];
+        }
+        const int order[6] = {0, 1, 2, 0, 2, 3};
+        for (int k : order) {
+            dv.push_back(v[k]);
+        }
+        return 2;
+    };
     for (int j = 0; j < n && j < 256; j++) {
         for (int i = 0; i < n; i++) {
             if (!keep(i, j)) {
                 continue;
             }
-            int ci[6][2] = {{i, j}, {i, j + 1}, {i + 1, j}, {i + 1, j}, {i, j + 1}, {i + 1, j + 1}};
             for (int tri = 0; tri < 2; tri++) {
-                int (*c)[2] = &ci[tri * 3];
-                float px[3], py[3], pz[3];
-                for (int k = 0; k < 3; k++) {
-                    px[k] = bx + c[k][0] * step;
-                    pz[k] = bz + c[k][1] * step;
-                    py[k] = Y(c[k][0], c[k][1]);
-                }
-                // Normal (v1 - v0) x (v2 - v0), up for this winding.
-                float ax = px[1] - px[0], ay = py[1] - py[0], az = pz[1] - pz[0];
-                float qx = px[2] - px[0], qy = py[2] - py[0], qz = pz[2] - pz[0];
-                float nx = ay * qz - az * qy, ny = az * qx - ax * qz, nz = ax * qy - ay * qx;
-                float len = sqrtf(nx * nx + ny * ny + nz * nz);
-                if (len > 0) {
-                    nx /= len; ny /= len; nz /= len;
-                }
-                float lit = nx * lx + ny * ly + nz * lz;
-                float tone = lit > 0.55f ? 1.0f : 0.72f;  // two tones, as the game's toon light
-                for (int k = 0; k < 3; k++) {
-                    float gxw = gx0 + (float)c[k][0] / SUB, gyw = gy0 + (float)c[k][1] / SUB;
-                    char b = biomeNear(gxw, gyw);
-                    Rgb col = biomeColour(b);
-                    if (py[k] < LAND_BASE + 60.0f) {
-                        col = biomeColour('d');
-                    } else if (ny < 0.75f && b != 's') {
-                        col = biomeColour('r');
-                    } else {
-                        // Patches: the grass (and the rest) lighter and darker in broad soft blotches.
-                        const float patch = vnoise(px[k] * 0.00035f, pz[k] * 0.00035f, 131) * 0.6f +
-                                            vnoise(px[k] * 0.0012f, pz[k] * 0.0012f, 137) * 0.4f;
-                        const float m = 0.86f + patch * 0.26f;
-                        col.r = (u8)std::min(255.0f, col.r * m);
-                        col.g = (u8)std::min(255.0f, col.g * m);
-                        col.b = (u8)std::min(255.0f, col.b * m);
-                        const int mark = groundMark(px[k], pz[k]);
-                        if (mark == 1) {
-                            col = {172, 136, 92};   // a dirt path
-                        } else if (mark == 2) {
-                            col = {196, 188, 172};  // the plaza's paving
+                quadPieces(i, j, tri);
+                for (const Piece& pc : pieces) {
+                    for (size_t a = 1; a + 1 < pc.v.size(); a++) {
+                        const TP* q[3] = {&pc.v[0], &pc.v[a], &pc.v[a + 1]};
+                        float px[3], py[3], pz[3];
+                        for (int k = 0; k < 3; k++) {
+                            px[k] = q[k]->x;
+                            pz[k] = q[k]->z;
+                            py[k] = tierY(pc.tier, q[k]->e);
                         }
+                        emitTri(px, py, pz);
+                        pk.mRowTris[j]++;
                     }
-                    if (py[k] < 0.0f) {
-                        tone *= 0.85f;
-                    }
-                    out->x = px[k];
-                    out->y = py[k];
-                    out->z = pz[k];
-                    out->r = (u8)(col.r * tone);
-                    out->g = (u8)(col.g * tone);
-                    out->b = (u8)(col.b * tone);
-                    out->a = 0xFF;
-                    out++;
+                }
+                for (const Cliff& c : cliffs) {
+                    pk.mRowTris[j] += emitCliff(c);
                 }
             }
-            pk.mRowTris[j] += 2;
         }
     }
-    pk.mTriCount = quads * 2;
+    pk.mTriCount = (int)(dv.size() / 3);
     // The house, after the land's rows.
     for (const HouseQuad& h : house) {
         const int order[6] = {0, 1, 2, 0, 2, 3};
         for (int k = 0; k < 6; k++) {
             const float* p = h.p[order[k]];
-            out->x = p[0];
-            out->y = p[1];
-            out->z = p[2];
-            out->r = h.r;
-            out->g = h.g;
-            out->b = h.b;
-            out->a = 0xFF;
-            out++;
+            dv.push_back({p[0], p[1], p[2], h.r, h.g, h.b, 0xFF});
         }
     }
     if (!house.empty()) {
         pk.mRowTris[pk.mRows++] = (int)house.size() * 2;
         pk.mTriCount += (int)house.size() * 2;
     }
+    pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * dv.size() + 1) : new Vtx[dv.size() + 1];
+    if (pk.mVtx == nullptr) {
+        pk.mTriCount = 0;
+    } else if (!dv.empty()) {
+        memcpy(pk.mVtx, dv.data(), sizeof(Vtx) * dv.size());
+    }
+
     if (far) {
+        delete[] es;
         delete[] ys;
         return t;
     }
@@ -884,24 +1114,165 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         walls.push_back(w1);
         walls.push_back(w2);
     }
-    // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall, 4 per floor.
-    const u32 nVtx = (u32)nv * nv + (u32)walls.size() * 4 + (u32)floors.size() * 4;
-    const u32 nTri = (u32)n * n * 2 + (u32)walls.size() * 2 + (u32)floors.size() * 2;
-    int* blkTris = new int[(size_t)nb * nb]();
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
-            blkTris[(j / BLK) * nb + (i / BLK)] += 2;
+    // Cliffs: facing the lower shelf (Link walks off the top), from under the lower shelf to the upper one's edge;
+    // left open where stairs come up.
+    auto blkAt = [&](float x, float z) {
+        int qi = (int)((x - bx) / step), qj = (int)((z - bz) / step);
+        qi = qi < 0 ? 0 : qi >= n ? n - 1 : qi;
+        qj = qj < 0 ? 0 : qj >= n ? n - 1 : qj;
+        return (qj / BLK) * nb + (qi / BLK);
+    };
+    auto addCliffWall = [&](float px, float pz, float qx, float qz, float y0, float y1) {
+        walls.push_back({blkAt((px + qx) * 0.5f, (pz + qz) * 0.5f), px, pz, qx, qz, y0 - 30.0f, y1, G_STONE});
+    };
+    // Collision vertices (x y z): every sample first (the ground's triangles use the sample grid's indices), then
+    // the points cut ones need, the walls' and the floors'.
+    std::vector<float> cv;
+    cv.reserve((size_t)nv * nv * 3 + 4096);
+    for (int j = 0; j < nv; j++) {
+        for (int i = 0; i < nv; i++) {
+            cv.push_back(bx + i * step);
+            cv.push_back(Y(i, j));
+            cv.push_back(bz + j * step);
         }
     }
-    for (const Wall& w : walls) {
-        blkTris[w.blk] += 2;
+    auto addV = [&](float x, float y, float z) {
+        cv.push_back(x);
+        cv.push_back(y);
+        cv.push_back(z);
+        return (u32)(cv.size() / 3 - 1);
+    };
+    struct CTri {
+        u32 a, b, c;
+        u16 g;
+        int blk;
+    };
+    std::vector<CTri> ctris;
+    ctris.reserve((size_t)n * n * 2 + 1024);
+    for (int j = 0; j < n; j++) {
+        for (int i = 0; i < n; i++) {
+            const int qb = (j / BLK) * nb + (i / BLK);
+            for (int tri = 0; tri < 2; tri++) {
+                quadPieces(i, j, tri);
+                for (const Piece& pc : pieces) {
+                    const float yA = tierY(pc.tier, pc.v[0].e);
+                    float ymid = 0.0f, cxm = 0.0f, czm = 0.0f;
+                    for (const TP& v : pc.v) {
+                        ymid += tierY(pc.tier, v.e) / pc.v.size();
+                        cxm += v.x / pc.v.size();
+                        czm += v.z / pc.v.size();
+                    }
+                    // How flat: the piece's rise over a sample step.
+                    float rise = 0.0f;
+                    for (const TP& v : pc.v) {
+                        rise = std::max(rise, fabsf(tierY(pc.tier, v.e) - yA));
+                    }
+                    const float ny = step / sqrtf(step * step + rise * rise);
+                    Ground g = groundOf(biomeNear((cxm - x0) / cs, (czm - z0) / cs), ymid, ny);
+                    if (ymid > LAND_BASE + 60.0f) {
+                        const int mark = groundMark(cxm, czm);
+                        g = mark == 1 ? G_DIRT : mark == 2 ? G_STONE : g;
+                    }
+                    std::vector<u32> idx;
+                    for (const TP& v : pc.v) {
+                        idx.push_back(v.gi >= 0 ? (u32)v.gi : addV(v.x, tierY(pc.tier, v.e), v.z));
+                    }
+                    for (size_t k = 1; k + 1 < idx.size(); k++) {
+                        ctris.push_back({idx[0], idx[k], idx[k + 1], (u16)g, qb});
+                    }
+                }
+                for (const Cliff& c : cliffs) {
+                    // Open where stairs reach the top: the part of the edge within the stairs' half (and some) of
+                    // their top left out.
+                    float t0 = 0.0f, t1 = 1.0f;
+                    bool cut = false;
+                    float ca = 1.0f, cb = 0.0f;
+                    const float ex = c.qx - c.px, ez = c.qz - c.pz, el2 = ex * ex + ez * ez;
+                    for (const Ramp& rp : layoutRamps()) {
+                        const float r = rp.half + 120.0f;
+                        const float fx = c.px - rp.tx, fz = c.pz - rp.tz;
+                        // |p + t e - top|^2 = r^2
+                        const float qa = el2, qb2 = 2.0f * (fx * ex + fz * ez), qc = fx * fx + fz * fz - r * r;
+                        const float disc = qb2 * qb2 - 4.0f * qa * qc;
+                        if (qa <= 0.0f || disc <= 0.0f) {
+                            continue;
+                        }
+                        const float sq = sqrtf(disc);
+                        const float lo = (-qb2 - sq) / (2.0f * qa), hi = (-qb2 + sq) / (2.0f * qa);
+                        if (hi <= 0.0f || lo >= 1.0f) {
+                            continue;
+                        }
+                        cut = true;
+                        ca = std::min(ca, lo);
+                        cb = std::max(cb, hi);
+                    }
+                    if (!cut) {
+                        addCliffWall(c.px, c.pz, c.qx, c.qz, c.y0, c.y1);
+                        continue;
+                    }
+                    if (ca > t0) {
+                        addCliffWall(c.px, c.pz, c.px + ex * ca, c.pz + ez * ca, c.y0, c.y1);
+                    }
+                    if (cb < t1) {
+                        addCliffWall(c.px + ex * cb, c.pz + ez * cb, c.qx, c.qz, c.y0, c.y1);
+                    }
+                }
+            }
+        }
     }
-    for (const Floor& f : floors) {
-        blkTris[f.blk] += 2;
+    // Walls (shore, huts, fences, cliffs): (p bottom, p top, q bottom) and (q bottom, p top, q top). The normal
+    // (v1 - v0) x (v2 - v0) = up x (q - p), which points to the left of p -> q: the sea.
+    for (const Wall& wl : walls) {
+        const float qy0 = std::isnan(wl.qy0) ? wl.y0 : wl.qy0, qy1 = std::isnan(wl.qy1) ? wl.y1 : wl.qy1;
+        const u32 v = addV(wl.px, wl.y0, wl.pz);
+        addV(wl.px, wl.y1, wl.pz);
+        addV(wl.qx, qy0, wl.qz);
+        addV(wl.qx, qy1, wl.qz);
+        ctris.push_back({v, v + 1, v + 2, (u16)wl.g, wl.blk});
+        ctris.push_back({v + 2, v + 1, v + 3, (u16)wl.g, wl.blk});
     }
+    // Floors, facing up: (x0 z0, x0 z1, x1 z0) and (x1 z0, x0 z1, x1 z1).
+    for (size_t f = 0; f < floors.size(); f++) {
+        const Floor& fl = floors[f];
+        const u32 v = addV(fl.x0, fl.y, fl.z0);
+        addV(fl.x0, fl.y, fl.z1);
+        addV(fl.x1, fl.y, fl.z0);
+        addV(fl.x1, fl.y, fl.z1);
+        ctris.push_back({v, v + 1, v + 2, (u16)(G_COUNT + f), fl.blk});
+        ctris.push_back({v + 2, v + 1, v + 3, (u16)(G_COUNT + f), fl.blk});
+    }
+    // Stairs: a slope from their bottom to their top (the steps are only drawn), facing up.
+    for (const Ramp& rp : layoutRamps()) {
+        const float mx = (rp.bx + rp.tx) * 0.5f, mz = (rp.bz + rp.tz) * 0.5f;
+        if (mx < bx || mx >= bx + n * step || mz < bz || mz >= bz + n * step) {
+            continue;
+        }
+        const float dx = rp.tx - rp.bx, dz = rp.tz - rp.bz, len = sqrtf(dx * dx + dz * dz);
+        if (len < 1.0f) {
+            continue;
+        }
+        const float nx = -dz / len * rp.half, nz = dx / len * rp.half;
+        const u32 v = addV(rp.bx - nx, rp.by, rp.bz - nz);
+        addV(rp.bx + nx, rp.by, rp.bz + nz);
+        addV(rp.tx - nx, rp.ty, rp.tz - nz);
+        addV(rp.tx + nx, rp.ty, rp.tz + nz);
+        // Up for (v0, v1, v2) when (v1 - v0) x (v2 - v0) has y > 0: (2n) x (len u) has y = 2 (nz ux - nx uz) * len.
+        const bool up = (nz * dx - nx * dz) > 0.0f;
+        const int blkR = blkAt(mx, mz);
+        if (up) {
+            ctris.push_back({v, v + 1, v + 2, (u16)G_STONE, blkR});
+            ctris.push_back({v + 2, v + 1, v + 3, (u16)G_STONE, blkR});
+        } else {
+            ctris.push_back({v, v + 2, v + 1, (u16)G_STONE, blkR});
+            ctris.push_back({v + 2, v + 3, v + 1, (u16)G_STONE, blkR});
+        }
+    }
+    std::stable_sort(ctris.begin(), ctris.end(), [](const CTri& p, const CTri& q) { return p.blk < q.blk; });
+    const u32 nVtx = (u32)(cv.size() / 3);
+    const u32 nTri = (u32)ctris.size();
     u32 nBlk = 0;
-    for (int b = 0; b < nb * nb; b++) {
-        nBlk += blkTris[b] != 0 ? 1 : 0;
+    for (size_t k = 0; k < ctris.size(); k++) {
+        nBlk += (k == 0 || ctris[k].blk != ctris[k - 1].blk) ? 1 : 0;
     }
     // Tree: the leaves (one per block), then 8-way parents up to one root.
     u32 nTree = nBlk;
@@ -910,8 +1281,8 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         nTree += level;
     }
     if (nVtx > 0xFFFF || nTri > 0xFFFF || nTree > 0xFFFF) {
-        fprintf(stderr, "[rplus] room %d: too many collision polygons (%u)\n", roomNo, nTri);
-        delete[] blkTris;
+        fprintf(stderr, "[rplus] room %d: too many collision polygons (%u, %u points)\n", roomNo, nTri, nVtx);
+        delete[] es;
         delete[] ys;
         return t;
     }
@@ -941,106 +1312,25 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     o.u32at(0x28, nInfo);
     o.u32at(0x2C, offTi);
     o.u32at(0x30, 0);
-    for (int j = 0; j < nv; j++) {
-        for (int i = 0; i < nv; i++) {
-            u32 at = offV + (u32)(j * nv + i) * 12;
-            o.f32at(at, bx + i * step);
-            o.f32at(at + 4, Y(i, j));
-            o.f32at(at + 8, bz + j * step);
-        }
+    for (u32 v = 0; v < nVtx; v++) {
+        const u32 at = offV + v * 12;
+        o.f32at(at, cv[v * 3]);
+        o.f32at(at + 4, cv[v * 3 + 1]);
+        o.f32at(at + 8, cv[v * 3 + 2]);
     }
-    for (size_t w = 0; w < walls.size(); w++) {
-        const Wall& wl = walls[w];
-        const float qy0 = std::isnan(wl.qy0) ? wl.y0 : wl.qy0, qy1 = std::isnan(wl.qy1) ? wl.y1 : wl.qy1;
-        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {wl.y0, wl.y1, qy0, qy1},
-                    vz[4] = {wl.pz, wl.pz, wl.qz, wl.qz};
-        for (int k = 0; k < 4; k++) {
-            u32 at = offV + ((u32)nv * nv + (u32)w * 4 + k) * 12;
-            o.f32at(at, vx[k]);
-            o.f32at(at + 4, vy[k]);
-            o.f32at(at + 8, vz[k]);
-        }
-    }
-    const u32 floorVtx0 = (u32)nv * nv + (u32)walls.size() * 4;
-    for (size_t f = 0; f < floors.size(); f++) {
-        const Floor& fl = floors[f];
-        const float vx[4] = {fl.x0, fl.x0, fl.x1, fl.x1}, vz[4] = {fl.z0, fl.z1, fl.z0, fl.z1};
-        for (int k = 0; k < 4; k++) {
-            u32 at = offV + (floorVtx0 + (u32)f * 4 + k) * 12;
-            o.f32at(at, vx[k]);
-            o.f32at(at + 4, fl.y);
-            o.f32at(at + 8, vz[k]);
-        }
-    }
-    u32 tri = 0, blk = 0;
-    for (int bj = 0; bj < nb; bj++) {
-        for (int bi = 0; bi < nb; bi++) {
-            if (blkTris[bj * nb + bi] == 0) {
-                continue;
-            }
+    u32 blk = 0;
+    for (u32 tri = 0; tri < nTri; tri++) {
+        const CTri& ct = ctris[tri];
+        if (tri == 0 || ct.blk != ctris[tri - 1].blk) {
             o.u16at(offB + blk * 2, (u16)tri);
             blk++;
-            for (int j = bj * BLK; j < bj * BLK + BLK && j < n; j++) {
-                for (int i = bi * BLK; i < bi * BLK + BLK && i < n; i++) {
-                    u16 a = (u16)(j * nv + i), b = (u16)((j + 1) * nv + i), c = (u16)(j * nv + i + 1),
-                        d = (u16)((j + 1) * nv + i + 1);
-                    u16 tv[2][3] = {{a, b, c}, {c, b, d}};
-                    for (int k = 0; k < 2; k++) {
-                        float ymid = (Y(i, j) + Y(i + 1, j + 1)) * 0.5f;
-                        float slope = fabsf(Y(i + 1, j) - Y(i, j)) + fabsf(Y(i, j + 1) - Y(i, j));
-                        float ny = step / sqrtf(step * step + slope * slope);
-                        Ground g = groundOf(biomeNear(gx0 + (i + 0.5f) / SUB, gy0 + (j + 0.5f) / SUB), ymid, ny);
-                        if (ymid > LAND_BASE + 60.0f) {
-                            const int mark = groundMark(bx + (i + 0.5f) * step, bz + (j + 0.5f) * step);
-                            g = mark == 1 ? G_DIRT : mark == 2 ? G_STONE : g;
-                        }
-                        u32 at = offT + tri * 10;
-                        o.u16at(at, tv[k][0]);
-                        o.u16at(at + 2, tv[k][1]);
-                        o.u16at(at + 4, tv[k][2]);
-                        o.u16at(at + 6, (u16)g);
-                        o.u16at(at + 8, 0);
-                        tri++;
-                    }
-                }
-            }
-            // The block's shore walls: (p bottom, p top, q bottom) and (q bottom, p top, q top). The normal
-            // (v1 - v0) x (v2 - v0) = up x (q - p), which points to the left of p -> q: the sea.
-            const int thisBlk = bj * nb + bi;
-            for (size_t w = 0; w < walls.size(); w++) {
-                if (walls[w].blk != thisBlk) {
-                    continue;
-                }
-                const u16 v = (u16)((u32)nv * nv + (u32)w * 4);
-                const u16 tv[2][3] = {{v, (u16)(v + 1), (u16)(v + 2)}, {(u16)(v + 2), (u16)(v + 1), (u16)(v + 3)}};
-                for (int k = 0; k < 2; k++) {
-                    u32 at = offT + tri * 10;
-                    o.u16at(at, tv[k][0]);
-                    o.u16at(at + 2, tv[k][1]);
-                    o.u16at(at + 4, tv[k][2]);
-                    o.u16at(at + 6, (u16)walls[w].g);
-                    o.u16at(at + 8, 0);
-                    tri++;
-                }
-            }
-            // The block's floors: (x0 z0, x0 z1, x1 z0) and (x1 z0, x0 z1, x1 z1), facing up.
-            for (size_t f = 0; f < floors.size(); f++) {
-                if (floors[f].blk != thisBlk) {
-                    continue;
-                }
-                const u16 v = (u16)(floorVtx0 + (u32)f * 4);
-                const u16 tv[2][3] = {{v, (u16)(v + 1), (u16)(v + 2)}, {(u16)(v + 2), (u16)(v + 1), (u16)(v + 3)}};
-                for (int k = 0; k < 2; k++) {
-                    u32 at = offT + tri * 10;
-                    o.u16at(at, tv[k][0]);
-                    o.u16at(at + 2, tv[k][1]);
-                    o.u16at(at + 4, tv[k][2]);
-                    o.u16at(at + 6, (u16)(G_COUNT + f));
-                    o.u16at(at + 8, 0);
-                    tri++;
-                }
-            }
         }
+        const u32 at = offT + tri * 10;
+        o.u16at(at, (u16)ct.a);
+        o.u16at(at + 2, (u16)ct.b);
+        o.u16at(at + 4, (u16)ct.c);
+        o.u16at(at + 6, ct.g);
+        o.u16at(at + 8, 0);
     }
     // Tree nodes: leaves first, then each level's parents; the root is the last node.
     {
@@ -1098,7 +1388,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         o.u32at(at + 0xC, kGroundPass[g]);
     }
     memcpy(blob + offName, "rplus", 6);
-    delete[] blkTris;
+    delete[] es;
     delete[] ys;
 
     cBgS::ConvDzb(blob);
@@ -1401,10 +1691,23 @@ struct Layout {
     std::vector<Seg> paths;
     std::vector<Fence> fences;
     std::vector<Deco> decos;
+    std::vector<Ramp> ramps;
 };
 
 float natAt(const Layout& L, float x, float z) {
     return naturalY((x - L.x0) / L.cs, (z - L.z0) / L.cs);
+}
+
+// e as the mesh has it (with the levelled ground: only once the layout's pads are all in), and its tier.
+float meshEAt(const Layout& L, float x, float z) {
+    return meshE((x - L.x0) / L.cs, (z - L.z0) / L.cs);
+}
+int tierAt(const Layout& L, float x, float z) {
+    return tierOf(meshEAt(L, x, z));
+}
+// The ground's height for e where it is levelled (a town or a building's pad).
+float padGround(float e) {
+    return tierY(tierOf(e), e);
 }
 
 bool solidLand(const Layout& L, float x, float z) {
@@ -1508,6 +1811,7 @@ const Layout& layout() {
     made = true;
     atSeaMade = atSea;
     L = Layout();
+    clearGridE();
     worldOrigin(&L.x0, &L.z0);
     L.cs = cellSize();
     const float cs = L.cs;
@@ -1677,9 +1981,9 @@ const Layout& layout() {
             L.startZ = cz;
         }
         const int t = (int)L.towns.size();
-        L.towns.push_back({cx, cz, ty, R, start, a0, slots});
-        // Level past the houses' backs by a whole mesh step, so the mesh is flat under every house.
-        const float flat = R + HUT_DEPTH + 100.0f + L.cs / SUB;
+        L.towns.push_back({cx, cz, padGround(ty), R, start, a0, slots});
+        // Level past the houses' backs by more than a mesh triangle, so the mesh is flat under every house.
+        const float flat = R + HUT_DEPTH + 100.0f + 1.5f * L.cs / SUB;
         L.pads.push_back({cx, cz, ty, flat, flat + 1800.0f});
         // The ring's slots: the doors spread evenly, the homes without a way in between.
         int next = 0;
@@ -1693,12 +1997,12 @@ const Layout& layout() {
                 c.x = hx;
                 c.z = hz;
                 c.angle = ang;
-                c.y = ty;
+                c.y = padGround(ty);
                 c.town = t;
                 c.placed = true;
             } else {
                 const int room = roomAtXZ(L, hx, hz);
-                L.decos.push_back({cXyz(hx, ty, hz), ang, (int)(hash2((int)hx, (int)hz) % 4), room});
+                L.decos.push_back({cXyz(hx, padGround(ty), hz), ang, (int)(hash2((int)hx, (int)hz) % 4), room});
             }
             addPath(L, cx, cz, hx + sinf(a) * -150.0f, hz + cosf(a) * -150.0f);
             // Low brick walls either side of the yard in front of the house.
@@ -1715,12 +2019,13 @@ const Layout& layout() {
             continue;
         }
         landSpot(L, &c.x, &c.z);
-        c.y = natAt(L, c.x, c.z);
+        const float e = natAt(L, c.x, c.z);
+        c.y = padGround(e);
         c.placed = true;
-        // Wider than a mesh step (cs / SUB, ~1400 units), or the mesh's triangles span the levelled spot and
-        // the house stands above the ground on a slope or a ledge.
-        const float flat = std::max(650.0f, 1.6f * L.cs / SUB);
-        L.pads.push_back({c.x, c.z, c.y, flat, flat + std::max(850.0f, 1.5f * L.cs / SUB)});
+        // Past the house's back by more than a mesh triangle (cs / SUB, ~1400 units, a side), or the mesh's
+        // triangles span the levelled spot and the house stands above the ground on a slope or a ledge.
+        const float flat = std::max(650.0f, HUT_DEPTH + 1.5f * L.cs / SUB);
+        L.pads.push_back({c.x, c.z, e, flat, flat + std::max(850.0f, 1.5f * L.cs / SUB)});
     }
 
     // The doors, with their exit ids.
@@ -1804,6 +2109,141 @@ const Layout& layout() {
             tree.push_back(bj);
             addPath(L, sites[bi].x, sites[bi].z, sites[bj].x, sites[bj].z);
         }
+        // A net all above tier 1 gets a path down to the lowland (which joins the beach): from its lowest site
+        // to the nearest lowland, its stairs made below with the rest.
+        int low = tree[0];
+        for (int i : tree) {
+            if (meshEAt(L, sites[i].x, sites[i].z) < meshEAt(L, sites[low].x, sites[low].z)) {
+                low = i;
+            }
+        }
+        if (tierAt(L, sites[low].x, sites[low].z) >= 2) {
+            bool found = false;
+            for (float rr = 800.0f; rr <= 24000.0f && !found; rr += 800.0f) {
+                for (int k = 0; k < 24 && !found; k++) {
+                    const float a = k * 6.2831853f / 24.0f;
+                    const float px = sites[low].x + sinf(a) * rr, pz = sites[low].z + cosf(a) * rr;
+                    if (solidLand(L, px, pz) && tierAt(L, px, pz) <= 1 &&
+                        lineOnLand(L, sites[low].x, sites[low].z, px, pz)) {
+                        L.paths.push_back({sites[low].x, sites[low].z, px, pz});
+                        found = true;
+                    }
+                }
+            }
+            if (!found) {
+                fprintf(stderr, "[rplus] a site at %.0f %.0f has no way down to the lowland\n", sites[low].x, sites[low].z);
+            }
+        }
+    }
+
+    // Stairs where a path crosses a cliff (one tier up, above tier 1): the stairs come down onto the lower shelf
+    // along the path, as gently as the shelf below has room for.
+    int noRoom = 0;
+    for (const Seg& sg : L.paths) {
+        const float dx = sg.x1 - sg.x0, dz = sg.z1 - sg.z0, len = sqrtf(dx * dx + dz * dz);
+        if (len < 1.0f) {
+            continue;
+        }
+        const int steps = (int)(len / 50.0f) + 1;
+        float px = sg.x0, pz = sg.z0;
+        int pk = tierAt(L, px, pz);
+        for (int st = 1; st <= steps; st++) {
+            const float qx = sg.x0 + dx * st / steps, qz = sg.z0 + dz * st / steps;
+            const int qk = tierAt(L, qx, qz);
+            if (qk != pk) {
+                const int hiK = std::max(pk, qk), loK = std::min(pk, qk);
+                if (hiK >= 2 && hiK - loK == 1) {
+                    // The crossing, closer: e = tierStart(hiK) between p and q.
+                    const float th = tierStart(hiK);
+                    float ax = px, az = pz, bx2 = qx, bz2 = qz;
+                    for (int it = 0; it < 12; it++) {
+                        const float mx = (ax + bx2) * 0.5f, mz = (az + bz2) * 0.5f;
+                        if ((meshEAt(L, mx, mz) >= th) == (pk == hiK)) {
+                            ax = mx;
+                            az = mz;
+                        } else {
+                            bx2 = mx;
+                            bz2 = mz;
+                        }
+                    }
+                    const float cx = (ax + bx2) * 0.5f, cz = (az + bz2) * 0.5f;
+                    // Up: from the lower side to the higher.
+                    float ux = dx / len, uz = dz / len;
+                    if (pk == hiK) {
+                        ux = -ux;
+                        uz = -uz;
+                    }
+                    bool near = false;
+                    for (const Ramp& o : L.ramps) {
+                        near = near || (o.tx - cx) * (o.tx - cx) + (o.tz - cz) * (o.tz - cz) < 800.0f * 800.0f;
+                    }
+                    if (!near) {
+                        const float yTop = tierStart(hiK), dh = yTop - tierY(loK, th);
+                        constexpr float HALF = 190.0f;
+                        bool made = false;
+                        for (float f : {1.7f, 1.35f, 1.1f}) {
+                            const float lr = dh * f;
+                            bool ok = true;
+                            for (float t = 60.0f; t <= lr + 60.0f && ok; t += 60.0f) {
+                                for (int side = -1; side <= 1 && ok; side++) {
+                                    const float sx = cx - ux * t + uz * HALF * side, sz = cz - uz * t - ux * HALF * side;
+                                    ok = tierAt(L, sx, sz) == loK && solidLand(L, sx, sz);
+                                }
+                            }
+                            if (ok) {
+                                const float rbx = cx - ux * lr, rbz = cz - uz * lr;
+                                L.ramps.push_back({rbx, rbz, cx + ux * 60.0f, cz + uz * 60.0f,
+                                                   heightAt((rbx - L.x0) / L.cs, (rbz - L.z0) / L.cs), yTop + 2.0f, HALF});
+                                made = true;
+                                break;
+                            }
+                        }
+                        if (!made) {
+                            // No room straight down: stairs along the cliff's foot instead, their top beside the
+                            // crossing (overlapping the edge a little, so the upper shelf is a step away).
+                            const float gx = meshEAt(L, cx + 40.0f, cz) - meshEAt(L, cx - 40.0f, cz);
+                            const float gz = meshEAt(L, cx, cz + 40.0f) - meshEAt(L, cx, cz - 40.0f);
+                            const float gl = sqrtf(gx * gx + gz * gz);
+                            if (gl > 0.0f) {
+                                const float dnx = -gx / gl, dnz = -gz / gl;  // down the slope
+                                const float ox = cx + dnx * (HALF - 15.0f), oz = cz + dnz * (HALF - 15.0f);
+                                for (float f : {1.7f, 1.35f, 1.1f}) {
+                                    const float lr = dh * f;
+                                    for (int dir = -1; dir <= 1 && !made; dir += 2) {
+                                        const float tx = -dnz * dir, tz = dnx * dir;  // along the cliff
+                                        bool ok = true;
+                                        for (float t = 0.0f; t <= lr + 60.0f && ok; t += 60.0f) {
+                                            for (float lat : {0.0f, HALF * 0.8f, -HALF * 0.8f}) {
+                                                // The cliff side may touch the upper shelf near the top.
+                                                if (lat < 0.0f && t < lr * 0.35f) {
+                                                    continue;
+                                                }
+                                                const float sx = ox + tx * t + dnx * lat, sz = oz + tz * t + dnz * lat;
+                                                ok = ok && tierAt(L, sx, sz) == loK && solidLand(L, sx, sz);
+                                            }
+                                        }
+                                        if (ok) {
+                                            const float rbx = ox + tx * lr, rbz = oz + tz * lr;
+                                            L.ramps.push_back({rbx, rbz, ox, oz,
+                                                               heightAt((rbx - L.x0) / L.cs, (rbz - L.z0) / L.cs),
+                                                               yTop + 2.0f, HALF});
+                                            made = true;
+                                        }
+                                    }
+                                    if (made) {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        noRoom += made ? 0 : 1;
+                    }
+                }
+            }
+            px = qx;
+            pz = qz;
+            pk = qk;
+        }
     }
 
     // A wooden fence round each town, open where paths leave it and where the land ends.
@@ -1813,7 +2253,7 @@ const Layout& layout() {
         for (int k = 0; k < parts; k++) {
             const float a = k * 6.2831853f / parts, b = (k + 1) * 6.2831853f / parts;
             const float ax = t.x + sinf(a) * fr, az = t.z + cosf(a) * fr, bx = t.x + sinf(b) * fr, bz = t.z + cosf(b) * fr;
-            if (!solidLand(L, ax, az) || !solidLand(L, bx, bz)) {
+            if (!solidLand(L, ax, az) || !solidLand(L, bx, bz) || tierAt(L, ax, az) != tierAt(L, bx, bz)) {
                 continue;
             }
             // Gates: open between every two houses, so the town is never shut in.
@@ -1836,8 +2276,9 @@ const Layout& layout() {
             }
         }
     }
-    fprintf(stderr, "[rplus] layout: %d doors, %d towns, %d path pieces, %d fence pieces\n", (int)L.doors.size(),
-            (int)L.towns.size(), (int)L.paths.size(), (int)L.fences.size());
+    fprintf(stderr, "[rplus] layout: %d doors, %d towns, %d path pieces, %d fence pieces, %d stairs (%d crossings "
+            "without room for them)\n", (int)L.doors.size(), (int)L.towns.size(), (int)L.paths.size(),
+            (int)L.fences.size(), (int)L.ramps.size(), noRoom);
     return L;
 }
 
@@ -1903,6 +2344,10 @@ const std::vector<Fence>& layoutFences() {
 
 const std::vector<Deco>& layoutDecos() {
     return layout().decos;
+}
+
+const std::vector<Ramp>& layoutRamps() {
+    return layout().ramps;
 }
 
 int startSpot(float* x, float* z) {
@@ -2152,19 +2597,30 @@ const PropKind kProps[P_COUNT] = {
 const int kPoolBudget[4] = {2600, 300, 70, 70};
 constexpr float PROP_STEP = 420.0f;  // the candidate spots' spacing
 
-// The drawn land's height (bilinear over the mesh's samples, which heightAt gives).
+// The drawn land's height.
 float meshY(float gx, float gy) {
-    const float sx = gx * SUB, sy = gy * SUB;
-    const float ix = floorf(sx), iy = floorf(sy), tx = sx - ix, ty = sy - iy;
-    const float a = heightAt(ix / SUB, iy / SUB), b = heightAt((ix + 1) / SUB, iy / SUB);
-    const float c = heightAt(ix / SUB, (iy + 1) / SUB), d = heightAt((ix + 1) / SUB, (iy + 1) / SUB);
-    return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+    return heightAt(gx, gy);
 }
 
 // What grows at a spot: meadows (dense grass and flowers in broad patches), groves and forests of trees, rock
 // on rugged land, palms on beaches; P_COUNT for nothing. h is a hash of the spot.
-PropId propAt(char b, bool beach, float meadow, float grove, u32 h) {
+// edge: 1 at a cliff's foot (rocks), 2 along a shelf's top edge (a line of trees); lawn: thick grass in clumps
+// where it is high; pathSide: just off a path (grass and flowers along it).
+PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, float lawn, bool pathSide) {
     const u32 r = h % 1000;
+    const bool green = b == 'g' || b == 'f';
+    if (edge == 1 && !beach) {
+        return r < 200 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 420 ? P_PEBBLE : r < 560 && green ? P_GRASS7 : P_COUNT;
+    }
+    if (edge == 2 && green) {
+        return r < 240 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 560 ? P_GRASS7 : P_COUNT;
+    }
+    if (lawn > 0.6f && (green || b == 'd') && !beach) {
+        return r < 620 ? P_GRASS21 : r < 860 ? P_GRASS7 : r < 910 && green ? P_FLWR7 : P_COUNT;
+    }
+    if (pathSide && green) {
+        return r < 380 ? P_GRASS7 : r < 460 ? P_FLOWER : r < 520 ? P_GRASS1 : P_COUNT;
+    }
     if (beach) {
         return r < 25 ? P_PALM : r < 60 ? P_GRASS1 : r < 75 ? P_PEBBLE : P_COUNT;
     }
@@ -2179,12 +2635,12 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h) {
         if (meadow > 0.45f) {
             return r < 220 ? P_GRASS7 : r < 380 ? P_FLOWER : r < 450 ? P_FLWR7 : r < 600 ? P_GRASS1 : P_COUNT;
         }
-        return r < 120 ? P_GRASS1 : r < 170 ? P_GRASS7 : r < 185 ? P_SWOOD : r < 195 ? P_PEBBLE : P_COUNT;
+        return r < 50 ? P_GRASS1 : r < 70 ? P_GRASS7 : r < 85 ? P_SWOOD : r < 95 ? P_PEBBLE : P_COUNT;
     case 'f':
         if (grove > 0.4f) {
             return r < 260 ? P_SWOOD5 : r < 430 ? P_SWOOD3 : r < 460 ? P_LWOOD : r < 700 ? P_GRASS7 : P_COUNT;
         }
-        return r < 300 ? P_GRASS21 : r < 520 ? P_GRASS7 : r < 600 ? P_SWOOD3 : P_COUNT;
+        return r < 120 ? P_GRASS7 : r < 220 ? P_SWOOD3 : r < 260 ? P_GRASS1 : P_COUNT;
     case 'd':
         return r < 30 ? P_PALM : r < 120 ? P_GRASS1 : r < 160 ? P_GRASS7 : r < 175 ? P_PEBBLE : P_COUNT;
     case 'r':
@@ -2294,13 +2750,36 @@ void scatterProps(int roomNo) {
                 blocked = true;
             }
         }
+        bool pathSide = false;
         for (const Seg& p : L.paths) {
-            if (!blocked && segDist2(p, x, z) < (PATH_HALF + 160.0f) * (PATH_HALF + 160.0f)) {
+            const float d2 = segDist2(p, x, z);
+            if (!blocked && d2 < (PATH_HALF + 160.0f) * (PATH_HALF + 160.0f)) {
+                blocked = true;
+            }
+            pathSide = pathSide || d2 < (PATH_HALF + 650.0f) * (PATH_HALF + 650.0f);
+        }
+        for (const Ramp& rp : L.ramps) {
+            if (!blocked && segDist2(Seg{rp.bx, rp.bz, rp.tx, rp.tz}, x, z) < (rp.half + 200.0f) * (rp.half + 200.0f)) {
                 blocked = true;
             }
         }
         if (blocked) {
             continue;
+        }
+        // By a cliff: higher ground a little way off (its foot), or lower (its top edge).
+        int edge = 0;
+        {
+            const int k = tierOf(meshE(gx, gy));
+            const float d = 380.0f / cs;
+            const float off[4][2] = {{d, 0}, {-d, 0}, {0, d}, {0, -d}};
+            for (const auto& o : off) {
+                const int ko = tierOf(meshE(gx + o[0], gy + o[1]));
+                if (ko > k && ko >= 2) {
+                    edge = 1;
+                } else if (ko < k && k >= 2 && edge == 0) {
+                    edge = 2;
+                }
+            }
         }
         const float dxy = fabsf(meshY(gx + 0.02f, gy) - y) + fabsf(meshY(gx, gy + 0.02f) - y);
         if (dxy > 0.02f * cs * 0.9f) {
@@ -2309,7 +2788,8 @@ void scatterProps(int roomNo) {
         const bool beach = y < LAND_BASE + 70.0f;
         const float meadow = fbm(x * 0.00022f, z * 0.00022f, 151, 3);
         const float grove = fbm(x * 0.00030f, z * 0.00030f, 163, 3);
-        const PropId id = propAt(biomeNear(gx, gy), beach, meadow, grove, sp.h >> 3);
+        const float lawn = fbm(x * 0.0007f, z * 0.0007f, 171, 2) + (meadow - 0.5f) * 0.6f;
+        const PropId id = propAt(biomeNear(gx, gy), beach, meadow, grove, sp.h >> 3, edge, lawn, pathSide);
         if (id == P_COUNT) {
             continue;
         }
@@ -2636,6 +3116,11 @@ extern "C" void pc_rplus_debug_map(const char* path, float px, float cx, float c
             Rgb c = biomeColour(biomeNear((x - L.x0) / L.cs, (z - L.z0) / L.cs));
             if (y < LAND_BASE + 60.0f) c = biomeColour('d');
             if (sl > 0.9f) c = {120, 110, 100};
+            // Cliffs: where the tier changes above tier 1, dark.
+            const int k0 = tierOf(meshE((x - L.x0) / L.cs, (z - L.z0) / L.cs));
+            const int kx = tierOf(meshE((x + px - L.x0) / L.cs, (z - L.z0) / L.cs));
+            const int kz = tierOf(meshE((x - L.x0) / L.cs, (z + px - L.z0) / L.cs));
+            if (std::max(k0, std::max(kx, kz)) >= 2 && (k0 != kx || k0 != kz)) c = {40, 34, 30};
             const int m = groundMark(x, z);
             if (m == 1) c = {172, 136, 92};
             if (m == 2) c = {196, 188, 172};
@@ -2664,6 +3149,14 @@ extern "C" void pc_rplus_debug_map(const char* path, float px, float cx, float c
     }
     for (const Deco& d : L.decos) {
         dot(d.pos.x, d.pos.z, 2, 240, 150, 40);
+    }
+    for (size_t k = 0; k < L.ramps.size() && size <= 0; k += 8) {
+        fprintf(stderr, "  stairs at %.0f %.0f, %.0f up\n", L.ramps[k].tx, L.ramps[k].tz, L.ramps[k].ty - L.ramps[k].by);
+    }
+    for (const Ramp& rp : L.ramps) {
+        for (int k = 0; k <= 10; k++) {
+            dot(rp.bx + (rp.tx - rp.bx) * k / 10.0f, rp.bz + (rp.tz - rp.bz) * k / 10.0f, 1, 255, 230, 40);
+        }
     }
     for (const GenDoor& d : L.doors) {
         dot(d.pos.x, d.pos.z, 2, d.exitId == HOME_EXIT ? 255 : 220, d.exitId == HOME_EXIT ? 255 : 30, 30);
