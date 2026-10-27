@@ -284,6 +284,7 @@ BOOL daBg_c::draw() {
     mDoLib_clipper::changeFar(100000.0f);
 #if TARGET_PC
     pc_rplus_terrain_draw(mpRplusTerrain);
+    pc_rplus_far_draw(roomNo);
 #endif
 
     for (s32 i = 0; i < 4; i++, bgm++) {

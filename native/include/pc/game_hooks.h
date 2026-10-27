@@ -296,6 +296,8 @@ struct PcRplusTerrain;
 PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** bgw);
 /* daBg_c::draw: draws it (the BG list is set). */
 void pc_rplus_terrain_draw(PcRplusTerrain* terrain);
+/* daBg_c::draw of room roomNo: in the room Link is in, the land of the generated rooms not drawn by their own. */
+void pc_rplus_far_draw(int roomNo);
 /* dStage_dt_c_roomReLoader: 1 when the room's own actors stay out (a generated sea room). */
 int pc_rplus_room_actors_off(int roomNo);
 /* 1 for an actor of a generated sea room that is still made (by its stage name: the ship, the sea). */

@@ -27,6 +27,7 @@
 #include "dolphin/gx/GX.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include <vector>
@@ -130,8 +131,11 @@ Rgb biomeColour(char b) {
 }
 
 // Ground kinds: the poly info table, and the attribute each uses (dBgS::GetAttributeCode's atr_conv index).
-enum Ground { G_GRASS, G_STONE, G_SAND, G_DIRT, G_COUNT };
-const u32 kGroundAttr[G_COUNT] = {0x04, 0x03, 0x0B, 0x01};
+// G_SHORE: the boat's shore walls, which Link, the camera and arrows pass through (poly info 3's pass bits,
+// dBgW::ChkPolyThrough).
+enum Ground { G_GRASS, G_STONE, G_SAND, G_DIRT, G_SHORE, G_COUNT };
+const u32 kGroundAttr[G_COUNT] = {0x04, 0x03, 0x0B, 0x01, 0x03};
+const u32 kGroundPass[G_COUNT] = {0, 0, 0, 0, 0x01 | 0x04 | 0x08};
 
 Ground groundOf(char b, float y, float ny) {
     if (y < LAND_BASE + 60.0f) {
@@ -236,11 +240,12 @@ void PcRplusPacket::draw() {
     J3DShape::resetVcdVatCache();
 }
 
-PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
-    *o_bgw = nullptr;
-    if (strcmp(dComIfGp_getStartStageName(), "sea") != 0 || !pc_rplus_sea_room_generated(roomNo)) {
-        return nullptr;
-    }
+namespace {
+
+// A generated room's land: the drawing, and with o_bgw its collision (allocated in the current heap, the room's).
+// Without o_bgw only the drawing, from the host's heap: a far room's land, drawn while its own room isn't.
+PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
+    const bool far = o_bgw == nullptr;
     const int cells = pc_rplus_cells();
     const int n = cells * SUB;          // quads per side
     const int nv = n + 1;               // samples per side
@@ -278,14 +283,14 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         }
     }
 
-    PcRplusTerrain* t = new PcRplusTerrain();
+    PcRplusTerrain* t = far ? new (std::malloc(sizeof(PcRplusTerrain))) PcRplusTerrain() : new PcRplusTerrain();
     if (t == nullptr) {
         delete[] ys;
         return nullptr;
     }
     // ---- Drawing: triangles by sample row (the land and the shallows; the sea bed is not drawn).
     PcRplusPacket& pk = t->packet;
-    pk.mVtx = new Vtx[(size_t)quads * 6];
+    pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * (size_t)quads * 6 + 1) : new Vtx[(size_t)quads * 6];
     pk.mRows = n < 256 ? n : 256;
     Vtx* out = pk.mVtx;
     const float lx = 0.42f, ly = 0.80f, lz = 0.42f;  // light direction (normalised enough)
@@ -339,6 +344,10 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         }
     }
     pk.mTriCount = quads * 2;
+    if (far) {
+        delete[] ys;
+        return t;
+    }
 
     // ---- Collision: a DZB in the disc's layout, over the whole room: the land and the sea bed. Every room
     // needs ground somewhere under any point, or Link, made at a spawn point over open water, waits for ground
@@ -370,7 +379,9 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
             if (i < n - 1 && !dry(i + 1, j)) walls.push_back({blk, x1e, z0e, x1e, z1e});  // east
         }
     }
-    constexpr float WALL_BOTTOM = -400.0f, WALL_TOP = 60.0f;
+    // From the sea bed to above the boat's highest wall circle (d_a_ship.cpp: 0, 75 and 150 over it, and one at
+    // y -600), so none passes under or over. Link passes through them (G_SHORE): he swims ashore anywhere.
+    constexpr float WALL_BOTTOM = WATER_Y - 10.0f, WALL_TOP = 250.0f;
     // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall.
     const u32 nVtx = (u32)nv * nv + (u32)walls.size() * 4;
     const u32 nTri = (u32)n * n * 2 + (u32)walls.size() * 2;
@@ -485,7 +496,7 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
                     o.u16at(at, tv[k][0]);
                     o.u16at(at + 2, tv[k][1]);
                     o.u16at(at + 4, tv[k][2]);
-                    o.u16at(at + 6, (u16)G_STONE);
+                    o.u16at(at + 6, (u16)G_SHORE);
                     o.u16at(at + 8, 0);
                     tri++;
                 }
@@ -543,7 +554,7 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         o.u32at(at + 0x0, 0x07FFE0FFu);
         o.u32at(at + 0x4, 0x000000FFu | (kGroundAttr[g] << 16));
         o.u32at(at + 0x8, 0xFFFFFFFFu);
-        o.u32at(at + 0xC, 0);
+        o.u32at(at + 0xC, kGroundPass[g]);
     }
     memcpy(blob + offName, "rplus", 6);
     delete[] blkTris;
@@ -560,6 +571,36 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
     fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision (%zu shore walls) in %u blocks\n", roomNo,
             pk.mTriCount, nTri, walls.size(), nBlk);
     return t;
+}
+
+} // namespace
+
+PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
+    *o_bgw = nullptr;
+    if (strcmp(dComIfGp_getStartStageName(), "sea") != 0 || !pc_rplus_sea_room_generated(roomNo)) {
+        return nullptr;
+    }
+    return buildTerrain(roomNo, o_bgw);
+}
+
+void pc_rplus_far_draw(int roomNo) {
+    // Once a frame, from the room Link is in: the land of every generated room not drawn by its own room (the
+    // original sea shows far islands with LOD models, which a generated world has none of).
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
+        roomNo != dComIfGp_roomControl_getStayNo()) {
+        return;
+    }
+    static PcRplusTerrain* sFar[64] = {};
+    const int rooms = pc_rplus_squares() * pc_rplus_squares();
+    for (int r = 1; r <= rooms && r < 64; r++) {
+        if (!pc_rplus_sea_room_generated(r) || dComIfGp_roomControl_checkRoomDisp(r)) {
+            continue;
+        }
+        if (sFar[r] == nullptr) {
+            sFar[r] = buildTerrain(r, nullptr);
+        }
+        pc_rplus_terrain_draw(sFar[r]);
+    }
 }
 
 void pc_rplus_terrain_draw(PcRplusTerrain* t) {
