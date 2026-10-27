@@ -79,7 +79,12 @@ public:
 
     /* 0x0010 */ u16 field_0x0010;
     /* 0x0012 */ u8 field_0x0012[0x0014 - 0x0012];
+#if TARGET_PC
+    // Randomizer+ scatters far more of these on generated land than any original room had.
+    /* 0x0014 */ dFlower_data_c mData[2000];
+#else
     /* 0x0014 */ dFlower_data_c mData[200];
+#endif
     /* 0x3534 */ dFlower_anm_c mAnm[72];
     /* 0x44F4 */ dFlower_room_c mRoom[64];
     /* 0x45F4 */ bool field_0x45f4;
