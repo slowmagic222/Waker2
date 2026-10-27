@@ -51,26 +51,26 @@ bool cBgS::Regist(cBgW* bgw, fpc_ProcID pid, void* actor) {
         return true;
 
     s32 i = l_SetCounter;
-    JUT_ASSERT(0x97, 0 <= i && i < 256);
+    JUT_ASSERT(0x97, 0 <= i && i < BG_ID_MAX);
 
     while (true) {
         if (!m_chk_element[i].ChkUsed()) {
             m_chk_element[i].Regist2(bgw, pid, actor);
             bgw->SetId(i);
             l_SetCounter = i + 1;
-            if (l_SetCounter >= 256)
+            if (l_SetCounter >= BG_ID_MAX)
                 l_SetCounter = 0;
             return false;
         }
 
         i++;
-        if (i >= 256)
+        if (i >= BG_ID_MAX)
             i = 0;
         if (l_SetCounter == i)
             break;
     }
 
-    bgw->SetId(256);
+    bgw->SetId(BG_ID_MAX);
     return true;
 }
 
@@ -83,9 +83,9 @@ bool cBgS::Release(cBgW* bgw) {
     if (bgw == NULL)
         return true;
 
-    if (bgw->ChkUsed() && bgw->GetId() >= 0 && bgw->GetId() < 0x100 && m_chk_element[bgw->GetId()].ChkUsed()) {
+    if (bgw->ChkUsed() && bgw->GetId() >= 0 && bgw->GetId() < BG_ID_MAX && m_chk_element[bgw->GetId()].ChkUsed()) {
         m_chk_element[bgw->GetId()].Release();
-        bgw->SetId(256);
+        bgw->SetId(BG_ID_MAX);
     } else {
         return true;
     }
@@ -185,14 +185,14 @@ void* cBgS::ConvDzb(void* work) {
 
 /* 80246C98-80246D24       .text GetActorPointer__4cBgSCFi */
 fopAc_ac_c* cBgS::GetActorPointer(int actor_index) const {
-    JUT_ASSERT(0x237, 0 <= actor_index && actor_index < 256);
+    JUT_ASSERT(0x237, 0 <= actor_index && actor_index < BG_ID_MAX);
     return m_chk_element[actor_index].m_actor_ptr;
 }
 
 /* 80246D24-80246D5C       .text GetBgWPointer__4cBgSCFR13cBgS_PolyInfo */
 cBgW* cBgS::GetBgWPointer(cBgS_PolyInfo& poly) const {
     s32 id = poly.GetBgIndex();
-    if (!(0 <= id && id < 256) || !m_chk_element[id].ChkUsed())
+    if (!(0 <= id && id < BG_ID_MAX) || !m_chk_element[id].ChkUsed())
         return NULL;
     return m_chk_element[id].m_bgw_base_ptr;
 }
@@ -203,7 +203,7 @@ bool cBgS::ChkPolySafe(cBgS_PolyInfo& poly) {
         return false;
 
     int id = poly.GetBgIndex();
-    if (!(0 <= id && id < 256))
+    if (!(0 <= id && id < BG_ID_MAX))
         return false;
 
     if (!m_chk_element[id].ChkUsed())
@@ -214,7 +214,7 @@ bool cBgS::ChkPolySafe(cBgS_PolyInfo& poly) {
 
 /* 80246DF8-80246F10       .text GetTriGrp__4cBgSCFii */
 s32 cBgS::GetTriGrp(int bg_index, int poly_index) const {
-    JUT_ASSERT(0x278, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x278, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     if (!m_chk_element[bg_index].ChkUsed())
         return -1;
@@ -224,7 +224,7 @@ s32 cBgS::GetTriGrp(int bg_index, int poly_index) const {
 
 /* 80246F10-80246FE4       .text GetGrpToRoomId__4cBgSCFii */
 s32 cBgS::GetGrpToRoomId(int bg_index, int grp_id) const {
-    JUT_ASSERT(0x289, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x289, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     if (!m_chk_element[bg_index].ChkUsed())
         return 0xFFFF;
@@ -235,7 +235,7 @@ s32 cBgS::GetGrpToRoomId(int bg_index, int grp_id) const {
 
 /* 80246FE4-802470B8       .text GetTriPla__4cBgSCFii */
 cM3dGPla* cBgS::GetTriPla(int bg_index, int poly_index) const {
-    if (!(0 <= bg_index && bg_index < 256))
+    if (!(0 <= bg_index && bg_index < BG_ID_MAX))
         return NULL;
 
     if (!m_chk_element[bg_index].ChkUsed())
@@ -270,7 +270,7 @@ static void dummy2() {
 /* 802470B8-80247178       .text GetTriPnt__4cBgSCFR13cBgS_PolyInfoP4cXyzP4cXyzP4cXyz */
 void cBgS::GetTriPnt(cBgS_PolyInfo& poly, cXyz* p0, cXyz* p1, cXyz* p2) const {
     s32 id = poly.GetBgIndex();
-    JUT_ASSERT(0x2f6, 0 <= id && id < 256);
+    JUT_ASSERT(0x2f6, 0 <= id && id < BG_ID_MAX);
     if (m_chk_element[id].ChkUsed())
         m_chk_element[id].m_bgw_base_ptr->GetTriPnt(poly.GetPolyIndex(), p0, p1, p2);
 }
@@ -289,7 +289,7 @@ void cBgS::ShdwDraw(cBgS_ShdwDraw* shdw) {
 /* 802471E8-80247304       .text GetGrpInf__4cBgSCFR13cBgS_PolyInfoi */
 s32 cBgS::GetGrpInf(cBgS_PolyInfo& poly, int grp_id) const {
     s32 bg_index = poly.GetBgIndex();
-    JUT_ASSERT(0x37d, 0 <= bg_index && bg_index < 256);
+    JUT_ASSERT(0x37d, 0 <= bg_index && bg_index < BG_ID_MAX);
 
     if (!m_chk_element[bg_index].ChkUsed())
         return -1;

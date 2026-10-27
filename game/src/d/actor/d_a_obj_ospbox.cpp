@@ -178,7 +178,7 @@ void daObjOspbox::Act_c::eff_break() {
 void daObjOspbox::Act_c::sound_break() {
     int bg_index = mObjGndChk.GetBgIndex();
     u32 sound_id = 0;
-    if (bg_index >= 0 && bg_index < 0x100) {
+    if (bg_index >= 0 && bg_index < BG_ID_MAX) {
         sound_id = dComIfG_Bgsp()->GetMtrlSndId(mObjGndChk);
     }
     fopAcM_seStart(this, JA_SE_OBJ_SURP_BOX_BREAK, sound_id);
