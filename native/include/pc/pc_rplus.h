@@ -34,6 +34,11 @@ char pc_rplus_cell_biome(int cx, int cy);
 /* The start cell (Link's house). */
 void pc_rplus_start_cell(int* cx, int* cy);
 
+/* The world's anchors (scripts/rplus/anchors.py): what stands where. kind is house, cave, fountain, dungeon, npc,
+ * landmark, puzzle or sea; stage is the interior behind its door ("" without one). 1 when i is one. */
+int pc_rplus_anchor_count(void);
+int pc_rplus_anchor(int i, const char** id, const char** kind, const char** stage, int* cx, int* cy);
+
 /* The world's seed, for the log and the file select. */
 unsigned int pc_rplus_seed(void);
 

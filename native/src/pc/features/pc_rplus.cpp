@@ -21,6 +21,11 @@ struct World {
     bool prefab[64] = {};
     int startX = 0;
     int startY = 0;
+    struct Anchor {
+        char id[32], kind[16], stage[16];
+        int cx, cy;
+    };
+    std::vector<Anchor> anchors;
 };
 
 World& world() {
@@ -84,6 +89,14 @@ World& world() {
                 }
             } else if (strncmp(p, "start ", 6) == 0) {
                 sscanf(p + 6, "%d %d", &w.startX, &w.startY);
+            } else if (strncmp(p, "anchor ", 7) == 0) {
+                World::Anchor a{};
+                if (sscanf(p + 7, "%31s %15s %15s %d %d", a.id, a.kind, a.stage, &a.cx, &a.cy) == 5) {
+                    if (strcmp(a.stage, "-") == 0) {
+                        a.stage[0] = '\0';
+                    }
+                    w.anchors.push_back(a);
+                }
             }
         }
         fclose(f);
@@ -149,3 +162,21 @@ unsigned int pc_rplus_seed(void) {
 }
 
 } // extern "C"
+
+extern "C" int pc_rplus_anchor_count(void) {
+    return world().loaded ? (int)world().anchors.size() : 0;
+}
+
+extern "C" int pc_rplus_anchor(int i, const char** id, const char** kind, const char** stage, int* cx, int* cy) {
+    const World& w = world();
+    if (!w.loaded || i < 0 || i >= (int)w.anchors.size()) {
+        return 0;
+    }
+    const World::Anchor& a = w.anchors[(size_t)i];
+    *id = a.id;
+    *kind = a.kind;
+    *stage = a.stage;
+    *cx = a.cx;
+    *cy = a.cy;
+    return 1;
+}
