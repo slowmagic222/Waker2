@@ -17,6 +17,7 @@
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
 #include "d/d_stage.h"
+#include "d/actor/d_a_sea.h"
 #include "f_op/f_op_actor_mng.h"
 #include "SSystem/SComponent/c_bg_s.h"
 #include "JSystem/J3DGraphBase/J3DPacket.h"
@@ -594,7 +595,7 @@ void requestRoomLoad(int roomNo) {
     static int logged = -1;
     if (logged != roomNo) {
         logged = roomNo;
-        fprintf(stderr, "[rplus] loading the start room %d (room table entry %d)\n", roomNo, entry);
+        fprintf(stderr, "[rplus] loading room %d under Link (room table entry %d)\n", roomNo, entry);
     }
     if (entry < 0) {
         return;
@@ -635,6 +636,11 @@ void pc_rplus_spawn_lift(cXyz* pos) {
     if (!pc_rplus_sea_room_generated(room)) {
         return;
     }
+    // Rooms load from the ground under Link (dStage_RoomCheck), and he has none until his room is in: asked for
+    // here every frame he waits (the start cell's room is often not the room the stage loaded first).
+    if (!dComIfGp_roomControl_checkStatusFlag(room, 0x01)) {
+        requestRoomLoad(room);
+    }
     const float ground = heightAt(gx, gy);
     if (pos->y < ground + 10.0f) {
         fprintf(stderr, "[rplus] spawn point %.0f %.0f %.0f is under the land: lifted to %.0f\n", pos->x, pos->y,
@@ -643,13 +649,52 @@ void pc_rplus_spawn_lift(cXyz* pos) {
     }
 }
 
+namespace {
+bool sStartPointSet = false;  // pc_rplus_start_point moved Link's spawn (pc_rplus_place_player has nothing to do)
+} // namespace
+
+void pc_rplus_start_point(u32* params, cXyz* pos) {
+    if (sStartPointSet || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return;
+    }
+    sStartPointSet = true;
+    int cx, cy;
+    pc_rplus_start_cell(&cx, &cy);
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    const int startRoom = (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
+    pos->set(x0 + (cx + 0.5f) * cs, heightAt(cx + 0.5f, cy + 0.5f) + 10.0f, z0 + (cy + 0.5f) * cs);
+    // The room bits pick the room the stage loads first (dStage_Create), so the start room's land and collision
+    // are in before Link looks for ground (daPy_lk_c::makeBgWait). Standing start (mode 0), not on a raft (0x80).
+    *params = (*params & ~0xF0BFu) | (u32)startRoom;
+    fprintf(stderr, "[rplus] Link starts on the start cell %d,%d in room %d at %.0f %.0f %.0f\n", cx, cy, startRoom,
+            pos->x, pos->y, pos->z);
+}
+
 void pc_rplus_place_player(int roomNo) {
     static bool placed = false;
-    if (placed || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return;
     }
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     if (player == nullptr) {
+        return;
+    }
+    if (roomNo == dComIfGp_roomControl_getStayNo()) {
+        // Where Link is about every two seconds (in the run logs, for the land, water and respawn checks).
+        static u32 tick = 0;
+        if (tick++ % 60 == 0) {
+            const cXyz& p = player->current.pos;
+            float x0, z0;
+            worldOrigin(&x0, &z0);
+            const bool sea = daSea_ChkArea(p.x, p.z);
+            fprintf(stderr, "[rplus] Link at %.0f %.0f %.0f in room %d, land %.0f, sea %s %.0f\n", p.x, p.y, p.z,
+                    roomNo, heightAt((p.x - x0) / cellSize(), (p.z - z0) / cellSize()), sea ? "here" : "not here",
+                    sea ? daSea_calcWave(p.x, p.z) : 0.0f);
+        }
+    }
+    if (placed || sStartPointSet) {
         return;
     }
     int cx, cy;

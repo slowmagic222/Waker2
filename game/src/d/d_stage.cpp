@@ -1497,6 +1497,10 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
         if (roomParam != 0 && daPy_lk_c::getStartModeFromParam(appen->base.parameters) != 2) {
             appen->base.parameters = (roomParam & 0xFFFFFFC0) | (appen->base.parameters & 0x3F);
         }
+#if TARGET_PC
+        // Randomizer+: Link starts on the generated world's start cell, in its room.
+        pc_rplus_start_point(&appen->base.parameters, &appen->base.position);
+#endif
     }
 
     dComIfGs_setRestartRoomParam(0);
