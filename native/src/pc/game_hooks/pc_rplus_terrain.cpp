@@ -16,6 +16,8 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
+#include "d/d_item.h"
+#include "d/d_item_data.h"
 #include "d/d_stage.h"
 #include "d/actor/d_a_sea.h"
 #include "f_op/f_op_actor_mng.h"
@@ -913,6 +915,14 @@ int pc_rplus_keep_room_actor(const char* name) {
     return 0;
 }
 
+int pc_rplus_any_point(const char* stage, int point) {
+    if (!pc_rplus_active()) {
+        return 0;
+    }
+    fprintf(stderr, "[rplus] %s has no spawn point %d here: Link starts at its first one\n", stage, point);
+    return 1;
+}
+
 int pc_rplus_lod_off(void) {
     return pc_rplus_active();
 }
@@ -1150,16 +1160,23 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
         strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return 0;
     }
-    const int room = dComIfGp_roomControl_getStayNo();
+    // The door with this exit id nearest Link (the room he stands in may not be the stay room yet: rooms of the
+    // generated world are entered on foot without the room table noticing).
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
     const GenDoor* door = nullptr;
+    float best = 0.0f;
     for (const GenDoor& d : genDoors()) {
-        if (d.exitId == exitId && d.seaRoom == room) {
+        if (d.exitId != exitId) {
+            continue;
+        }
+        const float dd = player == nullptr ? 0.0f : (player->current.pos - d.pos).abs2XZ();
+        if (door == nullptr || dd < best) {
             door = &d;
-            break;
+            best = dd;
         }
     }
-    if (door == nullptr) {
-        return 0;
+    if (door == nullptr || (player != nullptr && best > 3000.0f * 3000.0f)) {
+        return 0;  // not by one of ours: a kept island's own exit
     }
     if (dComIfGp_isEnableNextStage()) {
         return 1;  // already on the way (Link stands on the exit floor for a few frames)
@@ -1477,12 +1494,15 @@ void pc_rplus_room_actors(int roomNo) {
         if (gd.seaRoom != roomNo) {
             continue;
         }
-        // The cabana's door (KNOB01, shape 4: the villa door) without its deed lock (type 0), both sides a
-        // stage exit (angle x 0x0FFF), no event or switch.
+        // A KNOB01 door, both sides a stage exit (angle x 0x0FFF), no lock (type 0), event or switch. Its model
+        // is the shape (params bits 20-27, the Knob archive's door_a..h): Link's home the cabana's (4, its
+        // deed lock skipped in Abesso), houses the plain wooden door (0), the rest by style.
+        static const u32 kShape[3] = {0, 2, 3};
+        const u32 shape = gd.exitId == HOME_EXIT ? 4 : kShape[gd.style];
         cXyz pos = gd.pos;
         csXyz angle(0x0FFF, gd.angle, 0);
         cXyz scale(1.0f, 1.0f, 1.0f);
-        fopAcM_create((char*)"KNOB01", 0x004FF0FFu, &pos, roomNo, &angle, &scale);
+        fopAcM_create((char*)"KNOB01", 0x000FF0FFu | (shape << 20), &pos, roomNo, &angle, &scale);
         fprintf(stderr, "[rplus] door %s (%s) in room %d at %.0f %.0f %.0f\n", gd.id, gd.stage, roomNo, pos.x,
                 pos.y, pos.z);
     }
@@ -1560,6 +1580,30 @@ void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
     pos->set(sx, 0.0f, sz);
 }
 
+namespace {
+
+// What the world's logic starts with (scripts/rplus/wwlogic.py DEFAULT_START, wwrando's defaults with "Start with
+// Hero's Sword"): given at sea to a file that has no sword yet, as a new file in Randomizer+ is.
+void giveStartGear() {
+    if (dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) ||
+        dComIfGs_isCollect(0, 3)) {
+        return;
+    }
+    static const u8 kGear[] = {dItemNo_SWORD_e,         dItemNo_SHIELD_e,          dItemNo_WIND_WAKER_e,
+                               dItemNo_WINDS_REQUIEM_e, dItemNo_BALLAD_OF_GALES_e, dItemNo_SONG_OF_PASSING_e,
+                               dItemNo_SAIL_e,          dItemNo_MAGIC_POWER_e};
+    for (u8 item : kGear) {
+        execItemGet(item);
+    }
+    if (dComIfGs_getMaxMagic() == 0) {
+        dComIfGp_setItemMaxMagicCount(16);
+        dComIfGp_setItemMagicCount(16);
+    }
+    fprintf(stderr, "[rplus] new file: gave the start gear (sword, shield, Wind Waker, 3 songs, sail, magic)\n");
+}
+
+} // namespace
+
 void pc_rplus_place_player(int roomNo) {
     static bool placed = false;
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
@@ -1588,6 +1632,7 @@ void pc_rplus_place_player(int roomNo) {
                     sea ? daSea_calcWave(p.x, p.z) : 0.0f);
         }
     }
+    giveStartGear();
     if (placed || sStartPointSet) {
         return;
     }

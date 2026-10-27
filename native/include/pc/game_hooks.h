@@ -320,6 +320,8 @@ int pc_rplus_start_room(void);
    out of a moved door, to that door), and the spawn's room (which the stage loads first) to that cell's room. */
 void pc_rplus_start_point(u32* params, class cXyz* pos, s16* angleY);
 /* dStage_changeSceneExitId: 1 when exit id exitId is a generated door's (it set the next stage). */
+/* Randomizer+: 1 when Link may start at a stage's first spawn point when the one asked for isn't there. */
+int pc_rplus_any_point(const char* stage, int point);
 int pc_rplus_exit(int exitId, f32 speed, u32 mode);
 /* dStage_changeScene: 1 when the exit to (stage, point, room) is an interior's way back to a door that the
    generated world moved (it set the next stage: the door's room, Link in front of it). */
