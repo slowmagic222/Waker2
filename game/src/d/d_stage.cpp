@@ -1487,6 +1487,13 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
             player_data++;
         }
 
+#if TARGET_PC
+        // Randomizer+: the start cell's room may not have the spawn point; any of its points will do (moved below).
+        if (i == num && num > 0 && pc_rplus_start_room() >= 0) {
+            player_data = player->m_entries;
+            i = 0;
+        }
+#endif
         JUT_ASSERT(DEMO_SELECT(1757, 1787), i != num);
 
         appen->base.parameters = player_data->base.parameters;
@@ -2308,6 +2315,14 @@ void dStage_Create() {
     dComIfGp_roomControl_init();
     dStage_dt_c_stageLoader(stageRsrc, &dComIfGp_getStage());
 
+#if TARGET_PC
+    // Randomizer+: the start cell's room loads first (Link is made there, dStage_playerInit).
+    int rplusRoom = pc_rplus_start_room();
+    if (rplusRoom >= 0) {
+        dComIfGp_getStartStage()->set(dComIfGp_getStartStageName(), rplusRoom, dComIfGp_getStartStagePoint(),
+                                      dComIfGp_getStartStageLayer());
+    }
+#endif
     if (dComIfGp_getStartStageRoomNo() >= 0) {
         int status = dStage_roomInit(dComIfGp_getStartStageRoomNo());
         JUT_ASSERT(DEMO_SELECT(3845, 3873), status);

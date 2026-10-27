@@ -653,8 +653,18 @@ namespace {
 bool sStartPointSet = false;  // pc_rplus_start_point moved Link's spawn (pc_rplus_place_player has nothing to do)
 } // namespace
 
+int pc_rplus_start_room(void) {
+    if (sStartPointSet || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
+        dComIfGp_getStartStagePoint() < 0) {
+        return -1;
+    }
+    int cx, cy;
+    pc_rplus_start_cell(&cx, &cy);
+    return (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
+}
+
 void pc_rplus_start_point(u32* params, cXyz* pos) {
-    if (sStartPointSet || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+    if (pc_rplus_start_room() < 0) {
         return;
     }
     sStartPointSet = true;

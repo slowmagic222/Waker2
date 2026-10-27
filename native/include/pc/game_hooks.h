@@ -305,6 +305,9 @@ int pc_rplus_lod_off(void);
 /* daPy_lk_c::makeBgWait: a spawn point of the original island under the generated land is lifted onto it
    (Link would wait for ground under him forever). */
 void pc_rplus_spawn_lift(class cXyz* pos);
+/* dStage_Create / dStage_playerInit: the start cell's room while Link's first spawn at sea is still to be moved
+   there (the room the stage loads first), else -1. */
+int pc_rplus_start_room(void);
 /* dStage_playerInit: the first time Link enters the sea, his spawn moves to the world's start cell, and the
    spawn's room (which the stage loads first) to the start cell's room. */
 void pc_rplus_start_point(u32* params, class cXyz* pos);
