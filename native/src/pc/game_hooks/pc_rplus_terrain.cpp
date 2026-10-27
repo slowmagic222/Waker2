@@ -2102,23 +2102,30 @@ int roomAtXZ(const Layout& L, float x, float z) {
     return sx < 0 || sz < 0 || sx >= n || sz >= n ? 0 : sz * n + sx + 1;
 }
 
-// A spot for a lone building near (x, z): on land, not steep, in the same room; else (x, z) as it is.
+// A spot for a lone building near (x, z): on land, not steep, in the same room; failing that, gentler slopes
+// further off, then any land in the room. Never the sea floor (a door there is under water).
 void landSpot(const Layout& L, float* x, float* z) {
     if (solidLand(L, *x, *z) && slopeAt(L, *x, *z) < 0.3f) {
         return;
     }
     const int room = roomAtXZ(L, *x, *z);
-    for (float r = 600.0f; r <= 6000.0f; r += 600.0f) {
-        for (int k = 0; k < 16; k++) {
-            const float a = k * 6.2831853f / 16.0f;
-            const float tx = *x + sinf(a) * r, tz = *z + cosf(a) * r;
-            if (roomAtXZ(L, tx, tz) == room && solidLand(L, tx, tz) && slopeAt(L, tx, tz) < 0.3f) {
-                *x = tx;
-                *z = tz;
-                return;
+    struct Pass {
+        float reach, slope;
+    };
+    for (const Pass& ps : {Pass{6000.0f, 0.3f}, Pass{24000.0f, 0.3f}, Pass{24000.0f, 0.6f}, Pass{50000.0f, 9.0f}}) {
+        for (float r = 600.0f; r <= ps.reach; r += 600.0f) {
+            for (int k = 0; k < 16; k++) {
+                const float a = k * 6.2831853f / 16.0f;
+                const float tx = *x + sinf(a) * r, tz = *z + cosf(a) * r;
+                if (roomAtXZ(L, tx, tz) == room && solidLand(L, tx, tz) && slopeAt(L, tx, tz) < ps.slope) {
+                    *x = tx;
+                    *z = tz;
+                    return;
+                }
             }
         }
     }
+    fprintf(stderr, "[rplus] no land for a building near %.0f %.0f\n", *x, *z);
 }
 
 // Land all the way from a to b (a path can run there).
