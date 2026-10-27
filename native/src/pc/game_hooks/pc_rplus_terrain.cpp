@@ -187,7 +187,7 @@ class PcRplusPacket : public J3DPacket {
 public:
     Vtx* mVtx = nullptr;   // triangle list, 3 per triangle
     int mTriCount = 0;
-    int mRowTris[256] = {};  // triangles per sample row, to split GXBegin calls
+    int mRowTris[257] = {};  // triangles per sample row, to split GXBegin calls (and one row for the house)
     int mRows = 0;
     void draw() override;
 };
@@ -246,6 +246,64 @@ void PcRplusPacket::draw() {
 
 namespace {
 
+// Link's home's house, drawn: walls round the door's hut (its collision is in buildTerrain) with a doorway the
+// door fills and a gable roof. Each quad is 4 corners (p0 p1 p2 p3 going round) and its colour.
+constexpr float HUT_HALF = 260.0f, HUT_DEPTH = 420.0f, DOORWAY_HALF = 85.0f;
+constexpr float HUT_WALL = 300.0f, HUT_DOOR_TOP = 235.0f, HUT_RIDGE = 470.0f, HUT_EAVE = 45.0f;
+
+struct HouseQuad {
+    float p[4][3];
+    u8 r, g, b;
+};
+
+void houseQuads(const cXyz& door, s16 ang, std::vector<HouseQuad>& out) {
+    const float s = cM_ssin(ang), c = cM_scos(ang);  // out of the door's front
+    auto pt = [&](float side, float ahead, float up, float* o) {
+        o[0] = door.x + c * side + s * ahead;
+        o[1] = door.y + up;
+        o[2] = door.z - s * side + c * ahead;
+    };
+    auto quad = [&](const float (&q)[4][3], u8 r, u8 g, u8 b) {
+        HouseQuad h;
+        for (int k = 0; k < 4; k++) {
+            pt(q[k][0], q[k][1], q[k][2], h.p[k]);
+        }
+        h.r = r;
+        h.g = g;
+        h.b = b;
+        out.push_back(h);
+    };
+    const float W = HUT_HALF, D = -HUT_DEPTH, B = -200.0f, T = HUT_WALL;
+    const u8 wr = 236, wg = 222, wb = 186;               // plaster
+    const u8 sr = 196, sg = 182, sb = 150;               // plaster in shade
+    const u8 tr = 120, tg = 84, tb = 52;                 // timber trim
+    // Front, either side of the doorway, and over it.
+    quad({{-W, 0, B}, {-DOORWAY_HALF, 0, B}, {-DOORWAY_HALF, 0, T}, {-W, 0, T}}, wr, wg, wb);
+    quad({{DOORWAY_HALF, 0, B}, {W, 0, B}, {W, 0, T}, {DOORWAY_HALF, 0, T}}, wr, wg, wb);
+    quad({{-DOORWAY_HALF, 0, HUT_DOOR_TOP}, {DOORWAY_HALF, 0, HUT_DOOR_TOP}, {DOORWAY_HALF, 0, T},
+          {-DOORWAY_HALF, 0, T}}, wr, wg, wb);
+    // Sides and back.
+    quad({{-W, D, B}, {-W, 0, B}, {-W, 0, T}, {-W, D, T}}, sr, sg, sb);
+    quad({{W, 0, B}, {W, D, B}, {W, D, T}, {W, 0, T}}, sr, sg, sb);
+    quad({{W, D, B}, {-W, D, B}, {-W, D, T}, {W, D, T}}, sr, sg, sb);
+    // Gables: the triangles over the front and back walls (a quad with two corners at the ridge).
+    quad({{-W, 0, T}, {W, 0, T}, {0, 0, HUT_RIDGE}, {0, 0, HUT_RIDGE}}, wr, wg, wb);
+    quad({{W, D, T}, {-W, D, T}, {0, D, HUT_RIDGE}, {0, D, HUT_RIDGE}}, sr, sg, sb);
+    // Timber band at the eaves and a frame round the doorway.
+    quad({{-W - 2, 2, T - 22}, {W + 2, 2, T - 22}, {W + 2, 2, T}, {-W - 2, 2, T}}, tr, tg, tb);
+    quad({{-DOORWAY_HALF - 18, 2, B}, {-DOORWAY_HALF, 2, B}, {-DOORWAY_HALF, 2, HUT_DOOR_TOP + 18},
+          {-DOORWAY_HALF - 18, 2, HUT_DOOR_TOP + 18}}, tr, tg, tb);
+    quad({{DOORWAY_HALF, 2, B}, {DOORWAY_HALF + 18, 2, B}, {DOORWAY_HALF + 18, 2, HUT_DOOR_TOP + 18},
+          {DOORWAY_HALF, 2, HUT_DOOR_TOP + 18}}, tr, tg, tb);
+    quad({{-DOORWAY_HALF, 2, HUT_DOOR_TOP}, {DOORWAY_HALF, 2, HUT_DOOR_TOP}, {DOORWAY_HALF, 2, HUT_DOOR_TOP + 18},
+          {-DOORWAY_HALF, 2, HUT_DOOR_TOP + 18}}, tr, tg, tb);
+    // Roof: two slopes from the eaves (past the walls) to the ridge, front to back with an overhang.
+    const float ew = W + HUT_EAVE, ey = T - HUT_EAVE * (HUT_RIDGE - T) / W;
+    const float f = HUT_EAVE, k = D - HUT_EAVE;
+    quad({{-ew, f, ey}, {0, f, HUT_RIDGE + 6}, {0, k, HUT_RIDGE + 6}, {-ew, k, ey}}, 178, 64, 44);
+    quad({{0, f, HUT_RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, HUT_RIDGE + 6}}, 148, 52, 36);
+}
+
 // A generated room's land: the drawing, and with o_bgw its collision (allocated in the current heap, the room's).
 // Without o_bgw only the drawing, from the host's heap: a far room's land, drawn while its own room isn't.
 PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
@@ -294,7 +352,16 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     }
     // ---- Drawing: triangles by sample row (the land and the shallows; the sea bed is not drawn).
     PcRplusPacket& pk = t->packet;
-    pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * (size_t)quads * 6 + 1) : new Vtx[(size_t)quads * 6];
+    std::vector<HouseQuad> house;
+    {
+        cXyz door;
+        s16 ang;
+        if (homeDoor(&door, &ang) == roomNo) {
+            houseQuads(door, ang, house);
+        }
+    }
+    const size_t nDrawVtx = (size_t)quads * 6 + house.size() * 6;
+    pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * nDrawVtx + 1) : new Vtx[nDrawVtx];
     pk.mRows = n < 256 ? n : 256;
     Vtx* out = pk.mVtx;
     const float lx = 0.42f, ly = 0.80f, lz = 0.42f;  // light direction (normalised enough)
@@ -348,6 +415,25 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         }
     }
     pk.mTriCount = quads * 2;
+    // The house, after the land's rows.
+    for (const HouseQuad& h : house) {
+        const int order[6] = {0, 1, 2, 0, 2, 3};
+        for (int k = 0; k < 6; k++) {
+            const float* p = h.p[order[k]];
+            out->x = p[0];
+            out->y = p[1];
+            out->z = p[2];
+            out->r = h.r;
+            out->g = h.g;
+            out->b = h.b;
+            out->a = 0xFF;
+            out++;
+        }
+    }
+    if (!house.empty()) {
+        pk.mRowTris[pk.mRows++] = (int)house.size() * 2;
+        pk.mTriCount += (int)house.size() * 2;
+    }
     if (far) {
         delete[] ys;
         return t;
@@ -413,7 +499,6 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                 qj = qj < 0 ? 0 : qj >= n ? n - 1 : qj;
                 return (qj / BLK) * nb + (qi / BLK);
             };
-            constexpr float HUT_HALF = 260.0f, HUT_DEPTH = 420.0f, DOORWAY_HALF = 85.0f;
             const float y0 = door.y - 200.0f, y1 = door.y + 400.0f;
             // Corners going round the outside, each edge p -> q with "out" on its left seen from above.
             const float ring[][2] = {{-DOORWAY_HALF, 0.0f}, {-HUT_HALF, 0.0f}, {-HUT_HALF, -HUT_DEPTH},
