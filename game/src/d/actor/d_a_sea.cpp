@@ -1172,6 +1172,11 @@ void daSea_packet_c::draw() {
 static BOOL daSea_Draw(sea_class* i_this) {
     dComIfGd_setListSky();
     j3dSys.getDrawBuffer(J3DSysDrawBuf_Xlu)->entryImm(&l_cloth, 31);
+#if TARGET_PC
+    // Randomizer+: the far islands, drawn from the sea (a stage actor) so that they stay whatever rooms load.
+    dComIfGd_setListBG();
+    pc_rplus_far_draw(-1);
+#endif
     dComIfGd_setList();
     return TRUE;
 }

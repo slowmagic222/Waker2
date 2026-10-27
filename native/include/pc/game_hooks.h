@@ -296,7 +296,7 @@ struct PcRplusTerrain;
 PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** bgw);
 /* daBg_c::draw: draws it (the BG list is set). */
 void pc_rplus_terrain_draw(PcRplusTerrain* terrain);
-/* daBg_c::draw of room roomNo: once a frame, the land of the generated rooms not drawn by their own. */
+/* daSea_Draw: once a frame, the land of the generated rooms not drawn by their own (roomNo unused). */
 void pc_rplus_far_draw(int roomNo);
 /* d_a_sea get_wave_max: room roomNo's wave height (the stage's MULT); a generated sea room gets open sea's where
    its island drew its own water (0). */

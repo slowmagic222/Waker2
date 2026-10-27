@@ -585,9 +585,8 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
 }
 
 void pc_rplus_far_draw(int roomNo) {
-    // Once a frame, from the first room drawn (the room Link is in can be room 0, the sea floor, or a room still
-    // loading): the land of every generated room not drawn by its own room (the original sea shows far islands
-    // with LOD models, which a generated world has none of).
+    // Once a frame, from the sea's draw: the land of every generated room not drawn by its own room (the original
+    // sea shows far islands with LOD models, which a generated world has none of).
     (void)roomNo;
     static u32 sDrawnAt = ~0u;
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 || sDrawnAt == g_Counter.mCounter0) {
@@ -597,7 +596,8 @@ void pc_rplus_far_draw(int roomNo) {
     static PcRplusTerrain* sFar[64] = {};
     const int rooms = pc_rplus_squares() * pc_rplus_squares();
     for (int r = 1; r <= rooms && r < 64; r++) {
-        if (!pc_rplus_sea_room_generated(r) || dComIfGp_roomControl_checkRoomDisp(r)) {
+        if (!pc_rplus_sea_room_generated(r) ||
+            (dComIfGp_roomControl_checkStatusFlag(r, 0x01) && dComIfGp_roomControl_checkRoomDisp(r))) {
             continue;
         }
         if (sFar[r] == nullptr) {
