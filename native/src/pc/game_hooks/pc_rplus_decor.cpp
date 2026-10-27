@@ -23,6 +23,7 @@
 #include "pc/pc_seedgen.h"
 #include "pc_rplus_world.h"
 #include "pc_internal.h"
+#include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_s_gnd_chk.h"
 #include "d/d_bg_s_lin_chk.h"
@@ -40,6 +41,11 @@
 
 namespace {
 
+// The game's global operator new takes a block of whatever JKR heap is current (pc_jkr_heap.cpp), and game heaps
+// are freed wholesale: every list and string here is host memory, allocated in one of these scopes (fopAcM_create
+// stays outside them, so actors still come from the game's heaps).
+using Host = JKRPcHostAllocScope;
+
 enum Kind { K_TSUBO, K_STONE, K_STONE2, K_PIG, K_VTIL, K_TRY, K_BOKO, K_FIGURE };
 
 struct Decor {
@@ -55,6 +61,7 @@ constexpr int FIGURES = 0x86;  // d_a_obj_figure's TOTAL_FIGURE_COUNT
 
 const std::vector<Decor>& catalog() {
     static const std::vector<Decor> c = [] {
+        Host host;
         std::vector<Decor> v;
         // d_a_tsubo: the type in bits 24-27; no item (0x3F), shown at once (spec 0x3F), no saved item (0x7F)
         auto tsubo = [&](const char* key, const char* label, int type, bool starter) {
@@ -131,6 +138,7 @@ struct State {
 State sLive;  // this game, since the file was loaded
 
 State fresh() {
+    Host host;
     State s;
     s.p.resize(catalog().size());
     for (size_t i = 0; i < s.p.size(); i++) {
@@ -173,6 +181,7 @@ const std::vector<WorldSpot>& worldSpots() {
     if (!spots.empty()) {
         return spots;
     }
+    Host host;
     spots.resize(catalog().size());
     const int n = pc_rplus_squares() * pc_rplus_cells();
     float sx, sz;
@@ -254,7 +263,10 @@ void found(int decor) {
     snprintf(line, sizeof line, pc::pc_ui_spanish() ? "Decoración: %s (%d de %d), ya está en casa"
                                                 : "Found decor: %s (%d of %d), it's at home now",
              catalog()[decor].label.c_str(), foundCount(), (int)catalog().size());
-    sNotice = line;
+    {
+        Host host;
+        sNotice = line;
+    }
     sNoticeEnd = std::chrono::steady_clock::now() + std::chrono::seconds(4);
     mDoAud_seStart(JA_SE_SPOILS_GET);
     fprintf(stderr, "[rplus] decor: found %s\n", catalog()[decor].key.c_str());
@@ -352,50 +364,60 @@ void spawnHome(fopAc_ac_c* link) {
         const f32 h = dComIfG_Bgsp()->GroundCross(&gnd);
         mid.y = h > mid.y - 300.0f ? h : link->current.pos.y;
     }
-    // the last COS_RPLUS_DECOR_FIGURES figurines found
-    int figCap = 48;
-    if (const char* v = getenv("COS_RPLUS_DECOR_FIGURES"); v != nullptr && v[0] != '\0') {
-        figCap = atoi(v);
-    }
-    std::vector<int> figs;
-    for (size_t i = 0; i < catalog().size(); i++) {
-        if (catalog()[i].kind == K_FIGURE && sLive.p[i].order > 0) {
-            figs.push_back((int)i);
+    // what stands where, worked out in host memory; then the actors, from the game's heaps
+    struct Plan {
+        int decor;
+        cXyz at;
+        s16 angle;
+    };
+    std::vector<Plan> plan;
+    {
+        Host host;
+        // the last COS_RPLUS_DECOR_FIGURES figurines found
+        int figCap = 48;
+        if (const char* v = getenv("COS_RPLUS_DECOR_FIGURES"); v != nullptr && v[0] != '\0') {
+            figCap = atoi(v);
         }
-    }
-    int figOrderMin = 0;
-    if ((int)figs.size() > figCap) {
         std::vector<int> orders;
-        for (int f : figs) {
-            orders.push_back(sLive.p[f].order);
+        for (size_t i = 0; i < catalog().size(); i++) {
+            if (catalog()[i].kind == K_FIGURE && sLive.p[i].order > 0) {
+                orders.push_back(sLive.p[i].order);
+            }
         }
-        std::sort(orders.begin(), orders.end());
-        figOrderMin = orders[orders.size() - figCap];
-    }
+        int figOrderMin = 0;
+        if (figCap >= 0 && (int)orders.size() > figCap) {
+            std::sort(orders.begin(), orders.end());
+            figOrderMin = figCap == 0 ? 0x7FFFFFFF : orders[orders.size() - figCap];
+        }
 
-    std::vector<cXyz> used;
-    used.push_back(link->current.pos);  // the doorway
-    for (const Piece& p : sLive.p) {
-        if (p.order > 0 && p.placed) {
-            used.push_back(cXyz(p.x, p.y, p.z));
+        std::vector<cXyz> used;
+        used.push_back(link->current.pos);  // the doorway
+        for (const Piece& p : sLive.p) {
+            if (p.order > 0 && p.placed) {
+                used.push_back(cXyz(p.x, p.y, p.z));
+            }
         }
+        for (size_t i = 0; i < catalog().size(); i++) {
+            const Piece& p = sLive.p[i];
+            if (p.order == 0 || (catalog()[i].kind == K_FIGURE && p.order < figOrderMin)) {
+                continue;
+            }
+            cXyz at;
+            if (p.placed) {
+                at.set(p.x, p.y, p.z);
+            } else if (!nextSpot(mid, used, &at)) {
+                at = mid;
+            }
+            plan.push_back({(int)i, at, p.placed ? p.angle : (s16)(mix((u32)i, 7) & 0xFFFF)});
+        }
+        sHome.reserve(sHome.size() + plan.size());
     }
     const int roomNo = fopAcM_GetRoomNo(link);
     int shown = 0;
-    for (size_t i = 0; i < catalog().size(); i++) {
-        Piece& p = sLive.p[i];
-        if (p.order == 0 || (catalog()[i].kind == K_FIGURE && p.order < figOrderMin)) {
-            continue;
-        }
-        cXyz at;
-        if (p.placed) {
-            at.set(p.x, p.y, p.z);
-        } else if (!nextSpot(mid, used, &at)) {
-            at = mid;
-        }
-        const fpc_ProcID id = spawn((int)i, at, p.placed ? p.angle : (s16)(mix((u32)i, 7) & 0xFFFF), roomNo);
+    for (const Plan& pl : plan) {
+        const fpc_ProcID id = spawn(pl.decor, pl.at, pl.angle, roomNo);
         if (id != fpcM_ERROR_PROCESS_ID_e) {
-            sHome.push_back({id, (int)i, 0});
+            sHome.push_back({id, pl.decor, 0});
             shown++;
         }
     }
@@ -419,10 +441,12 @@ void homeFrame() {
 } // namespace
 
 void pc_rplus_decor_reset(void) {
+    Host host;
     sLive = fresh();
 }
 
 void pc_rplus_decor_load(int slot) {
+    Host host;
     sLive = fresh();
     if (!pc_rplus_active()) {
         return;
@@ -464,6 +488,7 @@ void pc_rplus_decor_save(int slot) {
     if (!pc_rplus_active()) {
         return;
     }
+    Host host;
     const std::string path = savePath(slot);
     FILE* f = fopen(path.c_str(), "w");
     if (f == nullptr) {
@@ -490,6 +515,7 @@ void pc_rplus_decor_room(int roomNo) {
         return;
     }
     if (sLive.p.empty()) {
+        Host host;
         sLive = fresh();
     }
     const std::vector<WorldSpot>& spots = worldSpots();
@@ -502,6 +528,7 @@ void pc_rplus_decor_room(int roomNo) {
         const fpc_ProcID id = spawn((int)i, cXyz(x, rplus::groundY(x, z) + 5.0f, z),
                                     (s16)(mix((u32)i, pc_rplus_seed()) & 0xFFFF), roomNo);
         if (id != fpcM_ERROR_PROCESS_ID_e) {
+            Host host;
             sWorld.push_back({id, (int)i, 0});
             n++;
         }
@@ -513,6 +540,7 @@ void pc_rplus_decor_room(int roomNo) {
 
 void pc_rplus_decor_home_slot(const cXyz& pos) {
     if (!sHomeSpawned) {
+        Host host;
         sHomeHints.push_back(pos);
     }
 }
@@ -526,6 +554,7 @@ void pc_rplus_decor_frame(void) {
         return;
     }
     if (sLive.p.empty()) {
+        Host host;
         sLive = fresh();
     }
     if (!pc_rplus_home_unlocked()) {
