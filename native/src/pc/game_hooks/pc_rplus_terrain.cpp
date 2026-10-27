@@ -672,15 +672,22 @@ const u8 kHouseColours[3][5][3] = {
     {{240, 240, 236}, {210, 212, 214}, {120, 160, 200}, {90, 140, 200}, {70, 116, 170}}, // white, blue roof
 };
 
-// Houses' roofs, by variant: red, blue, green, brown (each slope's colour).
-const u8 kRoofs[4][2][3] = {{{178, 64, 44}, {148, 52, 36}},
-                            {{64, 98, 160}, {50, 80, 134}},
-                            {{74, 132, 82}, {58, 108, 66}},
-                            {{136, 92, 60}, {112, 74, 48}}};
+// Houses' roofs, by variant and the house's own hash: red, blue, green, brown, orange, teal, slate, plum.
+const u8 kRoofs[8][2][3] = {{{178, 64, 44}, {148, 52, 36}},  {{64, 98, 160}, {50, 80, 134}},
+                            {{74, 132, 82}, {58, 108, 66}},  {{136, 92, 60}, {112, 74, 48}},
+                            {{214, 120, 52}, {182, 98, 40}}, {{56, 140, 140}, {44, 114, 114}},
+                            {{96, 102, 116}, {78, 84, 96}},  {{128, 70, 120}, {104, 56, 98}}};
+// Plaster houses' walls (lit, in shade): cream, butter, rose, mint, sky, timber.
+const u8 kWalls[6][2][3] = {{{236, 222, 186}, {196, 182, 150}}, {{240, 222, 150}, {200, 182, 118}},
+                            {{236, 196, 186}, {198, 160, 150}}, {{206, 230, 196}, {168, 192, 158}},
+                            {{200, 222, 238}, {162, 184, 200}}, {{170, 120, 80}, {140, 96, 62}}};
 
 void houseQuads(const cXyz& door, s16 ang, int style, int variant, std::vector<HouseQuad>& out) {
     const u8 (*col)[3] = kHouseColours[style < 0 || style > 2 ? 0 : style];
-    const u8 (*roof)[3] = style == 0 ? kRoofs[variant & 3] : &col[3];
+    // Each house its own look, from where it stands: wall and roof colours, one storey or two, the roof's pitch,
+    // windows, a chimney.
+    const u32 hh = hash2((int)(door.x * 0.1f), (int)(door.z * 0.1f));
+    const u8 (*roof)[3] = style == 0 ? kRoofs[(variant + (hh >> 3)) & 7] : &col[3];
     const float s = cM_ssin(ang), c = cM_scos(ang);  // out of the door's front
     auto pt = [&](float side, float ahead, float up, float* o) {
         o[0] = door.x + c * side + s * ahead;
@@ -697,9 +704,17 @@ void houseQuads(const cXyz& door, s16 ang, int style, int variant, std::vector<H
         h.b = b;
         out.push_back(h);
     };
-    const float W = HUT_HALF, D = -HUT_DEPTH, B = -700.0f, T = HUT_WALL;  // walls reach well into the ground
-    const u8 wr = col[0][0], wg = col[0][1], wb = col[0][2];  // walls
-    const u8 sr = col[1][0], sg = col[1][1], sb = col[1][2];  // walls in shade
+    const bool tall = ((hh >> 9) % 10) < 3;
+    const float W = HUT_HALF, D = -HUT_DEPTH, B = -700.0f;  // walls reach well into the ground
+    const float T = tall ? HUT_WALL + 200.0f : HUT_WALL;
+    const float RIDGE = T + 120.0f + (float)((hh >> 13) % 4) * 45.0f;
+    u8 wr = col[0][0], wg = col[0][1], wb = col[0][2];  // walls
+    u8 sr = col[1][0], sg = col[1][1], sb = col[1][2];  // walls in shade
+    if (style == 0) {
+        const u8 (*w)[3] = kWalls[(hh >> 5) % 6];
+        wr = w[0][0], wg = w[0][1], wb = w[0][2];
+        sr = w[1][0], sg = w[1][1], sb = w[1][2];
+    }
     const u8 tr = col[2][0], tg = col[2][1], tb = col[2][2];  // trim
     // Front, either side of the doorway, and over it.
     quad({{-W, 0, B}, {-DOORWAY_HALF, 0, B}, {-DOORWAY_HALF, 0, T}, {-W, 0, T}}, wr, wg, wb);
@@ -711,10 +726,38 @@ void houseQuads(const cXyz& door, s16 ang, int style, int variant, std::vector<H
     quad({{W, 0, B}, {W, D, B}, {W, D, T}, {W, 0, T}}, sr, sg, sb);
     quad({{W, D, B}, {-W, D, B}, {-W, D, T}, {W, D, T}}, sr, sg, sb);
     // Gables: the triangles over the front and back walls (a quad with two corners at the ridge).
-    quad({{-W, 0, T}, {W, 0, T}, {0, 0, HUT_RIDGE}, {0, 0, HUT_RIDGE}}, wr, wg, wb);
-    quad({{W, D, T}, {-W, D, T}, {0, D, HUT_RIDGE}, {0, D, HUT_RIDGE}}, sr, sg, sb);
-    // Timber band at the eaves and a frame round the doorway.
+    quad({{-W, 0, T}, {W, 0, T}, {0, 0, RIDGE}, {0, 0, RIDGE}}, wr, wg, wb);
+    quad({{W, D, T}, {-W, D, T}, {0, D, RIDGE}, {0, D, RIDGE}}, sr, sg, sb);
+    // Windows: dark panes with a sill, beside the door (and upstairs on a tall house), and on the sides.
+    auto window = [&](float x0w, float y0w, bool side, float sx) {
+        const float ww = 46.0f, wh = 56.0f;
+        if (!side) {
+            quad({{x0w - ww, 3, y0w}, {x0w + ww, 3, y0w}, {x0w + ww, 3, y0w + wh}, {x0w - ww, 3, y0w + wh}}, 52, 60, 72);
+            quad({{x0w - ww - 8, 4, y0w - 10}, {x0w + ww + 8, 4, y0w - 10}, {x0w + ww + 8, 4, y0w}, {x0w - ww - 8, 4, y0w}},
+                 tr, tg, tb);
+        } else {
+            quad({{sx, x0w + ww, y0w}, {sx, x0w - ww, y0w}, {sx, x0w - ww, y0w + wh}, {sx, x0w + ww, y0w + wh}}, 52, 60, 72);
+        }
+    };
+    if ((hh >> 15) & 1) {
+        window(-170.0f, 120.0f, false, 0);
+        window(170.0f, 120.0f, false, 0);
+    }
+    if (tall) {
+        window(-150.0f, HUT_WALL + 60.0f, false, 0);
+        window(0.0f, HUT_WALL + 60.0f, false, 0);
+        window(150.0f, HUT_WALL + 60.0f, false, 0);
+    }
+    if ((hh >> 16) & 1) {
+        window(D * 0.5f, 120.0f, true, -W - 3.0f);
+        window(D * 0.5f, 120.0f, true, W + 3.0f);
+    }
+    // Timber band at the eaves (and between the floors) and a frame round the doorway.
     quad({{-W - 2, 2, T - 22}, {W + 2, 2, T - 22}, {W + 2, 2, T}, {-W - 2, 2, T}}, tr, tg, tb);
+    if (tall) {
+        quad({{-W - 2, 2, HUT_WALL - 22}, {W + 2, 2, HUT_WALL - 22}, {W + 2, 2, HUT_WALL}, {-W - 2, 2, HUT_WALL}},
+             tr, tg, tb);
+    }
     quad({{-DOORWAY_HALF - 18, 2, B}, {-DOORWAY_HALF, 2, B}, {-DOORWAY_HALF, 2, HUT_DOOR_TOP + 18},
           {-DOORWAY_HALF - 18, 2, HUT_DOOR_TOP + 18}}, tr, tg, tb);
     quad({{DOORWAY_HALF, 2, B}, {DOORWAY_HALF + 18, 2, B}, {DOORWAY_HALF + 18, 2, HUT_DOOR_TOP + 18},
@@ -722,10 +765,21 @@ void houseQuads(const cXyz& door, s16 ang, int style, int variant, std::vector<H
     quad({{-DOORWAY_HALF, 2, HUT_DOOR_TOP}, {DOORWAY_HALF, 2, HUT_DOOR_TOP}, {DOORWAY_HALF, 2, HUT_DOOR_TOP + 18},
           {-DOORWAY_HALF, 2, HUT_DOOR_TOP + 18}}, tr, tg, tb);
     // Roof: two slopes from the eaves (past the walls) to the ridge, front to back with an overhang.
-    const float ew = W + HUT_EAVE, ey = T - HUT_EAVE * (HUT_RIDGE - T) / W;
+    const float ew = W + HUT_EAVE, ey = T - HUT_EAVE * (RIDGE - T) / W;
     const float f = HUT_EAVE, k = D - HUT_EAVE;
-    quad({{-ew, f, ey}, {0, f, HUT_RIDGE + 6}, {0, k, HUT_RIDGE + 6}, {-ew, k, ey}}, roof[0][0], roof[0][1], roof[0][2]);
-    quad({{0, f, HUT_RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, HUT_RIDGE + 6}}, roof[1][0], roof[1][1], roof[1][2]);
+    quad({{-ew, f, ey}, {0, f, RIDGE + 6}, {0, k, RIDGE + 6}, {-ew, k, ey}}, roof[0][0], roof[0][1], roof[0][2]);
+    quad({{0, f, RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, RIDGE + 6}}, roof[1][0], roof[1][1], roof[1][2]);
+    // A chimney through one slope.
+    if (((hh >> 17) % 5) < 2) {
+        const float cx0 = 110.0f, cx1 = 170.0f, cz0 = D * 0.35f - 30.0f, cz1 = D * 0.35f + 30.0f;
+        const float cb = T + (RIDGE - T) * (1.0f - cx1 / W) - 10.0f, ct = RIDGE + 70.0f;
+        const u8 cr = 150, cg = 96, cbl = 76;
+        quad({{cx0, cz1, cb}, {cx1, cz1, cb}, {cx1, cz1, ct}, {cx0, cz1, ct}}, cr, cg, cbl);
+        quad({{cx1, cz0, cb}, {cx0, cz0, cb}, {cx0, cz0, ct}, {cx1, cz0, ct}}, cr, cg, cbl);
+        quad({{cx1, cz1, cb}, {cx1, cz0, cb}, {cx1, cz0, ct}, {cx1, cz1, ct}}, 124, 78, 62);
+        quad({{cx0, cz0, cb}, {cx0, cz1, cb}, {cx0, cz1, ct}, {cx0, cz0, ct}}, 124, 78, 62);
+        quad({{cx0, cz0, ct}, {cx1, cz0, ct}, {cx1, cz1, ct}, {cx0, cz1, ct}}, 60, 50, 46);
+    }
 }
 
 constexpr float FENCE_H = 120.0f, BRICK_H = 110.0f, BRICK_HALF = 32.0f;
@@ -1036,9 +1090,28 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         if (len > 0) {
             nx /= len; ny /= len; nz /= len;
         }
-        float lit = nx * lx + ny * ly + nz * lz;
-        float tone = lit > 0.55f ? 1.0f : 0.72f;  // two tones, as the game's toon light
+        // Lit at each corner by the ground's smooth slope there (not the triangle's own facing), the game's two
+        // toon tones blended over a narrow band: the big slopes shade softly instead of in facets.
+        float vtone[3], vny[3];
         for (int k = 0; k < 3; k++) {
+            const float d = 0.6f / SUB;  // in cells
+            const float gx = (px[k] - x0) / cs, gz = (pz[k] - z0) / cs;
+            const float hx = heightAt(gx + d, gz) - heightAt(gx - d, gz);
+            const float hz = heightAt(gx, gz + d) - heightAt(gx, gz - d);
+            const float span = 2.0f * d * cs;
+            float vx = -hx, vy = span, vz = -hz;
+            const float vl = sqrtf(vx * vx + vy * vy + vz * vz);
+            vx /= vl;
+            vy /= vl;
+            vz /= vl;
+            vny[k] = vy;
+            const float vlit = vx * lx + vy * ly + vz * lz;
+            vtone[k] = 0.72f + 0.28f * smooth01(0.42f, 0.68f, vlit);
+        }
+        (void)ny;
+        for (int k = 0; k < 3; k++) {
+            const float tone = vtone[k];
+            const float ny = vny[k];
             const float gxw = (px[k] - x0) / cs, gyw = (pz[k] - z0) / cs;
             char b = biomeNear(gxw, gyw);
             Rgb col = biomeColour(b);
