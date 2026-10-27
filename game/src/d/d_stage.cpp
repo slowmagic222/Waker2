@@ -2493,14 +2493,6 @@ int dStage_changeScene(int i_exitId, f32 speed, u32 mode, s8 room_no) {
 
     stage_scls_info_class* scls_info = &scls->m_entries[i_exitId];
     s32 wipe = dStage_sclsInfo_getWipe(scls_info);
-#if TARGET_PC
-    // Randomizer+: an interior's way back to its original island goes to its door in the generated world.
-    if (pc_rplus_exit_return(scls_info->mStage, scls_info->mStart, scls_info->mRoom, speed, mode,
-                             wipe == 15 ? 0 : wipe)) {
-        return 1;
-    }
-#endif
-
     dComIfGp_setNextStage(scls_info->mStage, scls_info->mStart, scls_info->mRoom, -1, speed, mode,
                           TRUE, wipe == 15 ? 0 : wipe);
     return 1;

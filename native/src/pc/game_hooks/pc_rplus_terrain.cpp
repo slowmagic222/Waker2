@@ -596,7 +596,7 @@ void PcRplusPacket::draw() {
     GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
     GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
 
-    // Every vertex goes through Aurora's per-frame buffers (16 MiB, patch 0023; past them it aborts): chunks
+    // Every vertex goes through Aurora's per-frame buffers (48 MiB, patch 0025; past them it aborts): chunks
     // behind the camera or outside a wide cone round its view are left out, and the frame's land stops at a
     // budget (the rooms' own land is drawn before the far rooms').
     MtxP vm = j3dSys.getViewMtx();
@@ -611,7 +611,8 @@ void PcRplusPacket::draw() {
         sFrame = g_Counter.mCounter0;
         sDrawn = 0;
     }
-    constexpr int FRAME_TRIS = 150000;
+    // 400k triangles is 1.2M vertices of 16 bytes, 19 MiB: under half the buffer, the rest for the game's own.
+    constexpr int FRAME_TRIS = 400000;
     GXTexObj rockTex;
     GXInitTexObj(&rockTex, (void*)rockTexture(), TEX_N, TEX_N, GX_TF_I8, GX_REPEAT, GX_REPEAT, GX_FALSE);
     GXInitTexObjLOD(&rockTex, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
@@ -1969,7 +1970,7 @@ bool sStartPointSet = false;  // pc_rplus_start_point moved Link's spawn (pc_rpl
 
 namespace {
 
-// An arrival at sea that the generated world moved: coming out of a moved door (pc_rplus_exit_return).
+// An arrival at sea that the generated world moved: coming out of a moved door (pc_rplus_next_stage).
 struct Arrival {
     bool on = false;
     int room = 0;
@@ -2795,18 +2796,16 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
     return 1;
 }
 
-int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe) {
-    if (!pc_rplus_active() || strcmp(stage, "sea") != 0) {
+int pc_rplus_next_stage(const char** stage, s16* point, s8* room) {
+    if (!pc_rplus_active() || strcmp(*stage, "sea") != 0) {
         return 0;
     }
-    // Out of an interior with a generated door, back to its island's room: out of that door instead.
+    // Out of an interior with a generated door, back to its island's room: out of that door instead. Whatever
+    // sends Link out (an exit floor, a cave mouth's actor, a warp, an event), so this sits on the next stage itself.
     const GenDoor* door = doorOfStage(dComIfGp_getStartStageName());
-    if (door == nullptr || (door->exitId != HOME_EXIT && !pc_rplus_sea_room_generated(room)) ||
-        (door->exitId == HOME_EXIT && (room != CABANA_ROOM || point != CABANA_OUT_POINT))) {
+    if (door == nullptr || (door->exitId != HOME_EXIT && !pc_rplus_sea_room_generated(*room)) ||
+        (door->exitId == HOME_EXIT && (*room != CABANA_ROOM || *point != CABANA_OUT_POINT))) {
         return 0;
-    }
-    if (dComIfGp_isEnableNextStage()) {
-        return 1;  // already on the way (Link stands on the exit floor for a few frames)
     }
     // In front of the door, facing away from it.
     sArrival.on = true;
@@ -2814,10 +2813,11 @@ int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 m
     sArrival.pos.set(door->pos.x + cM_ssin(door->angle) * 250.0f, door->pos.y + 10.0f,
                      door->pos.z + cM_scos(door->angle) * 250.0f);
     sArrival.angleY = door->angle;
-    fprintf(stderr, "[rplus] out of %s by door %s to room %d\n", dComIfGp_getStartStageName(), door->id,
-            door->seaRoom);
+    fprintf(stderr, "[rplus] out of %s (to sea room %d point %d) by door %s to room %d\n",
+            dComIfGp_getStartStageName(), *room, *point, door->id, door->seaRoom);
     // A point the room has (dStage_playerInit falls back to its first one; the position is ours).
-    dComIfGp_setNextStage("sea", 0, door->seaRoom, -1, speed, mode, TRUE, wipe);
+    *point = 0;
+    *room = (s8)door->seaRoom;
     return 1;
 }
 
@@ -3000,7 +3000,7 @@ const PropKind kProps[P_COUNT] = {
     {"pflwrx7", 0x00000FF6, 7, 1, 200.0f},  {"flower", 0x00000FE0, 1, 1, 110.0f},
     {"swood", 0x00000010, 1, 2, 420.0f},    {"swood3", 0x00000013, 3, 2, 520.0f},
     {"swood5", 0x00000017, 5, 2, 620.0f},   {"lwood", 0xFFFFFFFF, 0, 3, 1100.0f},
-    {"Vyasi", 0x00000038, 0, 3, 600.0f},    {"koisi1", 0x707FFFE0, 0, 3, 160.0f},
+    {"Oyashi", 0xFFFFFFFF, 0, 3, 600.0f},    {"koisi1", 0x707FFFE0, 0, 3, 160.0f},
     {"Ebrock", 0xF27FFF3F, 0, 3, 500.0f},   {"Ebrock2", 0xF47FFF3A, 0, 3, 500.0f},
     {"BFlower", 0x0000FF0F, 0, 3, 320.0f},
 };
