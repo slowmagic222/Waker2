@@ -23,6 +23,7 @@
 #include "d/d_stage.h"
 #include "d/actor/d_a_sea.h"
 #include "d/actor/d_a_ship.h"
+#include "m_Do/m_Do_audio.h"
 #include "f_op/f_op_actor_mng.h"
 #include "SSystem/SComponent/c_math.h"
 #include "SSystem/SComponent/c_counter.h"
@@ -1641,8 +1642,11 @@ int pc_rplus_room_actors_off(int roomNo) {
 
 namespace {
 
-// Asks the room control to load room roomNo and its RTBL neighbours (one room a call, as dStage_RoomCheck does
-// every frame from the ground under Link).
+// Asks the room control to load room roomNo, the sea floor and the squares round it that Link is near (one room a
+// call, as dStage_RoomCheck does every frame from the ground under Link). The sea's room table has each square
+// with only the floor (room 0), so an island over a square's edge had its land, grass, people and doors over the
+// line missing until Link crossed. A square comes in when Link is within NEAR of it and goes when he is past
+// FAR (so walking along an edge doesn't load and drop it), three at most.
 void requestRoomLoad(int roomNo) {
     roomRead_class* rr = dComIfGp_getStageRoom();
     if (rr == nullptr) {
@@ -1668,13 +1672,55 @@ void requestRoomLoad(int roomNo) {
         return;
     }
     roomRead_data_class* d = rr->m_entries[entry];
-    int ok = dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
-    static int tries = 0, lastOk = -1, lastRoom = -1;
-    if (++tries <= 5 || ok != lastOk || roomNo != lastRoom) {
+    u8 list[16];
+    int count = 0;
+    u8 selfByte = (u8)roomNo;
+    for (int k = 0; k < d->num && count < 8; k++) {
+        list[count++] = d->m_rooms[k];
+        if (dStage_roomRead_dt_c_GetLoadRoomIndex(d->m_rooms[k]) == roomNo) {
+            selfByte = d->m_rooms[k];
+        }
+    }
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
+    const int sq = pc_rplus_squares();
+    if (player != nullptr && roomNo >= 1 && roomNo <= sq * sq) {
+        constexpr float NEAR = 22000.0f, FAR = 34000.0f;
+        float x0, z0;
+        worldOrigin(&x0, &z0);
+        const float px = player->current.pos.x, pz = player->current.pos.z;
+        const int rx = (roomNo - 1) % sq, ry = (roomNo - 1) / sq;
+        int added = 0;
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                const int nx = rx + dx, ny = ry + dy;
+                if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= sq || ny >= sq || added >= 3) {
+                    continue;
+                }
+                const int nr = ny * sq + nx + 1;
+                if (!pc_rplus_sea_room_generated(nr)) {
+                    continue;
+                }
+                // Link's distance to the square (0 inside it).
+                const float sx0 = x0 + nx * ROOM_UNITS, sz0 = z0 + ny * ROOM_UNITS;
+                const float ddx = std::max(0.0f, std::max(sx0 - px, px - (sx0 + ROOM_UNITS)));
+                const float ddz = std::max(0.0f, std::max(sz0 - pz, pz - (sz0 + ROOM_UNITS)));
+                const float dist = sqrtf(ddx * ddx + ddz * ddz);
+                const bool in = dComIfGp_roomControl_checkStatusFlag(nr, 0x01);
+                if (dist < NEAR || (in && dist < FAR)) {
+                    list[count++] = (u8)((selfByte & ~0x3F) | nr);
+                    added++;
+                }
+            }
+        }
+    }
+    int ok = dComIfGp_roomControl_loadRoom(count, list);
+    static int tries = 0, lastOk = -1, lastRoom = -1, lastCount = -1;
+    if (++tries <= 5 || ok != lastOk || roomNo != lastRoom || count != lastCount) {
         lastOk = ok;
         lastRoom = roomNo;
-        fprintf(stderr, "[rplus] room load for room %d (entry %d, %d rooms): %s (try %d)\n", roomNo, entry, d->num,
-                ok ? "asked" : "busy", tries);
+        lastCount = count;
+        fprintf(stderr, "[rplus] room load for room %d (entry %d, %d rooms with the near squares): %s (try %d)\n",
+                roomNo, entry, count, ok ? "asked" : "busy", tries);
     }
 }
 
@@ -3243,9 +3289,34 @@ bool pc_rplus_call_ship(const cXyz& from) {
     if (rx < 0 || ry < 0 || rx >= n || ry >= n) {
         return false;
     }
-    float sx, sz;
-    s16 angle;
-    if (!shoreNear(rx, ry, &sx, &sz, &angle)) {
+    // The nearest open water from where Link stands: out along 24 ways until a quad and the one a boat's length
+    // on are both wet; else the shore nearest his cell.
+    float sx = 0.0f, sz = 0.0f, best = 1e30f;
+    s16 angle = 0;
+    const float q = cs / SUB;
+    auto wetQuad = [&](float x, float z) {
+        const float qx = floorf((x - x0) / q), qz = floorf((z - z0) / q);
+        for (int k = 0; k < 4; k++) {
+            if (heightAt((qx + (k & 1)) / SUB, (qz + (k >> 1)) / SUB) > 0.0f) {
+                return false;
+            }
+        }
+        return true;
+    };
+    for (int w = 0; w < 24; w++) {
+        const float a = w * (6.2831853f / 24.0f), ux = sinf(a), uz = cosf(a);
+        for (float t = 0.0f; t < std::min(best, 40000.0f); t += 150.0f) {
+            const float x = from.x + ux * t, z = from.z + uz * t;
+            if (wetQuad(x, z) && wetQuad(x + ux * 600.0f, z + uz * 600.0f)) {
+                best = t;
+                sx = x + ux * 600.0f;
+                sz = z + uz * 600.0f;
+                angle = cM_atan2s(ux, uz);
+                break;
+            }
+        }
+    }
+    if (best > 1e29f && !shoreNear(rx, ry, &sx, &sz, &angle)) {
         return false;
     }
     fprintf(stderr, "[rplus] Wind's Requiem on land: the boat called from %.0f %.0f to the shore at %.0f %.0f\n",
@@ -3256,8 +3327,12 @@ bool pc_rplus_call_ship(const cXyz& from) {
     ship->speed = cXyz::Zero;
     ship->speedF = 0.0f;
     ship->shape_angle.y = ship->current.angle.y = angle;
-    const int room = (ry / pc_rplus_cells()) * pc_rplus_squares() + (rx / pc_rplus_cells()) + 1;
+    const int scx = (int)floorf((sx - x0) / cs), scy = (int)floorf((sz - z0) / cs);
+    const int room = (std::max(0, std::min(n - 1, scy)) / pc_rplus_cells()) * pc_rplus_squares() +
+                     (std::max(0, std::min(n - 1, scx)) / pc_rplus_cells()) + 1;
     fopAcM_SetRoomNo(ship, room);
+    ship->tevStr.mRoomNo = room;
+    mDoAud_seStart(JA_SE_SHIPPU_WARP_OK, NULL, 0, 0);  // a cue that the boat came
     return true;
 }
 
