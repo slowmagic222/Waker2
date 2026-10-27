@@ -22,6 +22,7 @@
 #include "d/d_item_data.h"
 #include "d/d_stage.h"
 #include "d/actor/d_a_sea.h"
+#include "d/actor/d_a_ship.h"
 #include "f_op/f_op_actor_mng.h"
 #include "SSystem/SComponent/c_math.h"
 #include "SSystem/SComponent/c_counter.h"
@@ -900,31 +901,66 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         }
     };
     auto emitCliff = [&](const Cliff& c) {
-        // Rock, lit by which way it faces; a little lighter at the top, and in bands that differ cliff to cliff.
+        // Rock: the face broken into columns and rows, each point pushed in or out by noise of its world position
+        // (so neighbouring pieces meet), set back under the upper shelf's edge (a lip) and out at the foot (scree);
+        // coloured in layers, lit by which way each bit faces. The collision is the plain upright wall.
         const float dx = c.qx - c.px, dz = c.qz - c.pz, l = sqrtf(dx * dx + dz * dz);
         if (l <= 0.0f) {
             return 0;
         }
-        const float lit = (dz / l) * lx + (-dx / l) * lz;
-        const float tone = lit > 0.1f ? 0.95f : 0.7f;
-        const float vary = 0.9f + 0.2f * vnoise(c.px * 0.0009f, c.pz * 0.0009f, 151);
+        const float nx = dz / l, nz = -dx / l;  // out, toward the lower shelf
+        const float yb = c.y0 - 40.0f, h = c.y1 - yb;
+        const int cols = std::max(1, (int)ceilf(l / 140.0f)), rows = std::max(3, (int)(h / 130.0f));
         const Rgb rock = biomeColour('r');
-        auto shade = [&](float k) { return Vtx{0, 0, 0, (u8)std::min(255.0f, rock.r * k), (u8)std::min(255.0f, rock.g * k),
-                                               (u8)std::min(255.0f, rock.b * k), 0xFF}; };
-        Vtx lo = shade(tone * vary * 0.82f), hi = shade(tone * vary * 1.04f);
-        const float yb = c.y0 - 40.0f;
-        Vtx v[4] = {lo, hi, hi, lo};
-        const float pts[4][3] = {{c.px, yb, c.pz}, {c.px, c.y1, c.pz}, {c.qx, c.y1, c.qz}, {c.qx, yb, c.qz}};
-        for (int k = 0; k < 4; k++) {
-            v[k].x = pts[k][0];
-            v[k].y = pts[k][1];
-            v[k].z = pts[k][2];
+        auto at = [&](int ci, int ri, float* o, float* tint) {
+            const float t = (float)ci / cols, r = (float)ri / rows;
+            const float x = c.px + dx * t, z = c.pz + dz * t, y = yb + h * r;
+            float off = (vnoise(x * 0.004f + y * 0.002f, z * 0.004f - y * 0.003f, 181) - 0.5f) * 80.0f +
+                        (vnoise(x * 0.0009f, z * 0.0009f + y * 0.001f, 187) - 0.5f) * 70.0f;
+            if (ri == rows) {
+                off = -28.0f;  // under the shelf's edge
+            } else if (ri == 0) {
+                off = 20.0f + vnoise(x * 0.003f, z * 0.003f, 191) * 30.0f;
+            } else {
+                off -= 12.0f;
+            }
+            o[0] = x + nx * off;
+            o[1] = y + (ri > 0 && ri < rows ? (vnoise(x * 0.006f, z * 0.006f + y * 0.004f, 193) - 0.5f) * 50.0f : 0.0f);
+            o[2] = z + nz * off;
+            // Layers: bands along the height, wavy along the cliff; lighter near the top.
+            const float band = vnoise(y * 0.011f + x * 0.0004f, z * 0.0004f, 197);
+            *tint = (0.72f + band * 0.32f) * (0.9f + 0.18f * r);
+        };
+        int tris = 0;
+        for (int ci = 0; ci < cols; ci++) {
+            for (int ri = 0; ri < rows; ri++) {
+                float p[4][3], tn[4];
+                at(ci, ri, p[0], &tn[0]);
+                at(ci + 1, ri, p[1], &tn[1]);
+                at(ci + 1, ri + 1, p[2], &tn[2]);
+                at(ci, ri + 1, p[3], &tn[3]);
+                const int quad[2][3] = {{0, 1, 2}, {0, 2, 3}};
+                for (const auto& q : quad) {
+                    const float ax = p[q[1]][0] - p[q[0]][0], ay = p[q[1]][1] - p[q[0]][1], az = p[q[1]][2] - p[q[0]][2];
+                    const float bx2 = p[q[2]][0] - p[q[0]][0], by2 = p[q[2]][1] - p[q[0]][1], bz2 = p[q[2]][2] - p[q[0]][2];
+                    float fx = ay * bz2 - az * by2, fy = az * bx2 - ax * bz2, fz = ax * by2 - ay * bx2;
+                    const float fl = sqrtf(fx * fx + fy * fy + fz * fz);
+                    if (fl > 0.0f) {
+                        fx /= fl; fy /= fl; fz /= fl;
+                    }
+                    // Facing out of the rock either way round.
+                    const float lit = fabsf(fx * lx + fy * ly + fz * lz);
+                    const float tone = lit > 0.5f ? 1.0f : 0.72f;
+                    for (int k : q) {
+                        const float m = tone * tn[k];
+                        dv.push_back({p[k][0], p[k][1], p[k][2], (u8)std::min(255.0f, rock.r * m),
+                                      (u8)std::min(255.0f, rock.g * m), (u8)std::min(255.0f, rock.b * m), 0xFF});
+                    }
+                    tris++;
+                }
+            }
         }
-        const int order[6] = {0, 1, 2, 0, 2, 3};
-        for (int k : order) {
-            dv.push_back(v[k]);
-        }
-        return 2;
+        return tris;
     };
     for (int j = 0; j < n && j < 256; j++) {
         for (int i = 0; i < n; i++) {
@@ -1292,7 +1328,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     const u32 offB = align4(offT + nTri * 10);
     const u32 offTree = align4(offB + nBlk * 2);
     const u32 offG = align4(offTree + nTree * 0x14);
-    const u32 offTi = align4(offG + 0x34);
+    const u32 offTi = align4(offG + 2 * 0x34);
     const u32 nInfo = G_COUNT + (u32)floors.size();
     const u32 offName = offTi + nInfo * 0x10;
     const u32 size = align4(offName + 8);
@@ -1307,7 +1343,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     o.u32at(0x14, offB);
     o.u32at(0x18, nTree);
     o.u32at(0x1C, offTree);
-    o.u32at(0x20, 1);
+    o.u32at(0x20, 2);
     o.u32at(0x24, offG);
     o.u32at(0x28, nInfo);
     o.u32at(0x2C, offTi);
@@ -1330,7 +1366,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         o.u16at(at + 2, (u16)ct.b);
         o.u16at(at + 4, (u16)ct.c);
         o.u16at(at + 6, ct.g);
-        o.u16at(at + 8, 0);
+        o.u16at(at + 8, 1);  // the land group
     }
     // Tree nodes: leaves first, then each level's parents; the root is the last node.
     {
@@ -1365,18 +1401,23 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             levelCount = parents;
         }
     }
-    // The group: the whole room.
-    o.u32at(offG + 0x00, offName);
-    o.f32at(offG + 0x04, 1.0f);
-    o.f32at(offG + 0x08, 1.0f);
-    o.f32at(offG + 0x0C, 1.0f);
-    o.u16at(offG + 0x24, 0xFFFF);  // parent
-    o.u16at(offG + 0x26, 0xFFFF);  // next sibling
-    o.u16at(offG + 0x28, 0xFFFF);  // first child
-    o.u16at(offG + 0x2A, (u16)roomNo);
-    o.u16at(offG + 0x2C, 0);
-    o.u16at(offG + 0x2E, (u16)(nTree - 1));
-    o.u32at(offG + 0x30, (u32)roomNo & 0xFF);  // room info id (dBgS::GetGrpRoomInfId)
+    // The groups: a root, and under it the land with every triangle. A room's own groups are checked against what
+    // a check looks for (normal ground, water, lava: dBgW::ChkGrpThrough) only at the second level, so with the
+    // land the root, checks for water and lava surfaces hit it too (and Link, standing in "lava", grabbed no wall).
+    for (u32 gi = 0; gi < 2; gi++) {
+        const u32 at = offG + gi * 0x34;
+        o.u32at(at + 0x00, offName);
+        o.f32at(at + 0x04, 1.0f);
+        o.f32at(at + 0x08, 1.0f);
+        o.f32at(at + 0x0C, 1.0f);
+        o.u16at(at + 0x24, gi == 0 ? 0xFFFF : 0);  // parent
+        o.u16at(at + 0x26, 0xFFFF);                // next sibling
+        o.u16at(at + 0x28, gi == 0 ? 1 : 0xFFFF);  // first child
+        o.u16at(at + 0x2A, (u16)roomNo);
+        o.u16at(at + 0x2C, 0);
+        o.u16at(at + 0x2E, gi == 0 ? 0xFFFF : (u16)(nTree - 1));
+        o.u32at(at + 0x30, (u32)roomNo & 0xFF);  // room info id (dBgS::GetGrpRoomInfId), plain ground
+    }
     // Poly infos: no camera, exit, link or path; the ground kind's attribute.
     for (u32 i = 0; i < nInfo; i++) {
         u32 at = offTi + i * 0x10;
@@ -2941,24 +2982,15 @@ void pc_rplus_room_actors(int roomNo) {
     }
 }
 
-void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
-    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
-        !pc_rplus_sea_room_generated(roomNo)) {
-        return;
-    }
+namespace {
+
+// Just off the shore nearest land cell (rx, ry): the nearest sea cell, then out from the land toward it to the first
+// wet quad (the shore walls stand on the dry quads' edges, d_a_ship's wall circles are 250 across) and a boat's
+// length on. The angle faces away from the land.
+bool shoreNear(int rx, int ry, float* o_x, float* o_z, s16* o_angle) {
     float x0, z0;
     worldOrigin(&x0, &z0);
     const float cs = cellSize();
-    // From the start cell in the start room (Link's first spawn there is moved to it), else from the SHIP entry.
-    int rx, ry;
-    pc_rplus_start_cell(&rx, &ry);
-    const int startRoom = (ry / pc_rplus_cells()) * pc_rplus_squares() + (rx / pc_rplus_cells()) + 1;
-    if (roomNo != startRoom) {
-        rx = (int)floorf((pos->x - x0) / cs);
-        ry = (int)floorf((pos->z - z0) / cs);
-    }
-    // The nearest sea cell, then out from the land toward it to the first wet quad (the shore walls stand on the
-    // dry quads' edges, d_a_ship's wall circles are 250 across) and a boat's length on: just off the shore.
     const int n = pc_rplus_squares() * pc_rplus_cells();
     int best = -1, bx = 0, by = 0;
     for (int r = 1; r < n && best < 0; r++) {
@@ -2981,7 +3013,7 @@ void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
         }
     }
     if (best < 0) {
-        return;
+        return false;
     }
     const float lx = x0 + (rx + 0.5f) * cs, lz = z0 + (ry + 0.5f) * cs;
     float dx = (bx - rx), dz = (by - ry);
@@ -3007,10 +3039,72 @@ void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
             break;
         }
     }
-    *angle = cM_atan2s(dx, dz);  // facing away from the land
+    *o_x = sx;
+    *o_z = sz;
+    *o_angle = cM_atan2s(dx, dz);
+    return true;
+}
+
+} // namespace
+
+void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
+        !pc_rplus_sea_room_generated(roomNo)) {
+        return;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    // From the start cell in the start room (Link's first spawn there is moved to it), else from the SHIP entry.
+    int rx, ry;
+    pc_rplus_start_cell(&rx, &ry);
+    const int startRoom = (ry / pc_rplus_cells()) * pc_rplus_squares() + (rx / pc_rplus_cells()) + 1;
+    if (roomNo != startRoom) {
+        rx = (int)floorf((pos->x - x0) / cs);
+        ry = (int)floorf((pos->z - z0) / cs);
+    }
+    float sx, sz;
+    if (!shoreNear(rx, ry, &sx, &sz, angle)) {
+        return;
+    }
     fprintf(stderr, "[rplus] the boat in room %d moved from %.0f %.0f to the shore at %.0f %.0f\n", roomNo, pos->x,
             pos->z, sx, sz);
     pos->set(sx, 0.0f, sz);
+}
+
+bool pc_rplus_call_ship(const cXyz& from) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return false;
+    }
+    fopAc_ac_c* ship = dComIfGp_getShipActor();
+    if (ship == nullptr) {
+        fprintf(stderr, "[rplus] Wind's Requiem on land: no boat to call\n");
+        return false;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    const int rx = (int)floorf((from.x - x0) / cs), ry = (int)floorf((from.z - z0) / cs);
+    const int n = pc_rplus_squares() * pc_rplus_cells();
+    if (rx < 0 || ry < 0 || rx >= n || ry >= n) {
+        return false;
+    }
+    float sx, sz;
+    s16 angle;
+    if (!shoreNear(rx, ry, &sx, &sz, &angle)) {
+        return false;
+    }
+    fprintf(stderr, "[rplus] Wind's Requiem on land: the boat called from %.0f %.0f to the shore at %.0f %.0f\n",
+            ship->current.pos.x, ship->current.pos.z, sx, sz);
+    ship->current.pos.set(sx, ship->current.pos.y, sz);
+    ship->old.pos = ship->current.pos;
+    ship->home.pos = ship->current.pos;
+    ship->speed = cXyz::Zero;
+    ship->speedF = 0.0f;
+    ship->shape_angle.y = ship->current.angle.y = angle;
+    const int room = (ry / pc_rplus_cells()) * pc_rplus_squares() + (rx / pc_rplus_cells()) + 1;
+    fopAcM_SetRoomNo(ship, room);
+    return true;
 }
 
 namespace {

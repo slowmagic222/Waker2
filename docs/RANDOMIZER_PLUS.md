@@ -83,7 +83,10 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   grid bent by noise (coasts wander off the cells), rolling hills, ridges on rock, volcanic and snow land, small
   bumps; then levelled where the world builds (`shapeGround`). That height (`e`) makes the ground in tiers
   (`tierY`): the beach rises smoothly into tier 1, and above it each tier is a nearly flat shelf with an upright
-  rock cliff to the next (the mesh's triangles are cut along the crossings, `splitTri`, drawn and solid).
+  rock cliff to the next (the mesh's triangles are cut along the crossings, `splitTri`, drawn and solid). Cliffs
+  are drawn as rough rock (bulges, a set-back lip, scree at the foot, coloured in layers) over flat walls, which the
+  "climb any wall" QoL can climb. The DZB has a root group and the land under it: the game checks groups for
+  water and lava only at that second level, so a lone root group read as lava to Link's wall grab.
 - **Layout** (`layout()`, made once from the anchors): a door (`KNOB01`) and a house for every anchor whose
   interior stage is known (`kInteriors`), each with an exit floor inside (exit ids `0x20` + its number in its room;
   Link's home, the cabana `Abesso`, is `0x3A`). Houses near each other gather into towns: round a paved plaza, the
@@ -103,6 +106,8 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   islands and some dungeons. `COS_RPLUS_NPCS=0` or `COS_RPLUS_ENEMIES=0` leaves them out.
 - **Start gear**: a file with no sword gets the logic's start items at sea (Hero's Sword, shield, Wind Waker,
   Wind's Requiem, Ballad of Gales, Song of Passing, sail, magic).
+- **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
+  (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models
   (`d_a_lod_bg.cpp`) are off; the sea chart and the QoL sea map draw the generated land.
 
