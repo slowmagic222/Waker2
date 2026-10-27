@@ -130,7 +130,7 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   lighthouse or enemy puzzle is not built). Its item and save flag are the disc's.
 - **Link's home** (the cabana, `Abesso`, unlocked): its dishes, pots and tubs are left out (`pc_rplus_home_actor`)
   for the house decor Link finds.
-- **House decor** (`pc_rplus_decor.cpp`, `COS_RPLUS_DECOR=0` to leave the world's pickups out): 183 pieces, every
+- **House decor** (`pc_rplus_decor.cpp`, `COS_RPLUS_DECOR=0` to leave the world's pickups out): 175 pieces, every
   carryable thing that is not an item (the 16 `d_a_tsubo` types: pots, jug, barrel, stool, skull, bucket, seeds,
   crate, stone figures, Kutani pot; small rocks, a boulder and a stone head; three pigs; the five Tingle statues;
   seven Tower of the Gods stones and statues; the six enemy weapons) and the Nintendo Gallery's 134 figurines on
