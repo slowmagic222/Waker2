@@ -344,6 +344,8 @@ void pc_rplus_room_actors(int roomNo);
 /* dStage_setShipPos: in a generated sea room, the boat's spot moved to the nearest open water (from the start cell
    in the start room, else from the room's own spot), facing away from the land. */
 void pc_rplus_ship_pos(int roomNo, class cXyz* pos, s16* angle);
+// Randomizer+: the Wind's Requiem played on land calls the boat to the shore nearest `from`; true if it came.
+bool pc_rplus_call_ship(const class cXyz& from);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);

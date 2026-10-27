@@ -706,6 +706,12 @@ BOOL daPy_lk_c::procTactPlayEnd_init(int i_melodyNum) {
     } else if (i_melodyNum == mDoAud_MELODY_WINDS_REQUIEM_e) {
         dCam_getBody()->EndEventCamera(fopAcM_GetID(this));
         fopAcM_create(fpcNm_WBIRD_e, NULL, &current.pos, dComIfGp_roomControl_getStayNo());
+#if TARGET_PC
+        // Randomizer+: on an island, far from the boat, the Wind's Requiem also calls it to the nearest shore.
+        if (r28 == 0 && !checkModeFlg(ModeFlg_SWIM) && mAcch.ChkGroundHit()) {
+            pc_rplus_call_ship(current.pos);
+        }
+#endif
     } else if (i_melodyNum == mDoAud_MELODY_COMMAND_MELODY_e) {
         dCam_getBody()->EndEventCamera(fopAcM_GetID(this));
         dComIfGp_event_setTalkPartner(dComIfGp_getCb1Player());
