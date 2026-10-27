@@ -910,7 +910,9 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         }
         const float nx = dz / l, nz = -dx / l;  // out, toward the lower shelf
         const float yb = c.y0 - 40.0f, h = c.y1 - yb;
-        const int cols = std::max(1, (int)ceilf(l / 140.0f)), rows = std::max(3, (int)(h / 130.0f));
+        // Coarse: every vertex is pushed to the GPU each frame (a room drew 46k triangles, past Aurora's buffers,
+        // at 140 x 130).
+        const int cols = std::max(1, (int)ceilf(l / 300.0f)), rows = 2;
         const Rgb rock = biomeColour('r');
         auto at = [&](int ci, int ri, float* o, float* tint) {
             const float t = (float)ci / cols, r = (float)ri / rows;
