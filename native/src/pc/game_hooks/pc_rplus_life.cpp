@@ -162,7 +162,9 @@ struct Pools {
     bool read = false;
     std::vector<Entry> npcs;               // movable NPCs of the generated sea rooms
     std::vector<Entry> enemies;            // one entry per (kind, params) seen
+    std::vector<Entry> campDecor;          // a camp's fire and pots, as the disc has them (first seen of each)
 };
+const char* const kCampDecor[] = {"Fire", "kotubo", "ootubo1"};
 
 Pools& pools() {
     static Pools p;
@@ -187,7 +189,8 @@ Pools& pools() {
         }
     }
     // A few dungeons for the enemies the islands lack (fire Keese, Magtails, Boko Babas, Moblins).
-    static const char* const kDungeons[] = {"M_NewD2", "kindan", "Siren", "M_Dai", "kaze"};
+    // The Private Oasis's cabana for a campfire.
+    static const char* const kDungeons[] = {"M_NewD2", "kindan", "Siren", "M_Dai", "kaze", "Abesso"};
     for (const char* st : kDungeons) {
         for (int r = 0; r < 24; r++) {
             if (readRoomDzr(st, r, dzr)) {
@@ -196,6 +199,15 @@ Pools& pools() {
         }
     }
     for (const Entry& e : all) {
+        for (const char* dn : kCampDecor) {
+            bool seen = false;
+            for (const Entry& o : p.campDecor) {
+                seen = seen || strcmp(o.name, dn) == 0;
+            }
+            if (!seen && strcmp(e.name, dn) == 0) {
+                p.campDecor.push_back(e);
+            }
+        }
         for (const EnemyKind& k : kEnemies) {
             if (strcmp(e.name, k.name) != 0) {
                 continue;
@@ -312,6 +324,86 @@ void placeNpcs(int roomNo) {
     }
 }
 
+const Entry* findEntry(const std::vector<Entry>& v, const char* name) {
+    for (const Entry& e : v) {
+        if (strcmp(e.name, name) == 0) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+// Enemy camps: on open flat land away from the start and the towns, a campfire with Bokoblins round it (and
+// sometimes a Moblin), a few pots by it. At most CAMPS_PER_ROOM a room.
+constexpr int CAMPS_PER_ROOM = 2;
+int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
+    Pools& P = pools();
+    const Entry* bk = findEntry(P.enemies, "Bk");
+    if (bk == nullptr) {
+        return 0;
+    }
+    const Entry* mo = findEntry(P.enemies, "mo2");
+    const Entry* fire = findEntry(P.campDecor, "Fire");
+    const Entry* pot = findEntry(P.campDecor, "kotubo");
+    if (pot == nullptr) {
+        pot = findEntry(P.campDecor, "ootubo1");
+    }
+    int camps = 0, made = 0;
+    for (int tries = 0; tries < 300 && camps < CAMPS_PER_ROOM; tries++) {
+        const u32 h = mix((u32)roomNo * 104729u + (u32)tries, pc_rplus_seed() ^ 0xCA3Bu);
+        if (tries == 0 && (h & 3) == 0) {
+            break;  // a quarter of the rooms have none
+        }
+        const float x = rx0 + (0.05f + (h & 0xFFFF) / 65536.0f * 0.9f) * 100000.0f;
+        const float z = rz0 + (0.05f + ((h >> 16) & 0xFFFF) / 65536.0f * 0.9f) * 100000.0f;
+        const char b = rplus::biomeAt(x, z);
+        const float y = rplus::groundY(x, z);
+        if (strchr("gfrd", b) == nullptr || y < 160.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1400.0f)) {
+            continue;
+        }
+        if ((x - sx) * (x - sx) + (z - sz) * (z - sz) < 14000.0f * 14000.0f) {
+            continue;
+        }
+        bool nearTown = false;
+        for (const rplus::TownInfo& t : towns) {
+            nearTown = nearTown || (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.r + 6000.0f) * (t.r + 6000.0f);
+        }
+        if (nearTown) {
+            continue;
+        }
+        if (fire != nullptr) {
+            // No switch, no treasure-chest bit: always lit.
+            spawn(*fire, x, z, 0, roomNo, (fire->params & ~0x1F0FFu) | 0x1F0FFu);
+            made++;
+        }
+        const int n = 3 + (int)((h >> 5) % 3);
+        for (int k = 0; k < n; k++) {
+            const float a = (k + ((h >> 9) & 0xFF) / 256.0f) * 6.2831853f / n;
+            const float ex = x + sinf(a) * 520.0f, ez = z + cosf(a) * 520.0f;
+            if (rplus::roomAt(ex, ez) != roomNo || rplus::steep(ex, ez)) {
+                continue;
+            }
+            spawn(*bk, ex, ez, cM_atan2s(x - ex, z - ez), roomNo, bk->params | 0xFFFF0000u);
+            made++;
+        }
+        if (mo != nullptr && ((h >> 13) & 1)) {
+            spawn(*mo, x + 900.0f, z, cM_atan2s(-1.0f, 0.0f), roomNo, mo->params | 0xFFFF0000u);
+            made++;
+        }
+        if (pot != nullptr) {
+            for (int k = 0; k < 2; k++) {
+                const float a = ((h >> (17 + k * 3)) & 7) * 0.785f;
+                spawn(*pot, x + sinf(a) * 1000.0f, z + cosf(a) * 1000.0f, 0, roomNo, pot->params);
+                made++;
+            }
+        }
+        camps++;
+        fprintf(stderr, "[rplus] room %d: an enemy camp at %.0f %.0f (%d Bokoblins%s)\n", roomNo, x, z, n,
+                mo != nullptr && ((h >> 13) & 1) ? " and a Moblin" : "");
+    }
+    return made;
+}
+
 void placeEnemies(int roomNo) {
     Pools& P = pools();
     if (P.enemies.empty()) {
@@ -322,7 +414,7 @@ void placeEnemies(int roomNo) {
     rplus::startXZ(&sx, &sz);
     float rx0, rz0;
     rplus::roomCorner(roomNo, &rx0, &rz0);
-    int made = 0, groups = 0;
+    int made = placeCamps(roomNo, rx0, rz0, sx, sz, towns), groups = 0;
     for (int tries = 0; tries < 400 && groups < ENEMY_GROUPS_PER_ROOM; tries++) {
         const u32 h = mix((u32)roomNo * 7919u + (u32)tries, pc_rplus_seed() ^ 0xE7E7u);
         const float x = rx0 + (h & 0xFFFF) / 65536.0f * 100000.0f;
