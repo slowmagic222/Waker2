@@ -365,8 +365,13 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     };
     struct Wall {
         int blk;
-        float px, pz, qx, qz;  // the edge, ordered so the wall faces the sea
+        float px, pz, qx, qz;  // the edge, ordered so the wall faces the sea (or out of the hut)
+        float y0, y1;
+        Ground g;
     };
+    // From the sea bed to above the boat's highest wall circle (d_a_ship.cpp: 0, 75 and 150 over it, and one at
+    // y -600), so none passes under or over. Link passes through them (G_SHORE): he swims ashore anywhere.
+    constexpr float WALL_BOTTOM = WATER_Y - 10.0f, WALL_TOP = 250.0f;
     std::vector<Wall> walls;
     for (int j = 0; j < n; j++) {
         for (int i = 0; i < n; i++) {
@@ -377,15 +382,12 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             const float z0e = bz + j * step, z1e = bz + (j + 1) * step;
             const int blk = (j / BLK) * nb + (i / BLK);
             // (p, q) with the sea on the left of p -> q seen from above, x east and z south: see the normal below.
-            if (j > 0 && !dry(i, j - 1)) walls.push_back({blk, x0e, z0e, x1e, z0e});  // sea to the north
-            if (j < n - 1 && !dry(i, j + 1)) walls.push_back({blk, x1e, z1e, x0e, z1e});  // south
-            if (i > 0 && !dry(i - 1, j)) walls.push_back({blk, x0e, z1e, x0e, z0e});  // west
-            if (i < n - 1 && !dry(i + 1, j)) walls.push_back({blk, x1e, z0e, x1e, z1e});  // east
+            if (j > 0 && !dry(i, j - 1)) walls.push_back({blk, x0e, z0e, x1e, z0e, WALL_BOTTOM, WALL_TOP, G_SHORE});  // sea to the north
+            if (j < n - 1 && !dry(i, j + 1)) walls.push_back({blk, x1e, z1e, x0e, z1e, WALL_BOTTOM, WALL_TOP, G_SHORE});  // south
+            if (i > 0 && !dry(i - 1, j)) walls.push_back({blk, x0e, z1e, x0e, z0e, WALL_BOTTOM, WALL_TOP, G_SHORE});  // west
+            if (i < n - 1 && !dry(i + 1, j)) walls.push_back({blk, x1e, z0e, x1e, z1e, WALL_BOTTOM, WALL_TOP, G_SHORE});  // east
         }
     }
-    // From the sea bed to above the boat's highest wall circle (d_a_ship.cpp: 0, 75 and 150 over it, and one at
-    // y -600), so none passes under or over. Link passes through them (G_SHORE): he swims ashore anywhere.
-    constexpr float WALL_BOTTOM = WATER_Y - 10.0f, WALL_TOP = 250.0f;
     // Floors: Link's home's exit floor, just behind its door (the door opens onto it).
     struct Floor {
         int blk;
@@ -396,12 +398,37 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         cXyz door;
         s16 ang;
         if (homeDoor(&door, &ang) == roomNo) {
-            const float fx = door.x - cM_ssin(ang) * 160.0f, fz = door.z - cM_scos(ang) * 160.0f;
-            const int qi = (int)((fx - bx) / step), qj = (int)((fz - bz) / step);
-            if (qi >= 0 && qj >= 0 && qi < n && qj < n) {
-                floors.push_back({(qj / BLK) * nb + (qi / BLK), fx - 110.0f, fz - 70.0f, fx + 110.0f, fz + 70.0f,
-                                  door.y + 3.0f});
+            // A hut behind the door (collision only for now): its front in the door's plane with a doorway the
+            // door fills, its sides and back facing out, so Link only reaches the door from the front (from
+            // behind it plays the door's other event, which never finished). Inside, the exit floor: the door's
+            // event leaves Link about 80 past the door.
+            const float s = cM_ssin(ang), c = cM_scos(ang);  // out of the door's front
+            auto at = [&](float side, float ahead, float* x, float* z) {
+                *x = door.x + c * side + s * ahead;
+                *z = door.z - s * side + c * ahead;
+            };
+            auto blkOf = [&](float x, float z) {
+                int qi = (int)((x - bx) / step), qj = (int)((z - bz) / step);
+                qi = qi < 0 ? 0 : qi >= n ? n - 1 : qi;
+                qj = qj < 0 ? 0 : qj >= n ? n - 1 : qj;
+                return (qj / BLK) * nb + (qi / BLK);
+            };
+            constexpr float HUT_HALF = 260.0f, HUT_DEPTH = 420.0f, DOORWAY_HALF = 85.0f;
+            const float y0 = door.y - 200.0f, y1 = door.y + 400.0f;
+            // Corners going round the outside, each edge p -> q with "out" on its left seen from above.
+            const float ring[][2] = {{-DOORWAY_HALF, 0.0f}, {-HUT_HALF, 0.0f}, {-HUT_HALF, -HUT_DEPTH},
+                                     {HUT_HALF, -HUT_DEPTH}, {HUT_HALF, 0.0f}, {DOORWAY_HALF, 0.0f}};
+            for (int k = 0; k + 1 < 6; k++) {
+                float px, pz, qx, qz;
+                at(ring[k][0], ring[k][1], &px, &pz);
+                at(ring[k + 1][0], ring[k + 1][1], &qx, &qz);
+                walls.push_back({blkOf((px + qx) * 0.5f, (pz + qz) * 0.5f), px, pz, qx, qz, y0, y1, G_STONE});
             }
+            float fx, fz;
+            at(0.0f, -(HUT_DEPTH * 0.5f + 10.0f), &fx, &fz);
+            const float hw = HUT_HALF - 10.0f, hd = HUT_DEPTH * 0.5f - 20.0f;  // half extents across, along
+            const float ex = fabsf(c) * hw + fabsf(s) * hd, ez = fabsf(s) * hw + fabsf(c) * hd;
+            floors.push_back({blkOf(fx, fz), fx - ex, fz - ez, fx + ex, fz + ez, door.y + 3.0f});
         }
     }
     // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall, 4 per floor.
@@ -470,7 +497,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     }
     for (size_t w = 0; w < walls.size(); w++) {
         const Wall& wl = walls[w];
-        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {WALL_BOTTOM, WALL_TOP, WALL_BOTTOM, WALL_TOP},
+        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {wl.y0, wl.y1, wl.y0, wl.y1},
                     vz[4] = {wl.pz, wl.pz, wl.qz, wl.qz};
         for (int k = 0; k < 4; k++) {
             u32 at = offV + ((u32)nv * nv + (u32)w * 4 + k) * 12;
@@ -532,7 +559,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                     o.u16at(at, tv[k][0]);
                     o.u16at(at + 2, tv[k][1]);
                     o.u16at(at + 4, tv[k][2]);
-                    o.u16at(at + 6, (u16)G_SHORE);
+                    o.u16at(at + 6, (u16)walls[w].g);
                     o.u16at(at + 8, 0);
                     tri++;
                 }
@@ -621,7 +648,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         fprintf(stderr, "[rplus] room %d: collision not set\n", roomNo);
     }
     t->dzb = blob;
-    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision (%zu shore walls) in %u blocks\n", roomNo,
+    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision (%zu walls) in %u blocks\n", roomNo,
             pk.mTriCount, nTri, walls.size(), nBlk);
     return t;
 }
