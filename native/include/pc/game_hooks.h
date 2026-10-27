@@ -346,6 +346,10 @@ void pc_rplus_room_actors(int roomNo);
 void pc_rplus_ship_pos(int roomNo, class cXyz* pos, s16* angle);
 // Randomizer+: the Wind's Requiem played on land calls the boat to the shore nearest `from`; true if it came.
 bool pc_rplus_call_ship(const class cXyz& from);
+// Randomizer+: in Link's home (the cabana), a dish or pot of the stage becomes something to carry (name, params
+// changed; 1 if so), and carried things there don't break.
+int pc_rplus_home_actor(char* name, u32* params);
+int pc_rplus_home_unbreakable(void);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);

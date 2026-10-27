@@ -1324,6 +1324,20 @@ void dStage_actorCreate(stage_actor_data_class* i_actorData, fopAcM_prm_class* i
         JKRHeap::free(i_actorPrm, NULL);
         return;
     }
+    // Randomizer+: Link's home emptied, its dishes and pots things to carry instead.
+    char pcName[9] = {};
+    memcpy(pcName, i_actorData->name, 8);
+    if (pc_rplus_home_actor(pcName, &i_actorPrm->base.parameters)) {
+        dStage_objectNameInf* home_p = dStage_searchName(pcName);
+        if (home_p == NULL) {
+            JKRHeap::free(i_actorPrm, NULL);
+            return;
+        }
+        i_actorPrm->argument = home_p->argument;
+        i_actorPrm->gbaName = home_p->gbaName;
+        fopAcM_Create(home_p->procname, NULL, i_actorPrm);
+        return;
+    }
 #endif
     dStage_objectNameInf* nameinf_p = dStage_searchName(i_actorData->name);
 
