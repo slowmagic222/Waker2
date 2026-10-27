@@ -370,7 +370,10 @@ static void musicFrame() {
         return;
     }
     const float volume = strcmp(pc_settings_get("COS_QOL_NO_MUSIC"), "1") == 0 ? 0.0f : 1.0f;
-    constexpr u8 kLine = 19; // the last of the 20 volume lines (JAISequenceMgr.h, JAIStreamMgr.h)
+    // A sequence's volume is the product of its first PLAY_TRACK_MAX + 12 lines (3 + 12 = 15 in this game,
+    // JAIZelParam.cpp; JAISequenceMgr.cpp checkPlayingSeqUpdateMultiplication), a stream's of all 20: line 14
+    // is the last one both use, and the game sets only 0-11.
+    constexpr u8 kLine = 14;
     JAISound* const sounds[] = {zel->mpMainBgmSound, zel->mpSubBgmSound, zel->mpStreamBgmSound};
     for (JAISound* sound : sounds) {
         if (sound != nullptr) {
