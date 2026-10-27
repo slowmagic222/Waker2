@@ -1160,9 +1160,145 @@ int pc_rplus_home_unlocked(void) {
     return pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "Abesso") == 0;
 }
 
+namespace {
+
+// ---- Props: the islands' grass, flowers, trees, rocks and pots, with the params the disc's sea rooms use
+// (scripts/rplus placement survey), scattered by biome. The same each time a room loads (the seed and the cell).
+
+struct PropKind {
+    const char* name;
+    u32 params;
+    const char* biomes;  // where it grows (biome letters), "b" = the beach band
+    u16 weight;          // relative chance
+    float clearance;     // nothing else this kind's size within this many units
+};
+
+const PropKind kProps[] = {
+    {"kusax21", 0x00000FC2, "gf", 30, 300.0f},
+    {"kusax7", 0x00000FC1, "gfd", 50, 200.0f},
+    {"kusax1", 0x00000FC0, "gfdv", 40, 120.0f},
+    {"flwr7", 0x00000FE4, "g", 12, 200.0f},
+    {"pflwrx7", 0x00000FF6, "g", 8, 200.0f},
+    {"flower", 0x00000FE0, "gd", 10, 120.0f},
+    {"swood", 0x00000010, "g", 14, 500.0f},
+    {"swood3", 0x00000013, "gf", 10, 600.0f},
+    {"swood5", 0x00000017, "f", 10, 700.0f},
+    {"lwood", 0xFFFFFFFF, "f", 2, 1200.0f},
+    {"Vyasi", 0x00000038, "bd", 12, 600.0f},
+    {"koisi1", 0x707FFFE0, "gdrsv", 8, 150.0f},
+    {"Ebrock", 0xF27FFF3F, "rv", 6, 500.0f},
+    {"Ebrock2", 0xF47FFF3A, "rvs", 4, 500.0f},
+    {"BFlower", 0x0000FF0F, "v", 3, 300.0f},
+};
+constexpr int PROPS_PER_ROOM = 260;   // the most one room gets (the disc's busiest sea room has about this many)
+constexpr int PROP_TRIES_PER_CELL = 3;
+
+// The drawn land's height (bilinear over the mesh's samples, which heightAt gives).
+float meshY(float gx, float gy) {
+    const float sx = gx * SUB, sy = gy * SUB;
+    const float ix = floorf(sx), iy = floorf(sy), tx = sx - ix, ty = sy - iy;
+    const float a = heightAt(ix / SUB, iy / SUB), b = heightAt((ix + 1) / SUB, iy / SUB);
+    const float c = heightAt(ix / SUB, (iy + 1) / SUB), d = heightAt((ix + 1) / SUB, (iy + 1) / SUB);
+    return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+}
+
+void scatterProps(int roomNo) {
+    const int cells = pc_rplus_cells(), n = pc_rplus_squares();
+    const int r = roomNo - 1;
+    const int gx0 = (r % n) * cells, gy0 = (r / n) * cells;
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    cXyz door;
+    s16 doorAng;
+    const bool home = homeDoor(&door, &doorAng) == roomNo;
+    u32 total = 0;
+    for (const PropKind& k : kProps) {
+        total += k.weight;
+    }
+    struct Placed {
+        float x, z, clear;
+    };
+    std::vector<Placed> placed;
+    int made = 0;
+    for (int cy = gy0; cy < gy0 + cells && made < PROPS_PER_ROOM; cy++) {
+        for (int cx = gx0; cx < gx0 + cells && made < PROPS_PER_ROOM; cx++) {
+            if (pc_rplus_cell_height(cx, cy) == 0) {
+                continue;
+            }
+            for (int t = 0; t < PROP_TRIES_PER_CELL && made < PROPS_PER_ROOM; t++) {
+                const u32 h1 = hash2(cx * 7 + t, cy * 13 + 0x5151), h2 = hash2(cy * 11 + t, cx * 3 + 0x7a7a);
+                if ((h1 & 3) == 0) {
+                    continue;  // a quarter of the tries leave the spot bare
+                }
+                const float gx = cx + ((h1 >> 8) & 0xFFF) / 4096.0f, gy = cy + ((h2 >> 8) & 0xFFF) / 4096.0f;
+                const float y = meshY(gx, gy);
+                if (y < LAND_BASE + 15.0f) {
+                    continue;  // in the surf
+                }
+                const float x = x0 + gx * cs, z = z0 + gy * cs;
+                if (home && (x - door.x) * (x - door.x) + (z - door.z) * (z - door.z) < 900.0f * 900.0f) {
+                    continue;  // the house and its doorstep
+                }
+                const float dxy = fabsf(meshY(gx + 0.02f, gy) - y) + fabsf(meshY(gx, gy + 0.02f) - y);
+                if (dxy > 0.02f * cs * 0.9f) {
+                    continue;  // too steep
+                }
+                const bool beach = y < LAND_BASE + 70.0f;
+                const char b = biomeNear(gx, gy);
+                // A kind that grows here, by weight.
+                u32 pick = h2 % total;
+                const PropKind* kind = nullptr;
+                for (int tries = 0; tries < 4 && kind == nullptr; tries++) {
+                    u32 acc = 0;
+                    for (const PropKind& k : kProps) {
+                        acc += k.weight;
+                        if (pick < acc) {
+                            const bool fits = beach ? strchr(k.biomes, 'b') != nullptr || (strchr(k.biomes, 'd') && b == 'd')
+                                                    : strchr(k.biomes, b) != nullptr;
+                            if (fits) {
+                                kind = &k;
+                            }
+                            break;
+                        }
+                    }
+                    pick = (pick * 2654435761u + 977u) % total;
+                }
+                if (kind == nullptr) {
+                    continue;
+                }
+                bool clear = true;
+                for (const Placed& p : placed) {
+                    const float c2 = std::max(p.clear, kind->clearance);
+                    if ((p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) < c2 * c2) {
+                        clear = false;
+                        break;
+                    }
+                }
+                if (!clear) {
+                    continue;
+                }
+                cXyz pos(x, y, z);
+                csXyz angle(0, (s16)(h1 >> 16), 0);
+                fopAcM_create((char*)kind->name, kind->params, &pos, roomNo, &angle, nullptr);
+                placed.push_back({x, z, kind->clearance});
+                made++;
+            }
+        }
+    }
+    if (made > 0) {
+        fprintf(stderr, "[rplus] room %d: %d props\n", roomNo, made);
+    }
+}
+
+} // namespace
+
 void pc_rplus_room_actors(int roomNo) {
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return;
+    }
+    if (pc_rplus_sea_room_generated(roomNo)) {
+        scatterProps(roomNo);
     }
     cXyz pos;
     s16 ang;
