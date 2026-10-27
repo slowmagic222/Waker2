@@ -568,7 +568,7 @@ void dMenu_Fmap_c::screenSet() {
         if (pic == NULL) {
             continue;
         }
-        pic->setBlackWhite(JUtility::TColor(70, 46, 24, 255), JUtility::TColor(196, 160, 104, 255));
+        pic->setBlackWhite(JUtility::TColor(70, 46, 24, 0), JUtility::TColor(196, 160, 104, 255));  // black: no alpha (alpha = lerp of the two by the texture's alpha)
         if (!parent->insertChild(fog, pic)) {
             delete pic;
             continue;
