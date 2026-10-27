@@ -80,17 +80,20 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   (`native/src/pc/game_hooks/pc_rplus_terrain.cpp`), which samples the ground 6 times a cell, builds its collision
   as a DZB made in memory (passed through `cBgS::ConvDzb` like a room's `room.dzb`) and a draw packet with vertex
   colours by biome and light baked in two tones. The ground (`naturalY`): the cells' heights blended smoothly on a
-  grid bent by noise (coasts wander off the cells), rolling hills, ridges and terraced shelves on rock, volcanic and
-  snow land, small bumps; then levelled where the world builds (`shapeGround`).
+  grid bent by noise (coasts wander off the cells), rolling hills, ridges on rock, volcanic and snow land, small
+  bumps; then levelled where the world builds (`shapeGround`). That height (`e`) makes the ground in tiers
+  (`tierY`): the beach rises smoothly into tier 1, and above it each tier is a nearly flat shelf with an upright
+  rock cliff to the next (the mesh's triangles are cut along the crossings, `splitTri`, drawn and solid).
 - **Layout** (`layout()`, made once from the anchors): a door (`KNOB01`) and a house for every anchor whose
   interior stage is known (`kInteriors`), each with an exit floor inside (exit ids `0x20` + its number in its room;
   Link's home, the cabana `Abesso`, is `0x3A`). Houses near each other gather into towns: round a paved plaza, the
   ground levelled, doors facing the middle, more houses without a way in, dirt paths to each door, low brick walls
   by the yards and a wooden fence round the town with gates between the houses. Paths join the towns and lone
-  doors of each land. Link starts in the start town's plaza. Going through a door enters its interior; the
+  doors of each land, and a land whose paths are all above tier 1 gets one down to it. Stairs (`Ramp`) climb each
+  cliff a path crosses: straight down onto the shelf below, or along the cliff's foot where there is no room. Link starts in the start town's plaza. Going through a door enters its interior; the
   interior's way out to the sea comes back out of that door (`pc_rplus_exit`, `pc_rplus_exit_return`).
-- **Props** (`scatterProps`): meadows of grass and flowers, groves and forests, palms on beaches, rocks on rugged
-  land, with the disc's params, nearest the towns and doors first within a budget per room. On PC the game's
+- **Props** (`scatterProps`): thick lawns of grass in clumps, grass and flowers along paths, rocks at cliffs' feet
+  and trees along shelves' edges, groves and forests, palms on beaches, rocks on rugged land, with the disc's params, nearest the towns and doors first within a budget per room. On PC the game's
   grass, flower and tree packets hold 16000 tufts, 2000 flowers and 512 trees.
 - **People and enemies** (`native/src/pc/game_hooks/pc_rplus_life.cpp`): the disc's sea rooms are read once
   (`Room<n>.arc`'s `room.dzr`). The townsfolk of the generated rooms move to the towns, and NPCs the world gave an
