@@ -89,7 +89,6 @@ PY=$(find_python) || {
     "$BREW" install python
     PY=$(find_python) || die "no Python 3.10+ found after installing it"
 }
-PY=$("$PY" -c 'import os, sys; print(os.path.realpath(sys.executable))')
 echo "python: $PY ($("$PY" --version))"
 
 # ---- 3. The repository ----------------------------------------------------------------------------------
