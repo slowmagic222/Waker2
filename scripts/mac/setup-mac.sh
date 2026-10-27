@@ -163,6 +163,8 @@ ls -la build/rplus/world.rpw
 mkdir -p build/seedgen-mac
 ln -sfn "$DIR/scripts/rplus" build/seedgen-mac/rplus
 ln -sfn "$WWRANDO" build/seedgen-mac/wwrando
+ln -sfn "$DIR/scripts/seedgen/waker2_seedgen.py" build/seedgen-mac/waker2_seedgen.py  # the Randomizer tab's seeds
+ln -sfn "$WWRANDO/models" build/seedgen-mac/models
 
 # ---- 7. How to play -------------------------------------------------------------------------------------
 say "Done. To play (sound on, no time limit; close the window to quit):"
