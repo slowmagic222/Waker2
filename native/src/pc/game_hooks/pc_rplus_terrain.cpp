@@ -16,7 +16,11 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
+#include "d/d_stage.h"
+#include "d/actor/d_a_sea.h"
 #include "f_op/f_op_actor_mng.h"
+#include "SSystem/SComponent/c_math.h"
+#include "SSystem/SComponent/c_counter.h"
 #include "SSystem/SComponent/c_bg_s.h"
 #include "JSystem/J3DGraphBase/J3DPacket.h"
 #include "JSystem/J3DGraphBase/J3DSys.h"
@@ -24,8 +28,10 @@
 #include "dolphin/gx/GX.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
+#include <vector>
 
 namespace {
 
@@ -126,8 +132,14 @@ Rgb biomeColour(char b) {
 }
 
 // Ground kinds: the poly info table, and the attribute each uses (dBgS::GetAttributeCode's atr_conv index).
-enum Ground { G_GRASS, G_STONE, G_SAND, G_DIRT, G_COUNT };
-const u32 kGroundAttr[G_COUNT] = {0x04, 0x03, 0x0B, 0x01};
+// G_SHORE: the boat's shore walls, which Link, the camera and arrows pass through (poly info 3's pass bits,
+// dBgW::ChkPolyThrough).
+// G_EXIT: the floor just inside a generated door, with its exit id (poly info 0's bits 13-18, dBgS::GetExitId).
+enum Ground { G_GRASS, G_STONE, G_SAND, G_DIRT, G_SHORE, G_EXIT, G_COUNT };
+const u32 kGroundAttr[G_COUNT] = {0x04, 0x03, 0x0B, 0x01, 0x03, 0x03};
+const u32 kGroundPass[G_COUNT] = {0, 0, 0, 0, 0x01 | 0x04 | 0x08, 0};
+constexpr int HOME_EXIT = 0x3A;  // Link's home's door (pc_rplus_exit; not a room SCLS index)
+int homeDoor(cXyz* pos, s16* angleY);
 
 Ground groundOf(char b, float y, float ny) {
     if (y < LAND_BASE + 60.0f) {
@@ -232,11 +244,12 @@ void PcRplusPacket::draw() {
     J3DShape::resetVcdVatCache();
 }
 
-PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
-    *o_bgw = nullptr;
-    if (strcmp(dComIfGp_getStartStageName(), "sea") != 0 || !pc_rplus_sea_room_generated(roomNo)) {
-        return nullptr;
-    }
+namespace {
+
+// A generated room's land: the drawing, and with o_bgw its collision (allocated in the current heap, the room's).
+// Without o_bgw only the drawing, from the host's heap: a far room's land, drawn while its own room isn't.
+PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
+    const bool far = o_bgw == nullptr;
     const int cells = pc_rplus_cells();
     const int n = cells * SUB;          // quads per side
     const int nv = n + 1;               // samples per side
@@ -274,14 +287,14 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         }
     }
 
-    PcRplusTerrain* t = new PcRplusTerrain();
+    PcRplusTerrain* t = far ? new (std::malloc(sizeof(PcRplusTerrain))) PcRplusTerrain() : new PcRplusTerrain();
     if (t == nullptr) {
         delete[] ys;
         return nullptr;
     }
     // ---- Drawing: triangles by sample row (the land and the shallows; the sea bed is not drawn).
     PcRplusPacket& pk = t->packet;
-    pk.mVtx = new Vtx[(size_t)quads * 6];
+    pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * (size_t)quads * 6 + 1) : new Vtx[(size_t)quads * 6];
     pk.mRows = n < 256 ? n : 256;
     Vtx* out = pk.mVtx;
     const float lx = 0.42f, ly = 0.80f, lz = 0.42f;  // light direction (normalised enough)
@@ -335,19 +348,76 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         }
     }
     pk.mTriCount = quads * 2;
+    if (far) {
+        delete[] ys;
+        return t;
+    }
 
     // ---- Collision: a DZB in the disc's layout, over the whole room: the land and the sea bed. Every room
     // needs ground somewhere under any point, or Link, made at a spawn point over open water, waits for ground
     // forever (daPy_lk_c::makeBgWait) and the game never starts.
+    // Shore walls: where a dry quad (a corner above the sea) meets a wet one, an upright wall on their edge from
+    // under the water to just above it, facing the sea. The beach's slope alone counts as ground, which the boat
+    // doesn't stop at (it sailed straight through the land).
     const int nb = (n + BLK - 1) / BLK;  // blocks per side
-    // Vertices: every sample (simple, and the indices are the sample grid's).
-    const u32 nVtx = (u32)nv * nv;
-    const u32 nTri = (u32)n * n * 2;
+    auto dry = [&](int i, int j) {
+        return Y(i, j) > 0.0f || Y(i + 1, j) > 0.0f || Y(i, j + 1) > 0.0f || Y(i + 1, j + 1) > 0.0f;
+    };
+    struct Wall {
+        int blk;
+        float px, pz, qx, qz;  // the edge, ordered so the wall faces the sea
+    };
+    std::vector<Wall> walls;
+    for (int j = 0; j < n; j++) {
+        for (int i = 0; i < n; i++) {
+            if (!dry(i, j)) {
+                continue;
+            }
+            const float x0e = bx + i * step, x1e = bx + (i + 1) * step;
+            const float z0e = bz + j * step, z1e = bz + (j + 1) * step;
+            const int blk = (j / BLK) * nb + (i / BLK);
+            // (p, q) with the sea on the left of p -> q seen from above, x east and z south: see the normal below.
+            if (j > 0 && !dry(i, j - 1)) walls.push_back({blk, x0e, z0e, x1e, z0e});  // sea to the north
+            if (j < n - 1 && !dry(i, j + 1)) walls.push_back({blk, x1e, z1e, x0e, z1e});  // south
+            if (i > 0 && !dry(i - 1, j)) walls.push_back({blk, x0e, z1e, x0e, z0e});  // west
+            if (i < n - 1 && !dry(i + 1, j)) walls.push_back({blk, x1e, z0e, x1e, z1e});  // east
+        }
+    }
+    // From the sea bed to above the boat's highest wall circle (d_a_ship.cpp: 0, 75 and 150 over it, and one at
+    // y -600), so none passes under or over. Link passes through them (G_SHORE): he swims ashore anywhere.
+    constexpr float WALL_BOTTOM = WATER_Y - 10.0f, WALL_TOP = 250.0f;
+    // Floors: Link's home's exit floor, just behind its door (the door opens onto it).
+    struct Floor {
+        int blk;
+        float x0, z0, x1, z1, y;
+    };
+    std::vector<Floor> floors;
+    {
+        cXyz door;
+        s16 ang;
+        if (homeDoor(&door, &ang) == roomNo) {
+            const float fx = door.x - cM_ssin(ang) * 160.0f, fz = door.z - cM_scos(ang) * 160.0f;
+            const int qi = (int)((fx - bx) / step), qj = (int)((fz - bz) / step);
+            if (qi >= 0 && qj >= 0 && qi < n && qj < n) {
+                floors.push_back({(qj / BLK) * nb + (qi / BLK), fx - 110.0f, fz - 70.0f, fx + 110.0f, fz + 70.0f,
+                                  door.y + 3.0f});
+            }
+        }
+    }
+    // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall, 4 per floor.
+    const u32 nVtx = (u32)nv * nv + (u32)walls.size() * 4 + (u32)floors.size() * 4;
+    const u32 nTri = (u32)n * n * 2 + (u32)walls.size() * 2 + (u32)floors.size() * 2;
     int* blkTris = new int[(size_t)nb * nb]();
     for (int j = 0; j < n; j++) {
         for (int i = 0; i < n; i++) {
             blkTris[(j / BLK) * nb + (i / BLK)] += 2;
         }
+    }
+    for (const Wall& w : walls) {
+        blkTris[w.blk] += 2;
+    }
+    for (const Floor& f : floors) {
+        blkTris[f.blk] += 2;
     }
     u32 nBlk = 0;
     for (int b = 0; b < nb * nb; b++) {
@@ -398,6 +468,28 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
             o.f32at(at + 8, bz + j * step);
         }
     }
+    for (size_t w = 0; w < walls.size(); w++) {
+        const Wall& wl = walls[w];
+        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {WALL_BOTTOM, WALL_TOP, WALL_BOTTOM, WALL_TOP},
+                    vz[4] = {wl.pz, wl.pz, wl.qz, wl.qz};
+        for (int k = 0; k < 4; k++) {
+            u32 at = offV + ((u32)nv * nv + (u32)w * 4 + k) * 12;
+            o.f32at(at, vx[k]);
+            o.f32at(at + 4, vy[k]);
+            o.f32at(at + 8, vz[k]);
+        }
+    }
+    const u32 floorVtx0 = (u32)nv * nv + (u32)walls.size() * 4;
+    for (size_t f = 0; f < floors.size(); f++) {
+        const Floor& fl = floors[f];
+        const float vx[4] = {fl.x0, fl.x0, fl.x1, fl.x1}, vz[4] = {fl.z0, fl.z1, fl.z0, fl.z1};
+        for (int k = 0; k < 4; k++) {
+            u32 at = offV + (floorVtx0 + (u32)f * 4 + k) * 12;
+            o.f32at(at, vx[k]);
+            o.f32at(at + 4, fl.y);
+            o.f32at(at + 8, vz[k]);
+        }
+    }
     u32 tri = 0, blk = 0;
     for (int bj = 0; bj < nb; bj++) {
         for (int bi = 0; bi < nb; bi++) {
@@ -424,6 +516,42 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
                         o.u16at(at + 8, 0);
                         tri++;
                     }
+                }
+            }
+            // The block's shore walls: (p bottom, p top, q bottom) and (q bottom, p top, q top). The normal
+            // (v1 - v0) x (v2 - v0) = up x (q - p), which points to the left of p -> q: the sea.
+            const int thisBlk = bj * nb + bi;
+            for (size_t w = 0; w < walls.size(); w++) {
+                if (walls[w].blk != thisBlk) {
+                    continue;
+                }
+                const u16 v = (u16)((u32)nv * nv + (u32)w * 4);
+                const u16 tv[2][3] = {{v, (u16)(v + 1), (u16)(v + 2)}, {(u16)(v + 2), (u16)(v + 1), (u16)(v + 3)}};
+                for (int k = 0; k < 2; k++) {
+                    u32 at = offT + tri * 10;
+                    o.u16at(at, tv[k][0]);
+                    o.u16at(at + 2, tv[k][1]);
+                    o.u16at(at + 4, tv[k][2]);
+                    o.u16at(at + 6, (u16)G_SHORE);
+                    o.u16at(at + 8, 0);
+                    tri++;
+                }
+            }
+            // The block's floors: (x0 z0, x0 z1, x1 z0) and (x1 z0, x0 z1, x1 z1), facing up.
+            for (size_t f = 0; f < floors.size(); f++) {
+                if (floors[f].blk != thisBlk) {
+                    continue;
+                }
+                const u16 v = (u16)(floorVtx0 + (u32)f * 4);
+                const u16 tv[2][3] = {{v, (u16)(v + 1), (u16)(v + 2)}, {(u16)(v + 2), (u16)(v + 1), (u16)(v + 3)}};
+                for (int k = 0; k < 2; k++) {
+                    u32 at = offT + tri * 10;
+                    o.u16at(at, tv[k][0]);
+                    o.u16at(at + 2, tv[k][1]);
+                    o.u16at(at + 4, tv[k][2]);
+                    o.u16at(at + 6, (u16)G_EXIT);
+                    o.u16at(at + 8, 0);
+                    tri++;
                 }
             }
         }
@@ -476,10 +604,10 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
     // Poly infos: no camera, exit, link or path; the ground kind's attribute.
     for (int g = 0; g < G_COUNT; g++) {
         u32 at = offTi + g * 0x10;
-        o.u32at(at + 0x0, 0x07FFE0FFu);
+        o.u32at(at + 0x0, g == G_EXIT ? (0x07FFE0FFu & ~(0x3Fu << 13)) | ((u32)HOME_EXIT << 13) : 0x07FFE0FFu);
         o.u32at(at + 0x4, 0x000000FFu | (kGroundAttr[g] << 16));
         o.u32at(at + 0x8, 0xFFFFFFFFu);
-        o.u32at(at + 0xC, 0);
+        o.u32at(at + 0xC, kGroundPass[g]);
     }
     memcpy(blob + offName, "rplus", 6);
     delete[] blkTris;
@@ -493,9 +621,42 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
         fprintf(stderr, "[rplus] room %d: collision not set\n", roomNo);
     }
     t->dzb = blob;
-    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision in %u blocks\n", roomNo, pk.mTriCount,
-            nTri, nBlk);
+    fprintf(stderr, "[rplus] room %d: %d triangles drawn, %u for collision (%zu shore walls) in %u blocks\n", roomNo,
+            pk.mTriCount, nTri, walls.size(), nBlk);
     return t;
+}
+
+} // namespace
+
+PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
+    *o_bgw = nullptr;
+    if (strcmp(dComIfGp_getStartStageName(), "sea") != 0 || !pc_rplus_sea_room_generated(roomNo)) {
+        return nullptr;
+    }
+    return buildTerrain(roomNo, o_bgw);
+}
+
+void pc_rplus_far_draw(int roomNo) {
+    // Once a frame, from the sea's draw: the land of every generated room not drawn by its own room (the original
+    // sea shows far islands with LOD models, which a generated world has none of).
+    (void)roomNo;
+    static u32 sDrawnAt = ~0u;
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 || sDrawnAt == g_Counter.mCounter0) {
+        return;
+    }
+    sDrawnAt = g_Counter.mCounter0;
+    static PcRplusTerrain* sFar[64] = {};
+    const int rooms = pc_rplus_squares() * pc_rplus_squares();
+    for (int r = 1; r <= rooms && r < 64; r++) {
+        if (!pc_rplus_sea_room_generated(r) ||
+            (dComIfGp_roomControl_checkStatusFlag(r, 0x01) && dComIfGp_roomControl_checkRoomDisp(r))) {
+            continue;
+        }
+        if (sFar[r] == nullptr) {
+            sFar[r] = buildTerrain(r, nullptr);
+        }
+        pc_rplus_terrain_draw(sFar[r]);
+    }
 }
 
 void pc_rplus_terrain_draw(PcRplusTerrain* t) {
@@ -509,9 +670,89 @@ int pc_rplus_room_actors_off(int roomNo) {
     return strcmp(dComIfGp_getStartStageName(), "sea") == 0 && pc_rplus_sea_room_generated(roomNo);
 }
 
+namespace {
+
+// Asks the room control to load room roomNo and its RTBL neighbours (one room a call, as dStage_RoomCheck does
+// every frame from the ground under Link).
+void requestRoomLoad(int roomNo) {
+    roomRead_class* rr = dComIfGp_getStageRoom();
+    if (rr == nullptr) {
+        return;
+    }
+    int entry = -1;
+    for (int i = 0; i < rr->num && entry != roomNo; i++) {
+        roomRead_data_class* d = rr->m_entries[i];
+        u8* rooms = d->m_rooms;
+        for (int k = 0; k < d->num; k++) {
+            if (dStage_roomRead_dt_c_GetLoadRoomIndex(rooms[k]) == roomNo) {
+                entry = i;  // an entry with the room; the room's own entry (index roomNo) wins
+                break;
+            }
+        }
+    }
+    static int logged = -1;
+    if (logged != roomNo) {
+        logged = roomNo;
+        fprintf(stderr, "[rplus] loading room %d under Link (room table entry %d)\n", roomNo, entry);
+    }
+    if (entry < 0) {
+        return;
+    }
+    roomRead_data_class* d = rr->m_entries[entry];
+    int ok = dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
+    static int tries = 0, lastOk = -1;
+    if (++tries <= 5 || tries % 300 == 0 || ok != lastOk) {
+        lastOk = ok;
+        fprintf(stderr, "[rplus] room load for room %d (entry %d, %d rooms): %s (try %d)\n", roomNo, entry, d->num,
+                ok ? "asked" : "busy", tries);
+    }
+}
+
+} // namespace
+
+int pc_rplus_wave_max(int roomNo, int wave) {
+    if (wave == 0 && pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "sea") == 0 &&
+        pc_rplus_sea_room_generated(roomNo)) {
+        return 30;
+    }
+    return wave;
+}
+
+int pc_rplus_room_check(void) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return -1;
+    }
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
+    if (player == nullptr) {
+        return -1;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float sx = (player->current.pos.x - x0) / ROOM_UNITS, sz = (player->current.pos.z - z0) / ROOM_UNITS;
+    const int n = pc_rplus_squares();
+    if (sx < 0.0f || sz < 0.0f || sx >= n || sz >= n) {
+        return -1;
+    }
+    const int room = (int)sz * n + (int)sx + 1;
+    if (!pc_rplus_sea_room_generated(room)) {
+        return -1;  // a kept island (the original room's own ground and room table)
+    }
+    if (room != dComIfGp_roomControl_getStayNo()) {
+        static int logged = -1;
+        if (logged != room) {
+            logged = room;
+            fprintf(stderr, "[rplus] Link sails into room %d\n", room);
+        }
+        dComIfGp_roomControl_zoneCountCheck(room);
+    }
+    requestRoomLoad(room);
+    return 1;
+}
+
 int pc_rplus_keep_room_actor(const char* name) {
-    // The King of Red Lions: Link starting at sea waits for him (daPy_lk_c::makeBgWait).
-    if (strcmp(name, "Ship") == 0) {
+    // The King of Red Lions (Link starting at sea waits for him, daPy_lk_c::makeBgWait) and the sea itself
+    // (d_a_sea.cpp: the water, its waves and swimming are its l_cloth).
+    if (strcmp(name, "Ship") == 0 || strcmp(name, "sea") == 0) {
         fprintf(stderr, "[rplus] kept the room's actor %s\n", name);
         return 1;
     }
@@ -522,13 +763,261 @@ int pc_rplus_lod_off(void) {
     return pc_rplus_active();
 }
 
+void pc_rplus_spawn_lift(cXyz* pos) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    const float gx = (pos->x - x0) / cs, gy = (pos->z - z0) / cs;
+    const int n = pc_rplus_squares() * pc_rplus_cells();
+    if (gx < 0 || gy < 0 || gx >= n || gy >= n) {
+        return;
+    }
+    const int room = ((int)gy / pc_rplus_cells()) * pc_rplus_squares() + ((int)gx / pc_rplus_cells()) + 1;
+    if (!pc_rplus_sea_room_generated(room)) {
+        return;
+    }
+    // Rooms load from the ground under Link (dStage_RoomCheck), and he has none until his room is in: asked for
+    // here every frame he waits (the start cell's room is often not the room the stage loaded first).
+    if (!dComIfGp_roomControl_checkStatusFlag(room, 0x01)) {
+        requestRoomLoad(room);
+    }
+    const float ground = heightAt(gx, gy);
+    if (pos->y < ground + 10.0f) {
+        fprintf(stderr, "[rplus] spawn point %.0f %.0f %.0f is under the land: lifted to %.0f\n", pos->x, pos->y,
+                pos->z, ground + 10.0f);
+        pos->y = ground + 10.0f;
+    }
+}
+
+namespace {
+bool sStartPointSet = false;  // pc_rplus_start_point moved Link's spawn (pc_rplus_place_player has nothing to do)
+} // namespace
+
+namespace {
+
+// An arrival at sea that the generated world moved: coming out of a moved door (pc_rplus_exit_return).
+struct Arrival {
+    bool on = false;
+    int room = 0;
+    cXyz pos;
+    s16 angleY = 0;
+} sArrival;
+
+} // namespace
+
+int pc_rplus_start_room(void) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
+        dComIfGp_getStartStagePoint() < 0) {
+        return -1;
+    }
+    if (sArrival.on) {
+        return sArrival.room;
+    }
+    if (sStartPointSet) {
+        return -1;
+    }
+    int cx, cy;
+    pc_rplus_start_cell(&cx, &cy);
+    return (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
+}
+
+void pc_rplus_start_point(u32* params, cXyz* pos, s16* angleY) {
+    const int room = pc_rplus_start_room();
+    if (room < 0) {
+        return;
+    }
+    if (sArrival.on) {
+        sArrival.on = false;
+        *pos = sArrival.pos;
+        *angleY = sArrival.angleY;
+        fprintf(stderr, "[rplus] Link comes out at %.0f %.0f %.0f in room %d\n", pos->x, pos->y, pos->z, room);
+    } else {
+        sStartPointSet = true;
+        int cx, cy;
+        pc_rplus_start_cell(&cx, &cy);
+        float x0, z0;
+        worldOrigin(&x0, &z0);
+        const float cs = cellSize();
+        pos->set(x0 + (cx + 0.5f) * cs, heightAt(cx + 0.5f, cy + 0.5f) + 10.0f, z0 + (cy + 0.5f) * cs);
+        fprintf(stderr, "[rplus] Link starts on the start cell %d,%d in room %d at %.0f %.0f %.0f\n", cx, cy, room,
+                pos->x, pos->y, pos->z);
+    }
+    // The room bits pick the room the stage loads first (dStage_Create), so the room's land and collision are in
+    // before Link looks for ground (daPy_lk_c::makeBgWait). Standing start (mode 0), not on a raft (0x80).
+    *params = (*params & ~0xF0BFu) | (u32)room;
+}
+
+// ---- Link's home: the Private Oasis cabana's interior (Abesso), its door on the start island ----------------
+
+namespace {
+
+constexpr float HOME_DOOR_AHEAD = 900.0f;  // from the start cell's centre, north
+constexpr int CABANA_ROOM = 33, CABANA_OUT_POINT = 1;  // Abesso's way out: sea, point 1, room 33
+
+// The home's door: pos on the ground, facing south (+z, toward the start); its room.
+int homeDoor(cXyz* pos, s16* angleY) {
+    int cx, cy;
+    pc_rplus_start_cell(&cx, &cy);
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    const float x = x0 + (cx + 0.5f) * cs, z = z0 + (cy + 0.5f) * cs - HOME_DOOR_AHEAD;
+    pos->set(x, heightAt((x - x0) / cs, (z - z0) / cs), z);
+    *angleY = 0;
+    const int sx = (int)((x - x0) / ROOM_UNITS), sz = (int)((z - z0) / ROOM_UNITS);
+    return sz * pc_rplus_squares() + sx + 1;
+}
+
+} // namespace
+
+int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
+    if (exitId != HOME_EXIT || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return 0;
+    }
+    fprintf(stderr, "[rplus] into Link's home (Abesso)\n");
+    dComIfGp_setNextStage("Abesso", 0, 0, -1, speed, mode, TRUE, 0);
+    return 1;
+}
+
+int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe) {
+    if (!pc_rplus_active() || strcmp(stage, "sea") != 0 || room != CABANA_ROOM || point != CABANA_OUT_POINT) {
+        return 0;
+    }
+    cXyz door;
+    s16 ang;
+    const int doorRoom = homeDoor(&door, &ang);
+    // In front of the door, facing away from it.
+    sArrival.on = true;
+    sArrival.room = doorRoom;
+    sArrival.pos.set(door.x + cM_ssin(ang) * 250.0f, door.y + 10.0f, door.z + cM_scos(ang) * 250.0f);
+    sArrival.angleY = ang;
+    fprintf(stderr, "[rplus] out of Link's home to room %d\n", doorRoom);
+    // A point the room has (dStage_playerInit falls back to its first one; the position is ours).
+    dComIfGp_setNextStage("sea", 0, doorRoom, -1, speed, mode, TRUE, wipe);
+    return 1;
+}
+
+void pc_rplus_room_actors(int roomNo) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return;
+    }
+    cXyz pos;
+    s16 ang;
+    if (homeDoor(&pos, &ang) != roomNo) {
+        return;
+    }
+    // The cabana's door (KNOB01, shape 4: the villa door) without its deed lock (type 0), both sides a stage
+    // exit (angle x 0x0FFF), no event or switch.
+    csXyz angle(0x0FFF, ang, 0);
+    cXyz scale(1.0f, 1.0f, 1.0f);
+    fopAcM_create((char*)"KNOB01", 0x004FF0FFu, &pos, roomNo, &angle, &scale);
+    fprintf(stderr, "[rplus] Link's home's door in room %d at %.0f %.0f %.0f\n", roomNo, pos.x, pos.y, pos.z);
+}
+
+void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
+        !pc_rplus_sea_room_generated(roomNo)) {
+        return;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    // From the start cell in the start room (Link's first spawn there is moved to it), else from the SHIP entry.
+    int rx, ry;
+    pc_rplus_start_cell(&rx, &ry);
+    const int startRoom = (ry / pc_rplus_cells()) * pc_rplus_squares() + (rx / pc_rplus_cells()) + 1;
+    if (roomNo != startRoom) {
+        rx = (int)floorf((pos->x - x0) / cs);
+        ry = (int)floorf((pos->z - z0) / cs);
+    }
+    // The nearest sea cell, then out from the land toward it to the first wet quad (the shore walls stand on the
+    // dry quads' edges, d_a_ship's wall circles are 250 across) and a boat's length on: just off the shore.
+    const int n = pc_rplus_squares() * pc_rplus_cells();
+    int best = -1, bx = 0, by = 0;
+    for (int r = 1; r < n && best < 0; r++) {
+        for (int dy = -r; dy <= r; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) {
+                    continue;  // the ring at distance r only
+                }
+                const int cx = rx + dx, cy = ry + dy;
+                if (cx < 0 || cy < 0 || cx >= n || cy >= n || pc_rplus_cell_height(cx, cy) != 0) {
+                    continue;
+                }
+                const int d = dx * dx + dy * dy;
+                if (best < 0 || d < best) {
+                    best = d;
+                    bx = cx;
+                    by = cy;
+                }
+            }
+        }
+    }
+    if (best < 0) {
+        return;
+    }
+    const float lx = x0 + (rx + 0.5f) * cs, lz = z0 + (ry + 0.5f) * cs;
+    float dx = (bx - rx), dz = (by - ry);
+    const float len = sqrtf(dx * dx + dz * dz);
+    dx /= len;
+    dz /= len;
+    const float q = cs / SUB;  // a quad's side
+    auto wetQuad = [&](float x, float z) {
+        const float qx = floorf((x - x0) / q), qz = floorf((z - z0) / q);
+        for (int k = 0; k < 4; k++) {
+            if (heightAt((qx + (k & 1)) / SUB, (qz + (k >> 1)) / SUB) > 0.0f) {
+                return false;
+            }
+        }
+        return true;
+    };
+    float sx = x0 + (bx + 0.5f) * cs, sz = z0 + (by + 0.5f) * cs;  // the sea cell's centre if nothing nearer
+    for (float t = 0.0f; t < len * cs + cs; t += 100.0f) {
+        const float x = lx + dx * t, z = lz + dz * t;
+        if (wetQuad(x, z) && wetQuad(x + dx * 600.0f, z + dz * 600.0f)) {
+            sx = x + dx * 600.0f;
+            sz = z + dz * 600.0f;
+            break;
+        }
+    }
+    *angle = cM_atan2s(dx, dz);  // facing away from the land
+    fprintf(stderr, "[rplus] the boat in room %d moved from %.0f %.0f to the shore at %.0f %.0f\n", roomNo, pos->x,
+            pos->z, sx, sz);
+    pos->set(sx, 0.0f, sz);
+}
+
 void pc_rplus_place_player(int roomNo) {
     static bool placed = false;
-    if (placed || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return;
     }
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     if (player == nullptr) {
+        return;
+    }
+    if (roomNo == dComIfGp_roomControl_getStayNo() && !dComIfGp_roomControl_checkStatusFlag(0, 0x01)) {
+        // Room 0 is the whole sea's floor, one group a square: the ground under the boat out of the loaded
+        // squares, which loads the square sailed into (dStage_RoomCheck). It comes with each square's room table
+        // entry, which is asked for here until it is in.
+        requestRoomLoad(roomNo);
+    }
+    if (roomNo == dComIfGp_roomControl_getStayNo()) {
+        // Where Link is about every two seconds (in the run logs, for the land, water and respawn checks).
+        static u32 tick = 0;
+        if (tick++ % 60 == 0) {
+            const cXyz& p = player->current.pos;
+            float x0, z0;
+            worldOrigin(&x0, &z0);
+            const bool sea = daSea_ChkArea(p.x, p.z);
+            fprintf(stderr, "[rplus] Link at %.0f %.0f %.0f in room %d, land %.0f, sea %s %.0f\n", p.x, p.y, p.z,
+                    roomNo, heightAt((p.x - x0) / cellSize(), (p.z - z0) / cellSize()), sea ? "here" : "not here",
+                    sea ? daSea_calcWave(p.x, p.z) : 0.0f);
+        }
+    }
+    if (placed || sStartPointSet) {
         return;
     }
     int cx, cy;
@@ -542,9 +1031,11 @@ void pc_rplus_place_player(int roomNo) {
     player->old.pos = pos;
     player->speedF = 0.0f;
     player->speed = cXyz(0.0f, 0.0f, 0.0f);
-    // Held there until the start room's own land is loaded (the rooms load around Link).
+    // Held there until the start room's own land is loaded. The game loads rooms from the ground under Link
+    // (dStage_RoomCheck), and there is none until the start room is in, so its load is asked for here.
     const int startRoom = (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
     if (roomNo != startRoom) {
+        requestRoomLoad(startRoom);
         return;
     }
     placed = true;

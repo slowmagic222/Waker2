@@ -1487,6 +1487,13 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
             player_data++;
         }
 
+#if TARGET_PC
+        // Randomizer+: the start cell's room may not have the spawn point; any of its points will do (moved below).
+        if (i == num && num > 0 && pc_rplus_start_room() >= 0) {
+            player_data = player->m_entries;
+            i = 0;
+        }
+#endif
         JUT_ASSERT(DEMO_SELECT(1757, 1787), i != num);
 
         appen->base.parameters = player_data->base.parameters;
@@ -1497,6 +1504,10 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
         if (roomParam != 0 && daPy_lk_c::getStartModeFromParam(appen->base.parameters) != 2) {
             appen->base.parameters = (roomParam & 0xFFFFFFC0) | (appen->base.parameters & 0x3F);
         }
+#if TARGET_PC
+        // Randomizer+: Link starts on the generated world's start cell, in its room.
+        pc_rplus_start_point(&appen->base.parameters, &appen->base.position, &appen->base.angle.y);
+#endif
     }
 
     dComIfGs_setRestartRoomParam(0);
@@ -1961,7 +1972,10 @@ bool dStage_setShipPos(int param_0, int i_roomNo) {
 #if TARGET_PC
                 // SHIP entries are big-endian in the room data: take the position in host order.
                 cXyz ship_pos = ship_data_p->m_pos;
-                ship_p->initStartPos(&ship_pos, ship_data_p->m_angle);
+                s16 ship_angle = ship_data_p->m_angle;
+                // Randomizer+: the island's boat spot may be on the generated land: the nearest open water instead.
+                pc_rplus_ship_pos(roomNo, &ship_pos, &ship_angle);
+                ship_p->initStartPos(&ship_pos, ship_angle);
 #else
                 ship_p->initStartPos(&ship_data_p->m_pos, ship_data_p->m_angle);
 #endif
@@ -2283,6 +2297,8 @@ void dStage_dt_c_roomReLoader(void* i_data, dStage_dt_c* i_stage, int param_2) {
     layerLoader(i_data, i_stage, param_2);
 #if TARGET_PC
     l_rplusRoomActors = false;
+    // Randomizer+: the generated world's own actors in this room (Link's home's door).
+    pc_rplus_room_actors(param_2);
 #endif
 }
 
@@ -2304,6 +2320,14 @@ void dStage_Create() {
     dComIfGp_roomControl_init();
     dStage_dt_c_stageLoader(stageRsrc, &dComIfGp_getStage());
 
+#if TARGET_PC
+    // Randomizer+: the start cell's room loads first (Link is made there, dStage_playerInit).
+    int rplusRoom = pc_rplus_start_room();
+    if (rplusRoom >= 0) {
+        dComIfGp_getStartStage()->set(dComIfGp_getStartStageName(), rplusRoom, dComIfGp_getStartStagePoint(),
+                                      dComIfGp_getStartStageLayer());
+    }
+#endif
     if (dComIfGp_getStartStageRoomNo() >= 0) {
         int status = dStage_roomInit(dComIfGp_getStartStageRoomNo());
         JUT_ASSERT(DEMO_SELECT(3845, 3873), status);
@@ -2345,6 +2369,13 @@ void dStage_Delete() {
 
 /* 80043514-80043604       .text dStage_RoomCheck__FP11cBgS_GndChk */
 int dStage_RoomCheck(cBgS_GndChk* i_gndChk) {
+#if TARGET_PC
+    // Randomizer+: over a generated square, the square under Link (his position, not the sea floor's groups).
+    int rplus = pc_rplus_room_check();
+    if (rplus >= 0) {
+        return rplus;
+    }
+#endif
     int roomReadId = dComIfG_Bgsp()->GetRoomId(*i_gndChk);
 
     if (roomReadId < 0) {
@@ -2380,6 +2411,12 @@ void dStage_roomControl_c::SetTimePass(int i_timepass) {
 /* 8004360C-80043900       .text dStage_changeSceneExitId__FR13cBgS_PolyInfofUlSc */
 int dStage_changeSceneExitId(cBgS_PolyInfo& i_poly, f32 i_speed, u32 i_mode, s8 i_roomNo) {
     int exit_id = dComIfG_Bgsp()->GetExitId(i_poly);
+#if TARGET_PC
+    // Randomizer+: a door of the generated world (its own exit id; the sea room's SCLS doesn't have it).
+    if (pc_rplus_exit(exit_id, i_speed, i_mode)) {
+        return 1;
+    }
+#endif
     if (exit_id == 0x3E || exit_id == 0x3B) {
         fopAc_ac_c* actor_p = dComIfG_Bgsp()->GetActorPointer(i_poly);
         int arg0 = IkadaGetRoomNoArg0(actor_p);
@@ -2441,6 +2478,13 @@ int dStage_changeScene(int i_exitId, f32 speed, u32 mode, s8 room_no) {
 
     stage_scls_info_class* scls_info = &scls->m_entries[i_exitId];
     s32 wipe = dStage_sclsInfo_getWipe(scls_info);
+#if TARGET_PC
+    // Randomizer+: an interior's way back to its original island goes to its door in the generated world.
+    if (pc_rplus_exit_return(scls_info->mStage, scls_info->mStart, scls_info->mRoom, speed, mode,
+                             wipe == 15 ? 0 : wipe)) {
+        return 1;
+    }
+#endif
 
     dComIfGp_setNextStage(scls_info->mStage, scls_info->mStart, scls_info->mRoom, -1, speed, mode,
                           TRUE, wipe == 15 ? 0 : wipe);
