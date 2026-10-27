@@ -2367,6 +2367,13 @@ void dStage_Delete() {
 
 /* 80043514-80043604       .text dStage_RoomCheck__FP11cBgS_GndChk */
 int dStage_RoomCheck(cBgS_GndChk* i_gndChk) {
+#if TARGET_PC
+    // Randomizer+: over a generated square, the square under Link (his position, not the sea floor's groups).
+    int rplus = pc_rplus_room_check();
+    if (rplus >= 0) {
+        return rplus;
+    }
+#endif
     int roomReadId = dComIfG_Bgsp()->GetRoomId(*i_gndChk);
 
     if (roomReadId < 0) {

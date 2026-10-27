@@ -666,6 +666,37 @@ int pc_rplus_wave_max(int roomNo, int wave) {
     return wave;
 }
 
+int pc_rplus_room_check(void) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return -1;
+    }
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
+    if (player == nullptr) {
+        return -1;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float sx = (player->current.pos.x - x0) / ROOM_UNITS, sz = (player->current.pos.z - z0) / ROOM_UNITS;
+    const int n = pc_rplus_squares();
+    if (sx < 0.0f || sz < 0.0f || sx >= n || sz >= n) {
+        return -1;
+    }
+    const int room = (int)sz * n + (int)sx + 1;
+    if (!pc_rplus_sea_room_generated(room)) {
+        return -1;  // a kept island (the original room's own ground and room table)
+    }
+    if (room != dComIfGp_roomControl_getStayNo()) {
+        static int logged = -1;
+        if (logged != room) {
+            logged = room;
+            fprintf(stderr, "[rplus] Link sails into room %d\n", room);
+        }
+        dComIfGp_roomControl_zoneCountCheck(room);
+    }
+    requestRoomLoad(room);
+    return 1;
+}
+
 int pc_rplus_keep_room_actor(const char* name) {
     // The King of Red Lions (Link starting at sea waits for him, daPy_lk_c::makeBgWait) and the sea itself
     // (d_a_sea.cpp: the water, its waves and swimming are its l_cloth).

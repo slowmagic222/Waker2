@@ -301,6 +301,9 @@ void pc_rplus_far_draw(int roomNo);
 /* d_a_sea get_wave_max: room roomNo's wave height (the stage's MULT); a generated sea room gets open sea's where
    its island drew its own water (0). */
 int pc_rplus_wave_max(int roomNo, int wave);
+/* dStage_RoomCheck: over a generated square, its room is the stay room and is loaded (with room 0, its room table
+   entry), by Link's position; 1. -1 elsewhere (the game's own check, from the ground's groups). */
+int pc_rplus_room_check(void);
 /* dStage_dt_c_roomReLoader: 1 when the room's own actors stay out (a generated sea room). */
 int pc_rplus_room_actors_off(int roomNo);
 /* 1 for an actor of a generated sea room that is still made (by its stage name: the ship, the sea). */
