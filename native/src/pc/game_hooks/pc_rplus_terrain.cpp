@@ -1032,6 +1032,54 @@ int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 m
     return 1;
 }
 
+int pc_rplus_fmap_texture(const char* name, void* buf, u32 size) {
+    // The sea chart's close-up of one square, "R%02X_b.bti" (room number in hex): IA4 100x100 (the disc's size),
+    // the land opaque and light, its shore darker, the sea clear.
+    unsigned room = 0;
+    if (!pc_rplus_active() || sscanf(name, "R%02X_b.bti", &room) != 1 || !pc_rplus_sea_room_generated((int)room)) {
+        return -1;
+    }
+    constexpr int W = 100, H = 100, PW = 104;  // IA4 tiles are 8x4: the width padded to 104
+    const u32 bytes = 0x20 + PW * H;
+    if (bytes > size) {
+        return -1;
+    }
+    u8* out = (u8*)buf;
+    memset(out, 0, bytes);
+    BeOut o{out};
+    out[0x00] = 0x01;  // GX_TF_IA4
+    out[0x01] = 1;     // alpha
+    o.u16at(0x02, W);
+    o.u16at(0x04, H);
+    out[0x14] = 1;     // linear
+    out[0x15] = 1;
+    out[0x18] = 1;     // one image
+    o.u32at(0x1C, 0x20);
+    const int cells = pc_rplus_cells(), n = pc_rplus_squares();
+    const int r = (int)room - 1;
+    const float gx0 = (float)((r % n) * cells), gy0 = (float)((r / n) * cells);
+    auto land = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= W || y >= H) {
+            return false;
+        }
+        return heightAt(gx0 + (x + 0.5f) * cells / W, gy0 + (y + 0.5f) * cells / H) > 0.0f;
+    };
+    bool any = false;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            if (!land(x, y)) {
+                continue;
+            }
+            any = true;
+            const bool shore = !land(x - 1, y) || !land(x + 1, y) || !land(x, y - 1) || !land(x, y + 1);
+            const u8 v = shore ? 0xF6 : 0xFF;  // alpha high nibble, intensity low
+            const int tile = (y / 4) * (PW / 8) + (x / 8);
+            out[0x20 + tile * 32 + (y % 4) * 8 + (x % 8)] = v;
+        }
+    }
+    return any ? (int)bytes : 0;  // no land: no close-up (the chart hides it, as for a missing file)
+}
+
 int pc_rplus_home_unlocked(void) {
     return pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "Abesso") == 0;
 }
