@@ -13,6 +13,9 @@
 #include "d/d_kankyo_wether.h"
 #include "m_Do/m_Do_mtx.h"
 #include "m_Do/m_Do_lib.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 #include "m_Do/m_Do_graphic.h"
 #include "SSystem/SComponent/c_counter.h"
 #include "dolphin/gf/GF.h"
@@ -395,6 +398,12 @@ void dGrass_packet_c::update() {
     s32 numPerFrame = 0;
 
     mDoLib_clipper::changeFar(mDoLib_clipper::getFar() * 1.6363636f);
+#if TARGET_PC
+    // Randomizer+ land holds far more of these; past this distance they aren't drawn.
+    if (f32 propFar = pc_rplus_prop_far(0); propFar > 0.0f && mDoLib_clipper::getFar() > propFar) {
+        mDoLib_clipper::changeFar(propFar);
+    }
+#endif
     for (int i = 0; i < (s32)ARRAY_SIZE(mGrassData); i++) {
         if (data->mState != 0) {
             if (data->mState == 1 && numPerFrame < 30) {

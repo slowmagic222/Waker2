@@ -1256,6 +1256,14 @@ int pc_rplus_any_point(const char* stage, int point) {
     return 1;
 }
 
+float pc_rplus_prop_far(int kind) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return 0.0f;
+    }
+    static const float kFar[3] = {7000.0f, 7000.0f, 16000.0f};
+    return kind >= 0 && kind < 3 ? kFar[kind] : 0.0f;
+}
+
 int pc_rplus_lod_off(void) {
     return pc_rplus_active();
 }
