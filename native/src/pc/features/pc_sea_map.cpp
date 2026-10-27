@@ -233,7 +233,12 @@ void readIsland(int no) {
     char name[16];
     snprintf(name, sizeof(name), "R%02X_b.bti", no + 1);
     // Randomizer+: a generated sector's picture is made from its land and covers the whole sector
-    const int made = pc_rplus_fmap_texture(name, sBuf, sizeof sBuf);
+    u32 wholeSize = 0;
+    const void* whole = pc_rplus_fmap_whole(no, &wholeSize);
+    const int made = whole == nullptr ? -1 : int(wholeSize);
+    if (made > 0) {
+        memcpy(sBuf, whole, wholeSize);
+    }
     if (made >= 0) {
         art.whole = true;
         art.ox = art.oy = 0;
