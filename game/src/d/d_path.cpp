@@ -7,6 +7,9 @@
 #include "d/d_path.h"
 #include "d/d_com_inf_game.h"
 #include "JSystem/JUtility/JUTAssert.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 
 /* 80080018-8008010C       .text dPath_GetPnt__FP5dPathi */
 dPnt* dPath_GetPnt(dPath* path, int pnt_index) {
@@ -22,6 +25,11 @@ dPnt* dPath_GetPnt(dPath* path, int pnt_index) {
 /* 8008010C-80080218       .text dPath_GetRoomPath__Fii */
 dPath* dPath_GetRoomPath(int path_index, int room_no) {
     dStage_dPath_c * pd;
+#if TARGET_PC
+    // Randomizer+: a generated sea room's paths are its old island's, nowhere near the people moved there.
+    if (room_no >= 0 && pc_rplus_room_actors_off(room_no))
+        return NULL;
+#endif
     if (room_no == -1) {
         pd = dComIfGp_getStage().getPath2Inf();
     } else {

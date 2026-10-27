@@ -1,0 +1,421 @@
+// Randomizer+ (pc/pc_rplus.h, docs/RANDOMIZER_PLUS.md): the generated world's people and enemies.
+//
+// The disc's sea rooms are read once (each Room<n>.arc's room.dzr): their townsfolk and other NPCs, and the
+// enemies of their islands, with the params the game gave them. A generated room's own island is gone, so its
+// people are moved: an NPC the world gave a place of its own (an anchor: Maggie, Zunari, Tott...) stands at that
+// anchor; the rest of the townsfolk go to the generated towns. Enemies are spread over open land by biome, from
+// the kinds and params the islands and some dungeons have.
+//
+// COS_RPLUS_NPCS=0 or COS_RPLUS_ENEMIES=0 leaves them out.
+#include "pc/game_hooks.h"
+#include "pc/pc_rplus.h"
+#include "pc_rplus_world.h"
+#include "pc_internal.h"
+#include "d/d_com_inf_game.h"
+#include "d/d_stage.h"
+#include "f_op/f_op_actor_mng.h"
+#include "f_pc/f_pc_name.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+
+namespace {
+
+// One actor of a disc room: its name and what the room's ACTR (layer -1) or ACT<layer> chunk gave it.
+struct Entry {
+    char name[9];
+    u32 params;
+    float x, y, z;
+    s16 ax, ay, az;
+    s16 proc;    // its profile (dStage_searchName)
+    int room;    // the disc room it came from
+    int layer;   // -1: every layer
+};
+
+u32 be32(const u8* p) {
+    return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3];
+}
+
+float bef(const u8* p) {
+    u32 v = be32(p);
+    float f;
+    memcpy(&f, &v, 4);
+    return f;
+}
+
+// The actors of a room.dzr: ACTR and ACT0..ACTb (each entry 0x20 bytes).
+void parseDzr(const std::vector<uint8_t>& d, int room, std::vector<Entry>& out) {
+    if (d.size() < 4) {
+        return;
+    }
+    const u32 chunks = be32(d.data());
+    for (u32 c = 0; c < chunks && 4 + (size_t)c * 12 + 12 <= d.size(); c++) {
+        const u8* h = d.data() + 4 + c * 12;
+        int layer;
+        if (memcmp(h, "ACTR", 4) == 0) {
+            layer = -1;
+        } else if (memcmp(h, "ACT", 3) == 0 && ((h[3] >= '0' && h[3] <= '9') || (h[3] >= 'a' && h[3] <= 'b'))) {
+            layer = h[3] <= '9' ? h[3] - '0' : h[3] - 'a' + 10;
+        } else {
+            continue;
+        }
+        const u32 num = be32(h + 4), off = be32(h + 8);
+        for (u32 i = 0; i < num && off + (size_t)(i + 1) * 0x20 <= d.size(); i++) {
+            const u8* a = d.data() + off + i * 0x20;
+            Entry e{};
+            memcpy(e.name, a, 8);
+            e.name[8] = '\0';
+            e.params = be32(a + 8);
+            e.x = bef(a + 0x0C);
+            e.y = bef(a + 0x10);
+            e.z = bef(a + 0x14);
+            e.ax = (s16)((a[0x18] << 8) | a[0x19]);
+            e.ay = (s16)((a[0x1A] << 8) | a[0x1B]);
+            e.az = (s16)((a[0x1C] << 8) | a[0x1D]);
+            const dStage_objectNameInf* inf = dStage_searchName(e.name);
+            if (inf == nullptr) {
+                continue;
+            }
+            e.proc = inf->procname;
+            e.room = room;
+            e.layer = layer;
+            out.push_back(e);
+        }
+    }
+}
+
+bool readRoomDzr(const char* stage, int room, std::vector<uint8_t>& out) {
+    char path[64];
+    snprintf(path, sizeof(path), "/res/Stage/%s/Room%d.arc", stage, room);
+    static const char* const kInner[] = {"dzr/room.dzr", "room.dzr", "room/dzr/room.dzr"};
+    for (const char* in : kInner) {
+        if (pc::readDiscFile(path, in, out)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The NPCs that may be moved: townsfolk and others who stand about outdoors. Left out: the story's people, the
+// ones that live on the sea or in one place's machinery, and ones that need a path of their room
+// (d_a_npc_btsw2 reads it unchecked).
+const s16 kMovable[] = {
+    fpcNm_NPC_PEOPLE_e, fpcNm_NPC_KO1_e,  fpcNm_NPC_KO2_e,  fpcNm_NPC_YM1_e,  fpcNm_NPC_YM2_e,  fpcNm_NPC_YW1_e,
+    fpcNm_NPC_OB1_e,    fpcNm_NPC_AJ1_e,  fpcNm_NPC_KM1_e,  fpcNm_NPC_BM1_e,  fpcNm_NPC_BM2_e,  fpcNm_NPC_BM3_e,
+    fpcNm_NPC_BM4_e,    fpcNm_NPC_BM5_e,  fpcNm_NPC_BJ1_e,  fpcNm_NPC_BJ2_e,  fpcNm_NPC_BJ3_e,  fpcNm_NPC_BJ4_e,
+    fpcNm_NPC_BJ5_e,    fpcNm_NPC_BJ6_e,  fpcNm_NPC_BJ7_e,  fpcNm_NPC_BJ8_e,  fpcNm_NPC_BJ9_e,  fpcNm_NPC_KK1_e,
+    fpcNm_NPC_PM1_e,    fpcNm_NPC_KP1_e,  fpcNm_NPC_PF1_e,  fpcNm_NPC_GP1_e,  fpcNm_NPC_KF1_e,  fpcNm_NPC_TT_e,
+    fpcNm_NPC_HR_e,     fpcNm_NPC_HO_e,   fpcNm_NPC_MK_e,   fpcNm_NPC_UK_e,   fpcNm_NPC_CO1_e,  fpcNm_NPC_MT_e,
+    fpcNm_NPC_MN_e,     fpcNm_NPC_AH_e,   fpcNm_NPC_PHOTO_e, fpcNm_NPC_KG1_e, fpcNm_NPC_KG2_e,  fpcNm_NPC_GK1_e,
+    fpcNm_NPC_AC1_e,    fpcNm_NPC_HI1_e,  fpcNm_NPC_TC_e,   fpcNm_NPC_RSH1_e, fpcNm_NPC_ZK1_e,  fpcNm_NPC_DS1_e,
+    fpcNm_NPC_BMCON1_e,
+};
+
+bool movable(s16 proc) {
+    for (s16 p : kMovable) {
+        if (p == proc) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The world's anchors with an NPC of their own (scripts/rplus/anchors.py): the profile that stands there.
+struct AnchorNpc {
+    const char* id;
+    s16 proc;
+};
+const AnchorNpc kAnchorNpcs[] = {
+    {"killer_bees", fpcNm_NPC_MK_e},    {"maggie", fpcNm_NPC_KP1_e},        {"tott", fpcNm_NPC_TT_e},
+    {"zunari", fpcNm_NPC_RSH1_e},       {"barrel_shooting", fpcNm_NPC_KG2_e}, {"flight_platform", fpcNm_NPC_BMCON1_e},
+    {"tingle_tower", fpcNm_NPC_TC_e},   {"lighthouse", fpcNm_NPC_PEOPLE_e}, {"sam", fpcNm_NPC_PEOPLE_e},
+    {"town_gate", fpcNm_NPC_PEOPLE_e},  {"mila", fpcNm_NPC_PEOPLE_e},       {"pompie_vera", fpcNm_NPC_PEOPLE_e},
+    {"kamo", fpcNm_NPC_PEOPLE_e},       {"minenco", fpcNm_NPC_PEOPLE_e},    {"linda_anton", fpcNm_NPC_PEOPLE_e},
+};
+
+// Enemies by biome letter, with how many come together.
+struct EnemyKind {
+    const char* name;
+    const char* biomes;  // "b": the beach
+    u8 groupMin, groupMax;
+    u8 weight;
+    u32 clearPath;  // params bits to set (no path, no switch) for kinds whose layout is known; 0 none
+};
+const EnemyKind kEnemies[] = {
+    {"Bk", "gfr", 1, 2, 10, 0xFFFF0000u},      // Bokoblins (d_a_bk: bits 16-23 path, 24-31 switch)
+    {"mo2", "rf", 1, 1, 4, 0xFFFF0000u},       // Moblins (d_a_mo2: 16-23 path, 24-31 spawn switch)
+    {"c_green", "gfd", 2, 4, 10, 0},           // ChuChus
+    {"c_red", "rv", 1, 3, 6, 0},
+    {"c_blue", "s", 1, 2, 3, 0},
+    {"c_kiiro", "db", 1, 3, 4, 0},
+    {"keeth", "grfs", 2, 4, 6, 0x00FF0000u},   // Keese (d_a_ki: 16-23 path)
+    {"Fkeeth", "v", 2, 4, 6, 0x00FF0000u},
+    {"bbaba", "f", 1, 2, 6, 0},                // Boko Babas
+    {"magtail", "v", 1, 1, 2, 0},
+};
+constexpr int ENEMY_GROUPS_PER_ROOM = 9;
+
+struct Pools {
+    bool read = false;
+    std::vector<Entry> npcs;               // movable NPCs of the generated sea rooms
+    std::vector<Entry> enemies;            // one entry per (kind, params) seen
+};
+
+Pools& pools() {
+    static Pools p;
+    if (p.read) {
+        return p;
+    }
+    p.read = true;
+    std::vector<uint8_t> dzr;
+    std::vector<Entry> all;
+    int rooms = 0;
+    for (int r = 1; r <= 49; r++) {
+        if (readRoomDzr("sea", r, dzr)) {
+            std::vector<Entry> here;
+            parseDzr(dzr, r, here);
+            for (const Entry& e : here) {
+                if (movable(e.proc) && pc_rplus_sea_room_generated(r)) {
+                    p.npcs.push_back(e);
+                }
+            }
+            all.insert(all.end(), here.begin(), here.end());
+            rooms++;
+        }
+    }
+    // A few dungeons for the enemies the islands lack (fire Keese, Magtails, Boko Babas, Moblins).
+    static const char* const kDungeons[] = {"M_NewD2", "kindan", "Siren", "M_Dai", "kaze"};
+    for (const char* st : kDungeons) {
+        for (int r = 0; r < 24; r++) {
+            if (readRoomDzr(st, r, dzr)) {
+                parseDzr(dzr, -1, all);
+            }
+        }
+    }
+    for (const Entry& e : all) {
+        for (const EnemyKind& k : kEnemies) {
+            if (strcmp(e.name, k.name) != 0) {
+                continue;
+            }
+            bool seen = false;
+            for (const Entry& o : p.enemies) {
+                seen = seen || (strcmp(o.name, e.name) == 0 && o.params == e.params);
+            }
+            if (!seen) {
+                p.enemies.push_back(e);
+            }
+        }
+    }
+    fprintf(stderr, "[rplus] read %d sea rooms: %d NPCs to move, %d enemy kinds and params\n", rooms,
+            (int)p.npcs.size(), (int)p.enemies.size());
+    return p;
+}
+
+bool enabled(const char* env) {
+    const char* v = getenv(env);
+    return v == nullptr || strcmp(v, "0") != 0;
+}
+
+u32 mix(u32 a, u32 b) {
+    u32 h = a * 2654435761u ^ (b + 0x9E3779B9u + (a << 6) + (a >> 2));
+    h ^= h >> 15;
+    h *= 2246822519u;
+    return h ^ (h >> 13);
+}
+
+void spawn(const Entry& e, float x, float z, s16 ay, int roomNo, u32 params) {
+    cXyz pos(x, rplus::groundY(x, z) + 5.0f, z);
+    csXyz angle(e.ax, ay, e.az);
+    // By name, so the profile's argument (a ChuChu's colour, a person's look) comes with it.
+    char name[9];
+    memcpy(name, e.name, sizeof(name));
+    fopAcM_create(name, params, &pos, roomNo, &angle, nullptr);
+}
+
+// The townsfolk and anchored NPCs whose new place is in roomNo.
+void placeNpcs(int roomNo) {
+    Pools& P = pools();
+    if (P.npcs.empty()) {
+        return;
+    }
+    const std::vector<rplus::TownInfo> towns = rplus::towns();
+    // Which NPCs belong to which anchor: by profile, in order, so each anchor gets its own.
+    std::vector<int> taken(P.npcs.size(), 0);
+    std::vector<std::pair<int, std::pair<float, float>>> anchored;  // npc index, spot
+    for (int i = 0; i < pc_rplus_anchor_count(); i++) {
+        const char *id, *kind, *stage;
+        int cx, cy;
+        if (!pc_rplus_anchor(i, &id, &kind, &stage, &cx, &cy)) {
+            continue;
+        }
+        for (const AnchorNpc& an : kAnchorNpcs) {
+            if (strcmp(an.id, id) != 0) {
+                continue;
+            }
+            for (size_t k = 0; k < P.npcs.size(); k++) {
+                if (!taken[k] && P.npcs[k].proc == an.proc) {
+                    taken[k] = 1;
+                    float x, z;
+                    rplus::cellSpot(cx, cy, &x, &z);
+                    anchored.push_back({(int)k, {x, z}});
+                    break;
+                }
+            }
+        }
+    }
+    int made = 0;
+    for (const auto& a : anchored) {
+        const Entry& e = P.npcs[a.first];
+        const float x = a.second.first, z = a.second.second;
+        if (rplus::roomAt(x, z) != roomNo) {
+            continue;
+        }
+        if (e.layer >= 0 && e.layer != dComIfG_play_c::getLayerNo(e.room)) {
+            continue;
+        }
+        spawn(e, x + 150.0f, z + 150.0f, e.ay, roomNo, e.params);
+        made++;
+    }
+    // The rest of the townsfolk: shared out among the towns, each standing between the plaza and the houses.
+    if (!towns.empty()) {
+        for (size_t k = 0; k < P.npcs.size(); k++) {
+            if (taken[k]) {
+                continue;
+            }
+            const Entry& e = P.npcs[k];
+            if (e.layer >= 0 && e.layer != dComIfG_play_c::getLayerNo(e.room)) {
+                continue;
+            }
+            const u32 h = mix((u32)k, pc_rplus_seed());
+            const rplus::TownInfo& t = towns[h % towns.size()];
+            if (t.room != roomNo) {
+                continue;
+            }
+            for (int tries = 0; tries < 8; tries++) {
+                const u32 g = mix(h, (u32)tries);
+                const float a = (g & 0xFFFF) / 65536.0f * 6.2831853f;
+                const float r = t.plaza + 150.0f + ((g >> 16) & 0xFF) / 256.0f * std::max(100.0f, t.r - t.plaza - 650.0f);
+                const float x = t.x + sinf(a) * r, z = t.z + cosf(a) * r;
+                if (rplus::roomAt(x, z) == roomNo) {
+                    spawn(e, x, z, (s16)(g >> 8), roomNo, e.params);
+                    made++;
+                    break;
+                }
+            }
+        }
+    }
+    if (made > 0) {
+        fprintf(stderr, "[rplus] room %d: %d NPCs\n", roomNo, made);
+    }
+}
+
+void placeEnemies(int roomNo) {
+    Pools& P = pools();
+    if (P.enemies.empty()) {
+        return;
+    }
+    const std::vector<rplus::TownInfo> towns = rplus::towns();
+    float sx, sz;
+    rplus::startXZ(&sx, &sz);
+    float rx0, rz0;
+    rplus::roomCorner(roomNo, &rx0, &rz0);
+    int made = 0, groups = 0;
+    for (int tries = 0; tries < 400 && groups < ENEMY_GROUPS_PER_ROOM; tries++) {
+        const u32 h = mix((u32)roomNo * 7919u + (u32)tries, pc_rplus_seed() ^ 0xE7E7u);
+        const float x = rx0 + (h & 0xFFFF) / 65536.0f * 100000.0f;
+        const float z = rz0 + ((h >> 16) & 0xFFFF) / 65536.0f * 100000.0f;
+        const char b = rplus::biomeAt(x, z);
+        const float y = rplus::groundY(x, z);
+        if (b == '.' || y < 120.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1500.0f)) {
+            continue;
+        }
+        if ((x - sx) * (x - sx) + (z - sz) * (z - sz) < 9000.0f * 9000.0f) {
+            continue;  // the start is safe
+        }
+        bool nearTown = false;
+        for (const rplus::TownInfo& t : towns) {
+            nearTown = nearTown || (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.r + 3500.0f) * (t.r + 3500.0f);
+        }
+        if (nearTown) {
+            continue;
+        }
+        const bool beach = y < 150.0f;
+        // A kind that lives here and that the disc has, by weight.
+        int total = 0;
+        for (const EnemyKind& k : kEnemies) {
+            if (strchr(k.biomes, beach ? 'b' : b) == nullptr && !(beach && strchr(k.biomes, b))) {
+                continue;
+            }
+            for (const Entry& e : P.enemies) {
+                if (strcmp(e.name, k.name) == 0) {
+                    total += k.weight;
+                    break;
+                }
+            }
+        }
+        if (total == 0) {
+            continue;
+        }
+        int pick = (int)((h >> 7) % (u32)total);
+        const EnemyKind* kind = nullptr;
+        for (const EnemyKind& k : kEnemies) {
+            if (strchr(k.biomes, beach ? 'b' : b) == nullptr && !(beach && strchr(k.biomes, b))) {
+                continue;
+            }
+            bool has = false;
+            for (const Entry& e : P.enemies) {
+                has = has || strcmp(e.name, k.name) == 0;
+            }
+            if (!has) {
+                continue;
+            }
+            if (pick < k.weight) {
+                kind = &k;
+                break;
+            }
+            pick -= k.weight;
+        }
+        if (kind == nullptr) {
+            continue;
+        }
+        // One of the params the disc gives this kind.
+        std::vector<const Entry*> forms;
+        for (const Entry& e : P.enemies) {
+            if (strcmp(e.name, kind->name) == 0) {
+                forms.push_back(&e);
+            }
+        }
+        const Entry& e = *forms[(h >> 3) % forms.size()];
+        const int count = kind->groupMin + (int)((h >> 11) % (u32)(kind->groupMax - kind->groupMin + 1));
+        for (int k = 0; k < count; k++) {
+            const u32 g = mix(h, (u32)k + 99u);
+            const float ex = x + ((g & 0xFF) / 256.0f - 0.5f) * 900.0f, ez = z + (((g >> 8) & 0xFF) / 256.0f - 0.5f) * 900.0f;
+            if (rplus::roomAt(ex, ez) != roomNo || rplus::groundY(ex, ez) < 100.0f) {
+                continue;
+            }
+            spawn(e, ex, ez, (s16)(g >> 16), roomNo, e.params | kind->clearPath);
+            made++;
+        }
+        groups++;
+    }
+    if (made > 0) {
+        fprintf(stderr, "[rplus] room %d: %d enemies in %d groups\n", roomNo, made, groups);
+    }
+}
+
+} // namespace
+
+void pc_rplus_life_room(int roomNo) {
+    if (!pc_rplus_active()) {
+        return;
+    }
+    if (enabled("COS_RPLUS_NPCS")) {
+        placeNpcs(roomNo);
+    }
+    if (enabled("COS_RPLUS_ENEMIES")) {
+        placeEnemies(roomNo);
+    }
+}

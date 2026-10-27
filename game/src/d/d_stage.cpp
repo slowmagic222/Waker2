@@ -1489,7 +1489,8 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
 
 #if TARGET_PC
         // Randomizer+: the start cell's room may not have the spawn point; any of its points will do (moved below).
-        if (i == num && num > 0 && pc_rplus_start_room() >= 0) {
+        // An interior entered by a generated door may not have the point either (the door's table is a guess).
+        if (i == num && num > 0 && (pc_rplus_start_room() >= 0 || pc_rplus_any_point(dComIfGp_getStartStageName(), point))) {
             player_data = player->m_entries;
             i = 0;
         }

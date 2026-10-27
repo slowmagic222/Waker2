@@ -2,8 +2,9 @@
 // cell heights when the room's daBg is created, in place of the room's island model and collision.
 //
 // Height: the world gives each cell a relative height (0 = water). The surface is the bilinear blend of the cells'
-// heights at their centres (land 80 + h * 3.2 units, water -1400), sampled SUB times per cell side, with a little
-// value noise on land. It is a function of the world position alone, so neighbouring rooms meet without a seam.
+// heights at their centres (land 80 + h * 3.2 units, water -1400), sampled SUB times per cell side, with
+// noise on land (hills, ridges, terraces: naturalY) and the ground levelled for buildings and paths (shapeGround).
+// It is a function of the world position alone, so neighbouring rooms meet without a seam.
 //
 // Collision: a DZB built in memory in the disc's layout (big-endian, table offsets from the start), then made
 // ready by cBgS::ConvDzb as a room's room.dzb is (d_resorce.cpp), and handed to dBgW::Set. One group (the room),
@@ -13,9 +14,12 @@
 // baked in two tones; the game's own textures come later.
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
+#include "pc_rplus_world.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
+#include "d/d_item.h"
+#include "d/d_item_data.h"
 #include "d/d_stage.h"
 #include "d/actor/d_a_sea.h"
 #include "f_op/f_op_actor_mng.h"
@@ -36,7 +40,7 @@
 
 namespace {
 
-constexpr int SUB = 4;               // samples per cell side
+constexpr int SUB = 6;               // samples per cell side
 constexpr int BLK = 4;               // quads per collision block side
 constexpr float ROOM_UNITS = 100000.0f;
 constexpr float LAND_BASE = 80.0f;
@@ -82,20 +86,95 @@ u32 hash2(int x, int y) {
     return h ^ (h >> 16);
 }
 
-// Height at grid position (gx, gy) in cells from the world's corner.
-float heightAt(float gx, float gy) {
-    float fx = gx - 0.5f, fy = gy - 0.5f;
+// Smooth value noise in [0, 1] at (x, y) in noise units, one lattice per salt.
+float vnoise(float x, float y, int salt) {
+    const int ix = (int)floorf(x), iy = (int)floorf(y);
+    float tx = x - ix, ty = y - iy;
+    tx = tx * tx * (3.0f - 2.0f * tx);
+    ty = ty * ty * (3.0f - 2.0f * ty);
+    auto v = [&](int i, int j) { return (hash2(i * 31 + salt * 977, j * 17 - salt * 131) & 0xFFFF) / 65535.0f; };
+    const float a = v(ix, iy), b = v(ix + 1, iy), c = v(ix, iy + 1), d = v(ix + 1, iy + 1);
+    return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+}
+
+// Fractal noise: octaves of vnoise, each twice as fine and half as strong, in [0, 1].
+float fbm(float x, float y, int salt, int octaves) {
+    float sum = 0.0f, amp = 0.5f, norm = 0.0f;
+    for (int o = 0; o < octaves; o++) {
+        sum += vnoise(x, y, salt + o * 7) * amp;
+        norm += amp;
+        x *= 2.03f;
+        y *= 2.03f;
+        amp *= 0.5f;
+    }
+    return sum / norm;
+}
+
+// How rugged a cell's biome is: rock, volcanic and snow rise in ridges and terraces, the rest rolls.
+float cellRugged(int cx, int cy) {
+    switch (pc_rplus_cell_biome(cx, cy)) {
+    case 'r':
+    case 'v': return 1.0f;
+    case 's': return 0.8f;
+    case 'f': return 0.35f;
+    default: return 0.0f;
+    }
+}
+
+// The natural height at grid position (gx, gy) in cells from the world's corner. The cells' heights blended smoothly (on a
+// grid bent by noise, so coasts wander instead of following the cells), then on land: rolling hills everywhere,
+// ridges and terraces (steep risers, flat tops) where the biome is rugged, and small bumps.
+float naturalY(float gx, float gy) {
+    // (fbm's spread is narrow: about 0.5 +- 0.1, so the bends are some 0.4 cells broad and 0.15 fine.)
+    const float wx = gx + (fbm(gx * 0.35f, gy * 0.35f, 11, 3) - 0.5f) * 4.0f +
+                     (vnoise(gx * 1.3f, gy * 1.3f, 17) - 0.5f) * 0.5f;
+    const float wy = gy + (fbm(gx * 0.35f, gy * 0.35f, 23, 3) - 0.5f) * 4.0f +
+                     (vnoise(gx * 1.3f, gy * 1.3f, 29) - 0.5f) * 0.5f;
+    float fx = wx - 0.5f, fy = wy - 0.5f;
     int ix = (int)floorf(fx), iy = (int)floorf(fy);
     float tx = fx - ix, ty = fy - iy;
+    tx = tx * tx * (3.0f - 2.0f * tx);
+    ty = ty * ty * (3.0f - 2.0f * ty);
     float a = cellY(ix, iy), b = cellY(ix + 1, iy), c = cellY(ix, iy + 1), d = cellY(ix + 1, iy + 1);
     float y = (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
-    if (y > LAND_BASE) {
-        // A little relief on land: value noise on the sample grid.
-        int sx = (int)floorf(gx * SUB), sy = (int)floorf(gy * SUB);
-        float n = (hash2(sx, sy) & 0xFFFF) / 65535.0f - 0.5f;
-        y += n * 120.0f * fminf(1.0f, (y - LAND_BASE) / 400.0f);
+    if (y <= LAND_BASE) {
+        return y;
     }
-    return y;
+    const float land = y - LAND_BASE;
+    const float inland = fminf(1.0f, land / 700.0f);  // the shore stays a beach
+    const float rug = (cellRugged(ix, iy) * (1 - tx) + cellRugged(ix + 1, iy) * tx) * (1 - ty) +
+                      (cellRugged(ix, iy + 1) * (1 - tx) + cellRugged(ix + 1, iy + 1) * tx) * ty;
+    // Rolling hills, about two cells across.
+    float h = land + (fbm(gx * 0.55f, gy * 0.55f, 41, 4) - 0.45f) * 900.0f * inland;
+    // Ridges: the creases of noise, sharp on top.
+    const float r = 1.0f - fabsf(fbm(gx * 0.8f, gy * 0.8f, 57, 3) * 2.0f - 1.0f);
+    h += r * r * r * 1500.0f * rug * inland;
+    // Terraces: flat shelves with steep risers between (as steep as Link can still walk up on this mesh).
+    if (rug > 0.0f && h > 0.0f) {
+        const float step = 1100.0f;
+        const float k = h / step, base = floorf(k), f = k - base;
+        const float sharp = f < 0.72f ? 0.0f : (f - 0.72f) / 0.28f;
+        const float t = (base + sharp * sharp * (3.0f - 2.0f * sharp)) * step;
+        h = h + (t - h) * fminf(1.0f, rug * 1.2f) * inland;
+    }
+    // Bumps.
+    h += (fbm(gx * 3.0f, gy * 3.0f, 73, 2) - 0.5f) * 140.0f * inland;
+    return LAND_BASE + fmaxf(h, 5.0f * inland);
+}
+
+float shapeGround(float gx, float gy, float y);
+
+// The ground's height: the natural height, levelled where the world builds (shapeGround, with the doors).
+float heightAt(float gx, float gy) {
+    return shapeGround(gx, gy, naturalY(gx, gy));
+}
+
+// The ground's height at world position (x, z).
+float heightAt_world(float x, float z) {
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    return heightAt((x - x0) / cs, (z - z0) / cs);
 }
 
 char biomeNear(float gx, float gy) {
@@ -141,7 +220,6 @@ const u32 kGroundAttr[G_COUNT] = {0x04, 0x03, 0x0B, 0x01, 0x03, 0x03};
 const u32 kGroundPass[G_COUNT] = {0, 0, 0, 0, 0x01 | 0x04 | 0x08, 0};
 constexpr int HOME_EXIT = 0x3A;  // Link's home's door (pc_rplus_exit; not a room SCLS index)
 constexpr int DOOR_EXIT0 = 0x20; // the other generated doors: 0x20 + their number in their room
-int homeDoor(cXyz* pos, s16* angleY);
 // A generated building's door: the interior it opens to and where it stands.
 struct GenDoor {
     const char* stage;  // the interior
@@ -153,8 +231,51 @@ struct GenDoor {
     cXyz pos;           // on the ground, the door's front facing angle
     s16 angle;
     int exitId;         // its exit floor's exit id
+    int variant = 0;    // which roof colour (houses)
+    int town = -1;      // the town it stands in (Layout::towns), or -1
 };
 const std::vector<GenDoor>& genDoors();
+// A town: houses round a plaza at (x, z), the ground levelled to y, the houses r from the middle.
+struct Town {
+    float x, z, y, r;
+    bool start;      // the start town (Link's home in it)
+    float a0 = 0;    // the first house's angle round the middle, and how many houses
+    int slots = 0;
+};
+// Ground levelled to y: wholly within r0 of (x, z), blending back to the land's own height by r1.
+struct Pad {
+    float x, z, y, r0, r1;
+};
+// A piece of path, and a piece of fence (kind 0 wooden fence, 1 low brick wall).
+struct Seg {
+    float x0, z0, x1, z1;
+};
+struct Fence {
+    float x0, z0, x1, z1;
+    int kind;
+};
+float segDist2(const Seg& sg, float x, float z) {
+    const float dx = sg.x1 - sg.x0, dz = sg.z1 - sg.z0, l2 = dx * dx + dz * dz;
+    float t = l2 > 0.0f ? ((x - sg.x0) * dx + (z - sg.z0) * dz) / l2 : 0.0f;
+    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    const float ex = sg.x0 + dx * t - x, ez = sg.z0 + dz * t - z;
+    return ex * ex + ez * ez;
+}
+// A town's house without a way in: drawn and solid, its door shut.
+struct Deco {
+    cXyz pos;
+    s16 angle;
+    int variant;
+    int seaRoom;
+};
+struct Layout;
+const Layout& layout();
+const std::vector<Deco>& layoutDecos();
+// What the ground is made into at (x, z): 0 the land's own, 1 a path, 2 a town's plaza.
+int groundMark(float x, float z);
+const std::vector<Fence>& layoutFences();
+// Where Link starts (the start town's plaza, or land by the start cell) and its room.
+int startSpot(float* x, float* z);
 
 Ground groundOf(char b, float y, float ny) {
     if (y < LAND_BASE + 60.0f) {
@@ -212,18 +333,77 @@ struct PcRplusTerrain {
     u8* dzb = nullptr;
 };
 
+namespace {
+
+// The ground's detail: a 64 x 64 I8 texture of soft noise and short streaks (blades, grit), light enough to only
+// shade the vertex colours, tiled over the world from the positions (GX_TG_POS) every TEX_SPAN units.
+constexpr int TEX_N = 64;
+constexpr float TEX_SPAN = 420.0f;
+alignas(32) u8 sDetailTex[TEX_N * TEX_N];
+
+const u8* detailTexture() {
+    static bool made = false;
+    if (made) {
+        return sDetailTex;
+    }
+    made = true;
+    for (int y = 0; y < TEX_N; y++) {
+        for (int x = 0; x < TEX_N; x++) {
+            // Tileable: the noise is sampled on a lattice that wraps at TEX_N.
+            auto wrapNoise = [](float fx, float fy, int cells, int salt) {
+                const float sx = fx * cells / TEX_N, sy = fy * cells / TEX_N;
+                const int ix = (int)floorf(sx), iy = (int)floorf(sy);
+                float tx = sx - ix, ty = sy - iy;
+                tx = tx * tx * (3 - 2 * tx);
+                ty = ty * ty * (3 - 2 * ty);
+                auto v = [&](int i, int j) {
+                    i = ((i % cells) + cells) % cells;
+                    j = ((j % cells) + cells) % cells;
+                    u32 h = (u32)i * 374761393u + (u32)j * 668265263u + (u32)salt * 2246822519u;
+                    h = (h ^ (h >> 13)) * 1274126177u;
+                    return ((h ^ (h >> 16)) & 0xFFFF) / 65535.0f;
+                };
+                return (v(ix, iy) * (1 - tx) + v(ix + 1, iy) * tx) * (1 - ty) +
+                       (v(ix, iy + 1) * (1 - tx) + v(ix + 1, iy + 1) * tx) * ty;
+            };
+            const float n = wrapNoise((float)x, (float)y, 4, 1) * 0.45f + wrapNoise((float)x, (float)y, 16, 2) * 0.35f +
+                            wrapNoise((float)x * 1.0f, (float)y, 64, 3) * 0.2f;
+            // Streaks: brighter dashes along one way, as blades or grit catch the light.
+            const float streak = wrapNoise((float)x, (float)y * 0.25f, 32, 4);
+            float v = 205.0f + n * 40.0f + (streak > 0.72f ? 12.0f : 0.0f);
+            v = v > 255.0f ? 255.0f : v;
+            // I8 is in 8 x 4 tiles.
+            const int tile = (y / 4) * (TEX_N / 8) + (x / 8);
+            sDetailTex[tile * 32 + (y % 4) * 8 + (x % 8)] = (u8)v;
+        }
+    }
+    return sDetailTex;
+}
+
+} // namespace
+
 void PcRplusPacket::draw() {
     if (mTriCount == 0) {
         return;
     }
     j3dSys.reinitGX();
     GXSetNumIndStages(0);
-    GXSetNumTexGens(0);
     GXSetNumChans(1);
     GXSetChanCtrl(GX_COLOR0A0, GX_FALSE, GX_SRC_VTX, GX_SRC_VTX, GX_LIGHT_NULL, GX_DF_NONE, GX_AF_NONE);
+    // The detail texture, its coordinates from the world position: s along x, t along z (and a little y, so
+    // slopes and walls aren't smeared flat).
+    GXTexObj tex;
+    GXInitTexObj(&tex, (void*)detailTexture(), TEX_N, TEX_N, GX_TF_I8, GX_REPEAT, GX_REPEAT, GX_FALSE);
+    GXInitTexObjLOD(&tex, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+    GXLoadTexObj(&tex, GX_TEXMAP0);
+    const float k = 1.0f / TEX_SPAN;
+    Mtx texMtx = {{k, 0.0f, 0.0f, 0.0f}, {0.0f, k * 0.6f, k, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    GXLoadTexMtxImm(texMtx, GX_TEXMTX0, GX_MTX2x4);
+    GXSetNumTexGens(1);
+    GXSetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_POS, GX_TEXMTX0);
     GXSetNumTevStages(1);
-    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
-    GXSetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
+    GXSetTevOp(GX_TEVSTAGE0, GX_MODULATE);
     GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
     GXSetZCompLoc(GX_TRUE);
     GXSetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
@@ -278,8 +458,15 @@ const u8 kHouseColours[3][5][3] = {
     {{240, 240, 236}, {210, 212, 214}, {120, 160, 200}, {90, 140, 200}, {70, 116, 170}}, // white, blue roof
 };
 
-void houseQuads(const cXyz& door, s16 ang, int style, std::vector<HouseQuad>& out) {
+// Houses' roofs, by variant: red, blue, green, brown (each slope's colour).
+const u8 kRoofs[4][2][3] = {{{178, 64, 44}, {148, 52, 36}},
+                            {{64, 98, 160}, {50, 80, 134}},
+                            {{74, 132, 82}, {58, 108, 66}},
+                            {{136, 92, 60}, {112, 74, 48}}};
+
+void houseQuads(const cXyz& door, s16 ang, int style, int variant, std::vector<HouseQuad>& out) {
     const u8 (*col)[3] = kHouseColours[style < 0 || style > 2 ? 0 : style];
+    const u8 (*roof)[3] = style == 0 ? kRoofs[variant & 3] : &col[3];
     const float s = cM_ssin(ang), c = cM_scos(ang);  // out of the door's front
     auto pt = [&](float side, float ahead, float up, float* o) {
         o[0] = door.x + c * side + s * ahead;
@@ -323,8 +510,65 @@ void houseQuads(const cXyz& door, s16 ang, int style, std::vector<HouseQuad>& ou
     // Roof: two slopes from the eaves (past the walls) to the ridge, front to back with an overhang.
     const float ew = W + HUT_EAVE, ey = T - HUT_EAVE * (HUT_RIDGE - T) / W;
     const float f = HUT_EAVE, k = D - HUT_EAVE;
-    quad({{-ew, f, ey}, {0, f, HUT_RIDGE + 6}, {0, k, HUT_RIDGE + 6}, {-ew, k, ey}}, col[3][0], col[3][1], col[3][2]);
-    quad({{0, f, HUT_RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, HUT_RIDGE + 6}}, col[4][0], col[4][1], col[4][2]);
+    quad({{-ew, f, ey}, {0, f, HUT_RIDGE + 6}, {0, k, HUT_RIDGE + 6}, {-ew, k, ey}}, roof[0][0], roof[0][1], roof[0][2]);
+    quad({{0, f, HUT_RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, HUT_RIDGE + 6}}, roof[1][0], roof[1][1], roof[1][2]);
+}
+
+constexpr float FENCE_H = 120.0f, BRICK_H = 110.0f, BRICK_HALF = 32.0f;
+
+// A fence piece, drawn: a wooden fence (a post at each end, two rails) or a low brick wall (a box with a cap),
+// standing on the ground at both ends.
+void fenceQuads(const Fence& f, std::vector<HouseQuad>& out) {
+    const float ya = heightAt_world(f.x0, f.z0), yb = heightAt_world(f.x1, f.z1);
+    const float dx = f.x1 - f.x0, dz = f.z1 - f.z0, len = sqrtf(dx * dx + dz * dz);
+    if (len < 1.0f) {
+        return;
+    }
+    const float ux = dx / len, uz = dz / len, nx = -uz, nz = ux;  // along, across
+    auto box = [&](float t0, float t1, float h0, float h1, float half, u8 r, u8 g, u8 b, u8 tr, u8 tg, u8 tb) {
+        // Corners at t0 and t1 along, +-half across, from the ground + h0 to the ground + h1.
+        float p[2][2][3][2];  // [end][side][xyz][bottom/top]
+        for (int e = 0; e < 2; e++) {
+            const float t = e == 0 ? t0 : t1;
+            const float gy = ya + (yb - ya) * (t / len);
+            for (int sd = 0; sd < 2; sd++) {
+                const float o = sd == 0 ? -half : half;
+                p[e][sd][0][0] = p[e][sd][0][1] = f.x0 + ux * t + nx * o;
+                p[e][sd][2][0] = p[e][sd][2][1] = f.z0 + uz * t + nz * o;
+                p[e][sd][1][0] = gy + h0;
+                p[e][sd][1][1] = gy + h1;
+            }
+        }
+        auto put = [&](int e0, int s0, int b0, int e1, int s1, int b1, int e2, int s2, int b2, int e3, int s3, int b3,
+                       u8 cr, u8 cg, u8 cb) {
+            HouseQuad q;
+            const int idx[4][3] = {{e0, s0, b0}, {e1, s1, b1}, {e2, s2, b2}, {e3, s3, b3}};
+            for (int k = 0; k < 4; k++) {
+                q.p[k][0] = p[idx[k][0]][idx[k][1]][0][idx[k][2]];
+                q.p[k][1] = p[idx[k][0]][idx[k][1]][1][idx[k][2]];
+                q.p[k][2] = p[idx[k][0]][idx[k][1]][2][idx[k][2]];
+            }
+            q.r = cr;
+            q.g = cg;
+            q.b = cb;
+            out.push_back(q);
+        };
+        put(0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, r, g, b);                // one side
+        put(1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, r, g, b);                // the other
+        put(0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, tr, tg, tb);             // the ends
+        put(1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, tr, tg, tb);
+        put(0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, tr, tg, tb);             // the top
+    };
+    if (f.kind == 1) {
+        box(0.0f, len, -40.0f, BRICK_H, BRICK_HALF, 172, 88, 66, 150, 74, 56);
+        box(-8.0f, len + 8.0f, BRICK_H, BRICK_H + 16.0f, BRICK_HALF + 8.0f, 208, 196, 176, 186, 176, 158);
+    } else {
+        const u8 wr = 150, wg = 108, wb = 66, dr = 122, dg = 86, db = 52;
+        box(0.0f, 16.0f, -30.0f, FENCE_H + 10.0f, 10.0f, wr, wg, wb, dr, dg, db);
+        box(len - 16.0f, len, -30.0f, FENCE_H + 10.0f, 10.0f, wr, wg, wb, dr, dg, db);
+        box(0.0f, len, FENCE_H - 30.0f, FENCE_H - 8.0f, 6.0f, wr, wg, wb, dr, dg, db);
+        box(0.0f, len, FENCE_H * 0.4f - 10.0f, FENCE_H * 0.4f + 12.0f, 6.0f, wr, wg, wb, dr, dg, db);
+    }
 }
 
 // A generated room's land: the drawing, and with o_bgw its collision (allocated in the current heap, the room's).
@@ -378,8 +622,38 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     std::vector<HouseQuad> house;
     for (const GenDoor& gd : genDoors()) {
         if (gd.seaRoom == roomNo) {
-            houseQuads(gd.pos, gd.angle, gd.style, house);
+            houseQuads(gd.pos, gd.angle, gd.style, gd.variant, house);
         }
+    }
+    auto inRoom = [&](float x, float z) {
+        return x >= bx && x < bx + n * step && z >= bz && z < bz + n * step;
+    };
+    for (const Fence& f : layoutFences()) {
+        if (inRoom((f.x0 + f.x1) * 0.5f, (f.z0 + f.z1) * 0.5f)) {
+            fenceQuads(f, house);
+        }
+    }
+    for (const Deco& d : layoutDecos()) {
+        if (d.seaRoom != roomNo) {
+            continue;
+        }
+        houseQuads(d.pos, d.angle, 0, d.variant, house);
+        // Its door, shut: a plank panel in the doorway.
+        const float s = cM_ssin(d.angle), c = cM_scos(d.angle);
+        auto pt = [&](float side, float up, float* o) {
+            o[0] = d.pos.x + c * side - s * 4.0f;
+            o[1] = d.pos.y + up;
+            o[2] = d.pos.z - s * side - c * 4.0f;
+        };
+        HouseQuad q;
+        pt(-DOORWAY_HALF, -20.0f, q.p[0]);
+        pt(DOORWAY_HALF, -20.0f, q.p[1]);
+        pt(DOORWAY_HALF, HUT_DOOR_TOP, q.p[2]);
+        pt(-DOORWAY_HALF, HUT_DOOR_TOP, q.p[3]);
+        q.r = 112;
+        q.g = 72;
+        q.b = 40;
+        house.push_back(q);
     }
     const size_t nDrawVtx = (size_t)quads * 6 + house.size() * 6;
     pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * nDrawVtx + 1) : new Vtx[nDrawVtx];
@@ -418,6 +692,20 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                         col = biomeColour('d');
                     } else if (ny < 0.75f && b != 's') {
                         col = biomeColour('r');
+                    } else {
+                        // Patches: the grass (and the rest) lighter and darker in broad soft blotches.
+                        const float patch = vnoise(px[k] * 0.00035f, pz[k] * 0.00035f, 131) * 0.6f +
+                                            vnoise(px[k] * 0.0012f, pz[k] * 0.0012f, 137) * 0.4f;
+                        const float m = 0.86f + patch * 0.26f;
+                        col.r = (u8)std::min(255.0f, col.r * m);
+                        col.g = (u8)std::min(255.0f, col.g * m);
+                        col.b = (u8)std::min(255.0f, col.b * m);
+                        const int mark = groundMark(px[k], pz[k]);
+                        if (mark == 1) {
+                            col = {172, 136, 92};   // a dirt path
+                        } else if (mark == 2) {
+                            col = {196, 188, 172};  // the plaza's paving
+                        }
                     }
                     if (py[k] < 0.0f) {
                         tone *= 0.85f;
@@ -475,6 +763,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         float px, pz, qx, qz;  // the edge, ordered so the wall faces the sea (or out of the hut)
         float y0, y1;
         Ground g;
+        float qy0 = NAN, qy1 = NAN;  // the q end's bottom and top, when not y0 and y1 (a fence on a slope)
     };
     // From the sea bed to above the boat's highest wall circle (d_a_ship.cpp: 0, 75 and 150 over it, and one at
     // y -600), so none passes under or over. Link passes through them (G_SHORE): he swims ashore anywhere.
@@ -554,6 +843,47 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             floorExit.push_back(gd.exitId);
         }
     }
+    // Towns' houses without a way in: their walls all round.
+    for (const Deco& d : layoutDecos()) {
+        if (d.seaRoom != roomNo) {
+            continue;
+        }
+        const float s = cM_ssin(d.angle), c = cM_scos(d.angle);
+        const float ring[][2] = {{-DOORWAY_HALF, 0.0f}, {-HUT_HALF, 0.0f}, {-HUT_HALF, -HUT_DEPTH},
+                                 {HUT_HALF, -HUT_DEPTH}, {HUT_HALF, 0.0f},   {DOORWAY_HALF, 0.0f},
+                                 {-DOORWAY_HALF, 0.0f}};
+        for (int k = 0; k + 1 < 7; k++) {
+            const float px = d.pos.x + c * ring[k][0] + s * ring[k][1], pz = d.pos.z - s * ring[k][0] + c * ring[k][1];
+            const float qx = d.pos.x + c * ring[k + 1][0] + s * ring[k + 1][1],
+                        qz = d.pos.z - s * ring[k + 1][0] + c * ring[k + 1][1];
+            const float mx = (px + qx) * 0.5f, mz = (pz + qz) * 0.5f;
+            int qi = (int)((mx - bx) / step), qj = (int)((mz - bz) / step);
+            qi = qi < 0 ? 0 : qi >= n ? n - 1 : qi;
+            qj = qj < 0 ? 0 : qj >= n ? n - 1 : qj;
+            walls.push_back({(qj / BLK) * nb + (qi / BLK), px, pz, qx, qz, d.pos.y - 200.0f, d.pos.y + 400.0f, G_STONE});
+        }
+    }
+    // Fences and low walls: upright both ways (Link stops on either side), from under the ground to their top.
+    for (const Fence& f : layoutFences()) {
+        const float mx = (f.x0 + f.x1) * 0.5f, mz = (f.z0 + f.z1) * 0.5f;
+        if (mx < bx || mx >= bx + n * step || mz < bz || mz >= bz + n * step) {
+            continue;
+        }
+        int qi = (int)((mx - bx) / step), qj = (int)((mz - bz) / step);
+        qi = qi < 0 ? 0 : qi >= n ? n - 1 : qi;
+        qj = qj < 0 ? 0 : qj >= n ? n - 1 : qj;
+        const int blk = (qj / BLK) * nb + (qi / BLK);
+        const float ya = heightAt_world(f.x0, f.z0), yb = heightAt_world(f.x1, f.z1);
+        const float top = f.kind == 1 ? BRICK_H + 16.0f : FENCE_H;
+        Wall w1{blk, f.x0, f.z0, f.x1, f.z1, ya - 60.0f, ya + top, G_STONE};
+        w1.qy0 = yb - 60.0f;
+        w1.qy1 = yb + top;
+        Wall w2{blk, f.x1, f.z1, f.x0, f.z0, yb - 60.0f, yb + top, G_STONE};
+        w2.qy0 = ya - 60.0f;
+        w2.qy1 = ya + top;
+        walls.push_back(w1);
+        walls.push_back(w2);
+    }
     // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall, 4 per floor.
     const u32 nVtx = (u32)nv * nv + (u32)walls.size() * 4 + (u32)floors.size() * 4;
     const u32 nTri = (u32)n * n * 2 + (u32)walls.size() * 2 + (u32)floors.size() * 2;
@@ -621,7 +951,8 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     }
     for (size_t w = 0; w < walls.size(); w++) {
         const Wall& wl = walls[w];
-        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {wl.y0, wl.y1, wl.y0, wl.y1},
+        const float qy0 = std::isnan(wl.qy0) ? wl.y0 : wl.qy0, qy1 = std::isnan(wl.qy1) ? wl.y1 : wl.qy1;
+        const float vx[4] = {wl.px, wl.px, wl.qx, wl.qx}, vy[4] = {wl.y0, wl.y1, qy0, qy1},
                     vz[4] = {wl.pz, wl.pz, wl.qz, wl.qz};
         for (int k = 0; k < 4; k++) {
             u32 at = offV + ((u32)nv * nv + (u32)w * 4 + k) * 12;
@@ -659,6 +990,10 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                         float slope = fabsf(Y(i + 1, j) - Y(i, j)) + fabsf(Y(i, j + 1) - Y(i, j));
                         float ny = step / sqrtf(step * step + slope * slope);
                         Ground g = groundOf(biomeNear(gx0 + (i + 0.5f) / SUB, gy0 + (j + 0.5f) / SUB), ymid, ny);
+                        if (ymid > LAND_BASE + 60.0f) {
+                            const int mark = groundMark(bx + (i + 0.5f) * step, bz + (j + 0.5f) * step);
+                            g = mark == 1 ? G_DIRT : mark == 2 ? G_STONE : g;
+                        }
                         u32 at = offT + tri * 10;
                         o.u16at(at, tv[k][0]);
                         o.u16at(at + 2, tv[k][1]);
@@ -913,6 +1248,14 @@ int pc_rplus_keep_room_actor(const char* name) {
     return 0;
 }
 
+int pc_rplus_any_point(const char* stage, int point) {
+    if (!pc_rplus_active()) {
+        return 0;
+    }
+    fprintf(stderr, "[rplus] %s has no spawn point %d here: Link starts at its first one\n", stage, point);
+    return 1;
+}
+
 int pc_rplus_lod_off(void) {
     return pc_rplus_active();
 }
@@ -973,9 +1316,8 @@ int pc_rplus_start_room(void) {
     if (sStartPointSet) {
         return -1;
     }
-    int cx, cy;
-    pc_rplus_start_cell(&cx, &cy);
-    return (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
+    float sx, sz;
+    return startSpot(&sx, &sz);
 }
 
 void pc_rplus_start_point(u32* params, cXyz* pos, s16* angleY) {
@@ -990,14 +1332,10 @@ void pc_rplus_start_point(u32* params, cXyz* pos, s16* angleY) {
         fprintf(stderr, "[rplus] Link comes out at %.0f %.0f %.0f in room %d\n", pos->x, pos->y, pos->z, room);
     } else {
         sStartPointSet = true;
-        int cx, cy;
-        pc_rplus_start_cell(&cx, &cy);
-        float x0, z0;
-        worldOrigin(&x0, &z0);
-        const float cs = cellSize();
-        pos->set(x0 + (cx + 0.5f) * cs, heightAt(cx + 0.5f, cy + 0.5f) + 10.0f, z0 + (cy + 0.5f) * cs);
-        fprintf(stderr, "[rplus] Link starts on the start cell %d,%d in room %d at %.0f %.0f %.0f\n", cx, cy, room,
-                pos->x, pos->y, pos->z);
+        float sx, sz;
+        startSpot(&sx, &sz);
+        pos->set(sx, heightAt_world(sx, sz) + 10.0f, sz);
+        fprintf(stderr, "[rplus] Link starts in room %d at %.0f %.0f %.0f\n", room, pos->x, pos->y, pos->z);
     }
     // The room bits pick the room the stage loads first (dStage_Create), so the room's land and collision are in
     // before Link looks for ground (daPy_lk_c::makeBgWait). Standing start (mode 0), not on a raft (0x80).
@@ -1010,20 +1348,6 @@ namespace {
 
 constexpr float HOME_DOOR_AHEAD = 900.0f;  // from the start cell's centre, north
 constexpr int CABANA_ROOM = 33, CABANA_OUT_POINT = 1;  // Abesso's way out: sea, point 1, room 33
-
-// The home's door: pos on the ground, facing south (+z, toward the start); its room.
-int homeDoor(cXyz* pos, s16* angleY) {
-    int cx, cy;
-    pc_rplus_start_cell(&cx, &cy);
-    float x0, z0;
-    worldOrigin(&x0, &z0);
-    const float cs = cellSize();
-    const float x = x0 + (cx + 0.5f) * cs, z = z0 + (cy + 0.5f) * cs - HOME_DOOR_AHEAD;
-    pos->set(x, heightAt((x - x0) / cs, (z - z0) / cs), z);
-    *angleY = 0;
-    const int sx = (int)((x - x0) / ROOM_UNITS), sz = (int)((z - z0) / ROOM_UNITS);
-    return sz * pc_rplus_squares() + sx + 1;
-}
 
 // The interiors a generated door can open to, and where Link comes in (from the disc's stages' first exits in).
 struct Interior {
@@ -1052,35 +1376,152 @@ const Interior kInteriors[] = {
 
 constexpr float LINK_HOUSE_EAST = 1400.0f;  // the start cell's own house (Outset's), beside Link's home
 constexpr float DOOR_GAP = 1000.0f;         // doors closer than this to one already placed are left out
-constexpr int DOORS_PER_ROOM = 0x3A - DOOR_EXIT0;
+constexpr int DOORS_PER_ROOM = HOME_EXIT - DOOR_EXIT0;
+constexpr float TOWN_LINK = 4.5f;           // houses fewer cells apart than this gather into one town
+constexpr float PLAZA_R = 750.0f;           // a town's paved middle
+constexpr float PATH_HALF = 230.0f;         // half a path's width
 
-// All the world's doors, made from its anchors: Link's home first, then every anchor with an interior this
-// table knows, at its cell's centre facing south, in a generated room, on land. Kept once made at sea (where
-// the room positions come from the stage); made again each time elsewhere.
-const std::vector<GenDoor>& genDoors() {
-    static std::vector<GenDoor> doors;
-    static bool made = false;
-    if (made || !pc_rplus_active()) {
-        return doors;
+// Where the world builds: its doors, its towns (houses round a plaza, the ground levelled), the paths between
+// them, and the fences and low walls along them. Made once from the anchors (again at sea if first made
+// elsewhere, where the room positions are the stage's).
+struct Layout {
+    float x0 = 0, z0 = 0, cs = 1;  // the world's corner and cell size
+    float startX = 0, startZ = 0;  // where Link starts: the start town's plaza, or land by the start cell
+    std::vector<GenDoor> doors;
+    std::vector<Town> towns;
+    std::vector<Pad> pads;
+    std::vector<Seg> paths;
+    std::vector<Fence> fences;
+    std::vector<Deco> decos;
+};
+
+float natAt(const Layout& L, float x, float z) {
+    return naturalY((x - L.x0) / L.cs, (z - L.z0) / L.cs);
+}
+
+bool solidLand(const Layout& L, float x, float z) {
+    return natAt(L, x, z) > LAND_BASE + 40.0f;
+}
+
+float slopeAt(const Layout& L, float x, float z) {
+    const float d = 200.0f;
+    return (fabsf(natAt(L, x + d, z) - natAt(L, x - d, z)) + fabsf(natAt(L, x, z + d) - natAt(L, x, z - d))) /
+           (2.0f * d);
+}
+
+int roomAtXZ(const Layout& L, float x, float z) {
+    const int sx = (int)floorf((x - L.x0) / ROOM_UNITS), sz = (int)floorf((z - L.z0) / ROOM_UNITS);
+    const int n = pc_rplus_squares();
+    return sx < 0 || sz < 0 || sx >= n || sz >= n ? 0 : sz * n + sx + 1;
+}
+
+// A spot for a lone building near (x, z): on land, not steep, in the same room; else (x, z) as it is.
+void landSpot(const Layout& L, float* x, float* z) {
+    if (solidLand(L, *x, *z) && slopeAt(L, *x, *z) < 0.3f) {
+        return;
     }
-    doors.clear();
-    made = strcmp(dComIfGp_getStartStageName(), "sea") == 0;
-    float x0, z0;
-    worldOrigin(&x0, &z0);
-    const float cs = cellSize();
-    auto roomAt = [&](float x, float z) {
-        const int sx = (int)floorf((x - x0) / ROOM_UNITS), sz = (int)floorf((z - z0) / ROOM_UNITS);
-        const int n = pc_rplus_squares();
-        return sx < 0 || sz < 0 || sx >= n || sz >= n ? 0 : sz * n + sx + 1;
+    const int room = roomAtXZ(L, *x, *z);
+    for (float r = 600.0f; r <= 6000.0f; r += 600.0f) {
+        for (int k = 0; k < 16; k++) {
+            const float a = k * 6.2831853f / 16.0f;
+            const float tx = *x + sinf(a) * r, tz = *z + cosf(a) * r;
+            if (roomAtXZ(L, tx, tz) == room && solidLand(L, tx, tz) && slopeAt(L, tx, tz) < 0.3f) {
+                *x = tx;
+                *z = tz;
+                return;
+            }
+        }
+    }
+}
+
+// Land all the way from a to b (a path can run there).
+bool lineOnLand(const Layout& L, float ax, float az, float bx, float bz) {
+    const float len = sqrtf((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+    const int steps = (int)(len / 400.0f) + 1;
+    for (int i = 0; i <= steps; i++) {
+        const float t = (float)i / steps;
+        if (natAt(L, ax + (bx - ax) * t, az + (bz - az) * t) < LAND_BASE + 25.0f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool segsCross(float ax, float az, float bx, float bz, float cx, float cz, float dx, float dz) {
+    auto side = [](float px, float pz, float qx, float qz, float rx, float rz) {
+        return (qx - px) * (rz - pz) - (qz - pz) * (rx - px);
     };
-    int perRoom[64] = {};
-    {
-        GenDoor home{"Abesso", 0, 0, nullptr, "home", 0, 0, cXyz(), 0, HOME_EXIT};
-        home.seaRoom = homeDoor(&home.pos, &home.angle);
-        doors.push_back(home);
+    const float d1 = side(ax, az, bx, bz, cx, cz), d2 = side(ax, az, bx, bz, dx, dz);
+    const float d3 = side(cx, cz, dx, dz, ax, az), d4 = side(cx, cz, dx, dz, bx, bz);
+    return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0));
+}
+
+// A path from a to b, bent a little (when the bent one stays on land).
+void addPath(Layout& L, float ax, float az, float bx, float bz) {
+    const float dx = bx - ax, dz = bz - az, len = sqrtf(dx * dx + dz * dz);
+    if (len < 1.0f) {
+        return;
     }
+    const float nx = -dz / len, nz = dx / len;
+    constexpr int PARTS = 5;
+    float px[PARTS + 1], pz[PARTS + 1];
+    bool ok = true;
+    for (int i = 0; i <= PARTS; i++) {
+        const float t = (float)i / PARTS;
+        const float bend = i == 0 || i == PARTS ? 0.0f
+                                                : (vnoise(ax * 0.0003f + i * 0.71f, az * 0.0003f, 91) - 0.5f) * len * 0.18f;
+        px[i] = ax + dx * t + nx * bend;
+        pz[i] = az + dz * t + nz * bend;
+        if (i > 0 && !lineOnLand(L, px[i - 1], pz[i - 1], px[i], pz[i])) {
+            ok = false;
+        }
+    }
+    if (!ok) {
+        L.paths.push_back({ax, az, bx, bz});
+        return;
+    }
+    for (int i = 0; i < PARTS; i++) {
+        L.paths.push_back({px[i], pz[i], px[i + 1], pz[i + 1]});
+    }
+}
+
+Layout& layoutRef() {
+    static Layout L;
+    return L;
+}
+
+const Layout& layout() {
+    Layout& L = layoutRef();
+    static bool made = false, atSeaMade = false;
+    const bool atSea = strcmp(dComIfGp_getStartStageName(), "sea") == 0;
+    if (!pc_rplus_active() || (made && (atSeaMade || !atSea))) {
+        return L;
+    }
+    made = true;
+    atSeaMade = atSea;
+    L = Layout();
+    worldOrigin(&L.x0, &L.z0);
+    L.cs = cellSize();
+    const float cs = L.cs;
+
+    // Every door that will stand: where its anchor is, before towns move them.
+    struct Cand {
+        const Interior* in;  // nullptr: Link's home
+        const char* id;
+        float x, z;
+        int town = -1;
+        s16 angle = 0;
+        float y = 0;
+        bool placed = false;
+    };
+    std::vector<Cand> cands;
     int sx, sy;
     pc_rplus_start_cell(&sx, &sy);
+    const float startX = L.x0 + (sx + 0.5f) * cs, startZ = L.z0 + (sy + 0.5f) * cs;
+    L.startX = startX;
+    L.startZ = startZ;
+    landSpot(L, &L.startX, &L.startZ);
+    cands.push_back({nullptr, "home", startX, startZ - HOME_DOOR_AHEAD});
     for (int i = 0; i < pc_rplus_anchor_count(); i++) {
         const char *id, *kind, *stage;
         int cx, cy;
@@ -1097,35 +1538,352 @@ const std::vector<GenDoor>& genDoors() {
         if (in == nullptr || pc_rplus_cell_height(cx, cy) == 0) {
             continue;
         }
-        float x = x0 + (cx + 0.5f) * cs, z = z0 + (cy + 0.5f) * cs;
+        float x = L.x0 + (cx + 0.5f) * cs, z = L.z0 + (cy + 0.5f) * cs;
         if (cx == sx && cy == sy) {
             x += LINK_HOUSE_EAST;
             z -= HOME_DOOR_AHEAD;
         }
-        const int room = roomAt(x, z);
-        if (room == 0 || !pc_rplus_sea_room_generated(room) || perRoom[room] >= DOORS_PER_ROOM) {
+        const int room = roomAtXZ(L, x, z);
+        if (room == 0 || !pc_rplus_sea_room_generated(room)) {
             continue;
         }
-        bool clear = true;
-        for (const GenDoor& d : doors) {
-            if ((d.pos.x - x) * (d.pos.x - x) + (d.pos.z - z) * (d.pos.z - z) < DOOR_GAP * DOOR_GAP) {
-                clear = false;
-                break;
+        cands.push_back({in, id, x, z});
+    }
+
+    // On land first (the coasts wander off the cells the anchors were put on).
+    for (Cand& c : cands) {
+        landSpot(L, &c.x, &c.z);
+    }
+    // Towns: houses (and Link's home) near each other, joined.
+    const size_t nc = cands.size();
+    std::vector<int> parent(nc);
+    for (size_t i = 0; i < nc; i++) {
+        parent[i] = (int)i;
+    }
+    auto find = [&](int i) {
+        while (parent[i] != i) {
+            i = parent[i] = parent[parent[i]];
+        }
+        return i;
+    };
+    auto housey = [&](const Cand& c) { return c.in == nullptr || c.in->style == 0; };
+    const float link = TOWN_LINK * cs;
+    for (size_t i = 0; i < nc; i++) {
+        for (size_t j = i + 1; j < nc; j++) {
+            if (housey(cands[i]) && housey(cands[j]) &&
+                (cands[i].x - cands[j].x) * (cands[i].x - cands[j].x) +
+                        (cands[i].z - cands[j].z) * (cands[i].z - cands[j].z) < link * link &&
+                lineOnLand(L, cands[i].x, cands[i].z, cands[j].x, cands[j].z)) {
+                parent[find((int)i)] = find((int)j);
             }
         }
-        if (!clear) {
-            fprintf(stderr, "[rplus] door %s (%s) left out: too close to another\n", id, stage);
+    }
+    for (size_t root = 0; root < nc; root++) {
+        std::vector<int> members;
+        for (size_t i = 0; i < nc; i++) {
+            if (find((int)i) == (int)root) {
+                members.push_back((int)i);
+            }
+        }
+        if (members.size() < 2) {
             continue;
         }
-        GenDoor d{in->stage, in->spawn, in->room, in->also, id, in->style, room, cXyz(), 0, 0};
-        d.pos.set(x, heightAt((x - x0) / cs, (z - z0) / cs), z);
-        d.exitId = DOOR_EXIT0 + perRoom[room]++;
-        doors.push_back(d);
+        // The middle: the start cell for the start town, else the member nearest the members' centre.
+        float cx = 0, cz = 0;
+        bool start = false;
+        for (int m : members) {
+            cx += cands[m].x / members.size();
+            cz += cands[m].z / members.size();
+            start = start || cands[m].in == nullptr;
+        }
+        if (start) {
+            cx = startX;
+            cz = startZ;
+        } else {
+            int best = members[0];
+            for (int m : members) {
+                if ((cands[m].x - cx) * (cands[m].x - cx) + (cands[m].z - cz) * (cands[m].z - cz) <
+                    (cands[best].x - cx) * (cands[best].x - cx) + (cands[best].z - cz) * (cands[best].z - cz)) {
+                    best = m;
+                }
+            }
+            cx = cands[best].x;
+            cz = cands[best].z;
+            landSpot(L, &cx, &cz);
+        }
+        const int n = (int)members.size();
+        // Houses round the plaza, doors facing it; the ring turned and sized until every house is on land, and
+        // the middle moved inland when no ring fits where it is.
+        float R = 0, a0 = 0;
+        int slots = n;  // the houses on the ring: the doors' and some more (homes without a way in)
+        auto fits = [&](float mx, float mz) {
+            if (!solidLand(L, mx, mz)) {
+                return false;
+            }
+            const float scales[] = {1.0f, 0.85f, 1.2f, 0.7f};
+            for (float sc : scales) {
+                R = (1100.0f + 300.0f * slots) * sc;
+                for (int turn = 0; turn < 12; turn++) {
+                    a0 = turn * 6.2831853f / 12.0f / slots;
+                    bool ok = true;
+                    for (int k = 0; k < slots && ok; k++) {
+                        const float a = a0 + k * 6.2831853f / slots;
+                        const float hx = mx + sinf(a) * R, hz = mz + cosf(a) * R;
+                        // The house behind the door, and the yard in front, on land.
+                        ok = solidLand(L, hx, hz) &&
+                             solidLand(L, mx + sinf(a) * (R + 500.0f), mz + cosf(a) * (R + 500.0f)) &&
+                             lineOnLand(L, mx, mz, hx, hz);
+                    }
+                    if (ok) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        bool ok = false;
+        const int extra = 3 + (int)(hash2((int)cx, (int)cz) % 3);
+        for (int m = extra; m >= 0 && !ok; m -= 2) {
+            slots = n + m;
+            ok = fits(cx, cz);
+        }
+        slots = ok ? slots : n;
+        for (float rr = 1500.0f; rr <= 15000.0f && !ok; rr += 1500.0f) {
+            for (int k = 0; k < 16 && !ok; k++) {
+                const float a = k * 6.2831853f / 16.0f;
+                const float mx = cx + sinf(a) * rr, mz = cz + cosf(a) * rr;
+                if (roomAtXZ(L, mx, mz) != 0 && pc_rplus_sea_room_generated(roomAtXZ(L, mx, mz)) && fits(mx, mz)) {
+                    cx = mx;
+                    cz = mz;
+                    ok = true;
+                }
+            }
+        }
+        if (!ok) {
+            fprintf(stderr, "[rplus] a town of %d houses has no room round its middle: they stand apart\n", n);
+            continue;
+        }
+        const float ty = std::max(natAt(L, cx, cz), LAND_BASE + 60.0f);
+        if (start) {
+            L.startX = cx;
+            L.startZ = cz;
+        }
+        const int t = (int)L.towns.size();
+        L.towns.push_back({cx, cz, ty, R, start, a0, slots});
+        L.pads.push_back({cx, cz, ty, R + 500.0f, R + 1800.0f});
+        // The ring's slots: the doors spread evenly, the homes without a way in between.
+        int next = 0;
+        for (int k = 0; k < slots; k++) {
+            const float a = a0 + k * 6.2831853f / slots;
+            const float hx = cx + sinf(a) * R, hz = cz + cosf(a) * R;
+            const s16 ang = cM_atan2s(cx - hx, cz - hz);  // the door's front toward the plaza
+            const bool door = next < n && k == (next * slots) / n;
+            if (door) {
+                Cand& c = cands[members[next++]];
+                c.x = hx;
+                c.z = hz;
+                c.angle = ang;
+                c.y = ty;
+                c.town = t;
+                c.placed = true;
+            } else {
+                const int room = roomAtXZ(L, hx, hz);
+                L.decos.push_back({cXyz(hx, ty, hz), ang, (int)(hash2((int)hx, (int)hz) % 4), room});
+            }
+            addPath(L, cx, cz, hx + sinf(a) * -150.0f, hz + cosf(a) * -150.0f);
+            // Low brick walls either side of the yard in front of the house.
+            const float s = cM_ssin(ang), co = cM_scos(ang);
+            for (int side = -1; side <= 1; side += 2) {
+                const float wx = hx + co * side * (HUT_HALF + 60.0f), wz = hz - s * side * (HUT_HALF + 60.0f);
+                L.fences.push_back({wx, wz, wx + s * 520.0f, wz + co * 520.0f, 1});
+            }
+        }
     }
-    if (made) {
-        fprintf(stderr, "[rplus] %d doors in the world\n", (int)doors.size());
+    // Lone buildings: on a good spot near their anchor, the ground levelled round them.
+    for (Cand& c : cands) {
+        if (c.placed) {
+            continue;
+        }
+        landSpot(L, &c.x, &c.z);
+        c.y = natAt(L, c.x, c.z);
+        c.placed = true;
+        L.pads.push_back({c.x, c.z, c.y, 650.0f, 1500.0f});
     }
-    return doors;
+
+    // The doors, with their exit ids.
+    int perRoom[64] = {};
+    for (const Cand& c : cands) {
+        const int room = roomAtXZ(L, c.x, c.z);
+        if (c.in != nullptr) {
+            if (room == 0 || perRoom[room] >= DOORS_PER_ROOM) {
+                continue;
+            }
+            bool clear = true;
+            for (const GenDoor& d : L.doors) {
+                if ((d.pos.x - c.x) * (d.pos.x - c.x) + (d.pos.z - c.z) * (d.pos.z - c.z) < DOOR_GAP * DOOR_GAP) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (!clear) {
+                fprintf(stderr, "[rplus] door %s (%s) left out: too close to another\n", c.id, c.in->stage);
+                continue;
+            }
+        }
+        GenDoor d = c.in == nullptr ? GenDoor{"Abesso", 0, 0, nullptr, "home", 0, room, cXyz(), 0, HOME_EXIT}
+                                    : GenDoor{c.in->stage, c.in->spawn, c.in->room, c.in->also, c.id, c.in->style,
+                                              room, cXyz(), 0, 0};
+        d.pos.set(c.x, c.y, c.z);
+        d.angle = c.angle;
+        d.variant = (int)(hash2((int)c.x, (int)c.z) % 4);
+        if (c.in != nullptr) {
+            d.exitId = DOOR_EXIT0 + perRoom[room]++;
+        }
+        d.town = c.town;
+        L.doors.push_back(d);
+    }
+
+    // Paths: between the towns and the lone doors of each land, the shortest net joining them (Prim's), each
+    // link straight over land and not too long.
+    struct Site {
+        float x, z;
+        int town;
+    };
+    std::vector<Site> sites;
+    for (size_t t = 0; t < L.towns.size(); t++) {
+        sites.push_back({L.towns[t].x, L.towns[t].z, (int)t});
+    }
+    for (const GenDoor& d : L.doors) {
+        if (d.town < 0) {
+            sites.push_back({d.pos.x + cM_ssin(d.angle) * 400.0f, d.pos.z + cM_scos(d.angle) * 400.0f, -1});
+        }
+    }
+    const size_t ns = sites.size();
+    const float maxLink = 7.0f * cs;
+    std::vector<bool> joined(ns, false);
+    for (size_t s0 = 0; s0 < ns; s0++) {
+        if (joined[s0]) {
+            continue;
+        }
+        joined[s0] = true;
+        std::vector<int> tree{(int)s0};
+        for (;;) {
+            float best = maxLink * maxLink;
+            int bi = -1, bj = -1;
+            for (int i : tree) {
+                for (size_t j = 0; j < ns; j++) {
+                    if (joined[j]) {
+                        continue;
+                    }
+                    const float d2 = (sites[i].x - sites[j].x) * (sites[i].x - sites[j].x) +
+                                     (sites[i].z - sites[j].z) * (sites[i].z - sites[j].z);
+                    if (d2 < best && lineOnLand(L, sites[i].x, sites[i].z, sites[j].x, sites[j].z)) {
+                        best = d2;
+                        bi = i;
+                        bj = (int)j;
+                    }
+                }
+            }
+            if (bj < 0) {
+                break;
+            }
+            joined[bj] = true;
+            tree.push_back(bj);
+            addPath(L, sites[bi].x, sites[bi].z, sites[bj].x, sites[bj].z);
+        }
+    }
+
+    // A wooden fence round each town, open where paths leave it and where the land ends.
+    for (const Town& t : L.towns) {
+        const float fr = t.r + 800.0f;
+        const int parts = std::max(16, (int)(fr * 6.2831853f / 450.0f));
+        for (int k = 0; k < parts; k++) {
+            const float a = k * 6.2831853f / parts, b = (k + 1) * 6.2831853f / parts;
+            const float ax = t.x + sinf(a) * fr, az = t.z + cosf(a) * fr, bx = t.x + sinf(b) * fr, bz = t.z + cosf(b) * fr;
+            if (!solidLand(L, ax, az) || !solidLand(L, bx, bz)) {
+                continue;
+            }
+            // Gates: open between every two houses, so the town is never shut in.
+            bool crossed = false;
+            const float mid = (a + b) * 0.5f;
+            for (int k = 0; k < t.slots && !crossed; k++) {
+                float d = fmodf(mid - (t.a0 + (k + 0.5f) * 6.2831853f / t.slots) + 31.415926f, 6.2831853f) - 3.1415926f;
+                crossed = fabsf(d) * fr < 260.0f;
+            }
+            for (const Seg& p : L.paths) {
+                // A gap a little wider than the path.
+                const float mx = (ax + bx) * 0.5f, mz = (az + bz) * 0.5f;
+                if (segsCross(ax, az, bx, bz, p.x0, p.z0, p.x1, p.z1) || segDist2(p, mx, mz) < 500.0f * 500.0f) {
+                    crossed = true;
+                    break;
+                }
+            }
+            if (!crossed) {
+                L.fences.push_back({ax, az, bx, bz, 0});
+            }
+        }
+    }
+    fprintf(stderr, "[rplus] layout: %d doors, %d towns, %d path pieces, %d fence pieces\n", (int)L.doors.size(),
+            (int)L.towns.size(), (int)L.paths.size(), (int)L.fences.size());
+    return L;
+}
+
+const std::vector<GenDoor>& genDoors() {
+    return layout().doors;
+}
+
+float shapeGround(float gx, float gy, float y) {
+    if (y <= LAND_BASE || !pc_rplus_active()) {
+        return y;
+    }
+    const Layout& L = layout();
+    const float x = L.x0 + gx * L.cs, z = L.z0 + gy * L.cs;
+    for (const Pad& p : L.pads) {
+        const float dx = x - p.x, dz = z - p.z, d2 = dx * dx + dz * dz;
+        if (d2 >= p.r1 * p.r1) {
+            continue;
+        }
+        const float d = sqrtf(d2);
+        float w = d <= p.r0 ? 1.0f : 1.0f - (d - p.r0) / (p.r1 - p.r0);
+        w = w * w * (3.0f - 2.0f * w);
+        y += (p.y - y) * w;
+    }
+    return y;
+}
+
+int groundMark(float x, float z) {
+    if (!pc_rplus_active()) {
+        return 0;
+    }
+    const Layout& L = layout();
+    for (const Town& t : L.towns) {
+        if ((x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < PLAZA_R * PLAZA_R) {
+            return 2;
+        }
+    }
+    // A path's edge wanders a little.
+    const float half = PATH_HALF * (0.8f + 0.4f * vnoise(x * 0.004f, z * 0.004f, 101));
+    for (const Seg& sg : L.paths) {
+        if (segDist2(sg, x, z) < half * half) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+const std::vector<Fence>& layoutFences() {
+    return layout().fences;
+}
+
+const std::vector<Deco>& layoutDecos() {
+    return layout().decos;
+}
+
+int startSpot(float* x, float* z) {
+    const Layout& L = layout();
+    *x = L.startX;
+    *z = L.startZ;
+    return roomAtXZ(L, *x, *z);
 }
 
 // The door whose interior is stage (or whose also is), else nullptr.
@@ -1150,16 +1908,29 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
         strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return 0;
     }
-    const int room = dComIfGp_roomControl_getStayNo();
+    // The door with this exit id nearest Link (the room he stands in may not be the stay room yet: rooms of the
+    // generated world are entered on foot without the room table noticing).
+    fopAc_ac_c* player = dComIfGp_getPlayer(0);
     const GenDoor* door = nullptr;
+    float best = 0.0f;
     for (const GenDoor& d : genDoors()) {
-        if (d.exitId == exitId && d.seaRoom == room) {
+        if (d.exitId != exitId) {
+            continue;
+        }
+        const float dd = player == nullptr ? 0.0f : (player->current.pos - d.pos).abs2XZ();
+        if (door == nullptr || dd < best) {
             door = &d;
-            break;
+            best = dd;
         }
     }
-    if (door == nullptr) {
-        return 0;
+    if (door == nullptr || (player != nullptr && best > 3000.0f * 3000.0f)) {
+        static int logged = -1;
+        if (logged != exitId) {
+            logged = exitId;
+            fprintf(stderr, "[rplus] exit 0x%X: no generated door near Link (nearest %.0f away)\n", exitId,
+                    door == nullptr ? -1.0f : sqrtf(best));
+        }
+        return 0;  // not by one of ours: a kept island's own exit
     }
     if (dComIfGp_isEnableNextStage()) {
         return 1;  // already on the way (Link stands on the exit floor for a few frames)
@@ -1331,30 +2102,29 @@ namespace {
 struct PropKind {
     const char* name;
     u32 params;
-    const char* biomes;  // where it grows (biome letters), "b" = the beach band
-    u16 weight;          // relative chance
-    float clearance;     // nothing else this kind's size within this many units
+    int cost;            // what it takes from its packet's budget (grass tufts, flowers, trees), 0 for actors
+    int pool;            // 0 grass, 1 flowers, 2 trees (dTree), 3 actors
+    float clearance;     // nothing else within this many units
 };
 
-const PropKind kProps[] = {
-    {"kusax21", 0x00000FC2, "gf", 30, 300.0f},
-    {"kusax7", 0x00000FC1, "gfd", 50, 200.0f},
-    {"kusax1", 0x00000FC0, "gfdv", 40, 120.0f},
-    {"flwr7", 0x00000FE4, "g", 12, 200.0f},
-    {"pflwrx7", 0x00000FF6, "g", 8, 200.0f},
-    {"flower", 0x00000FE0, "gd", 10, 120.0f},
-    {"swood", 0x00000010, "g", 14, 500.0f},
-    {"swood3", 0x00000013, "gf", 10, 600.0f},
-    {"swood5", 0x00000017, "f", 10, 700.0f},
-    {"lwood", 0xFFFFFFFF, "f", 2, 1200.0f},
-    {"Vyasi", 0x00000038, "bd", 12, 600.0f},
-    {"koisi1", 0x707FFFE0, "gdrsv", 8, 150.0f},
-    {"Ebrock", 0xF27FFF3F, "rv", 6, 500.0f},
-    {"Ebrock2", 0xF47FFF3A, "rvs", 4, 500.0f},
-    {"BFlower", 0x0000FF0F, "v", 3, 300.0f},
+enum PropId {
+    P_GRASS21, P_GRASS7, P_GRASS1, P_FLWR7, P_PFLWR7, P_FLOWER, P_SWOOD, P_SWOOD3, P_SWOOD5, P_LWOOD, P_PALM,
+    P_PEBBLE, P_ROCK, P_ROCK2, P_BOMBFLOWER, P_COUNT
 };
-constexpr int PROPS_PER_ROOM = 260;   // the most one room gets (the disc's busiest sea room has about this many)
-constexpr int PROP_TRIES_PER_CELL = 3;
+const PropKind kProps[P_COUNT] = {
+    {"kusax21", 0x00000FC2, 21, 0, 260.0f}, {"kusax7", 0x00000FC1, 7, 0, 170.0f},
+    {"kusax1", 0x00000FC0, 1, 0, 90.0f},    {"flwr7", 0x00000FE4, 7, 1, 200.0f},
+    {"pflwrx7", 0x00000FF6, 7, 1, 200.0f},  {"flower", 0x00000FE0, 1, 1, 110.0f},
+    {"swood", 0x00000010, 1, 2, 420.0f},    {"swood3", 0x00000013, 3, 2, 520.0f},
+    {"swood5", 0x00000017, 5, 2, 620.0f},   {"lwood", 0xFFFFFFFF, 0, 3, 1100.0f},
+    {"Vyasi", 0x00000038, 0, 3, 600.0f},    {"koisi1", 0x707FFFE0, 0, 3, 160.0f},
+    {"Ebrock", 0xF27FFF3F, 0, 3, 500.0f},   {"Ebrock2", 0xF47FFF3A, 0, 3, 500.0f},
+    {"BFlower", 0x0000FF0F, 0, 3, 320.0f},
+};
+// What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 512 trees,
+// shared by the rooms loaded at once) and how many plain actors it makes.
+const int kPoolBudget[4] = {2600, 300, 70, 70};
+constexpr float PROP_STEP = 420.0f;  // the candidate spots' spacing
 
 // The drawn land's height (bilinear over the mesh's samples, which heightAt gives).
 float meshY(float gx, float gy) {
@@ -1365,106 +2135,279 @@ float meshY(float gx, float gy) {
     return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
 }
 
+// What grows at a spot: meadows (dense grass and flowers in broad patches), groves and forests of trees, rock
+// on rugged land, palms on beaches; P_COUNT for nothing. h is a hash of the spot.
+PropId propAt(char b, bool beach, float meadow, float grove, u32 h) {
+    const u32 r = h % 1000;
+    if (beach) {
+        return r < 25 ? P_PALM : r < 60 ? P_GRASS1 : r < 75 ? P_PEBBLE : P_COUNT;
+    }
+    switch (b) {
+    case 'g':
+        if (grove > 0.62f) {
+            return r < 300 ? P_SWOOD3 : r < 450 ? P_SWOOD : r < 520 ? P_SWOOD5 : r < 800 ? P_GRASS7 : P_COUNT;
+        }
+        if (meadow > 0.55f) {
+            return r < 520 ? P_GRASS21 : r < 760 ? P_GRASS7 : r < 830 ? P_FLWR7 : r < 870 ? P_PFLWR7 : P_COUNT;
+        }
+        if (meadow > 0.45f) {
+            return r < 220 ? P_GRASS7 : r < 380 ? P_FLOWER : r < 450 ? P_FLWR7 : r < 600 ? P_GRASS1 : P_COUNT;
+        }
+        return r < 120 ? P_GRASS1 : r < 170 ? P_GRASS7 : r < 185 ? P_SWOOD : r < 195 ? P_PEBBLE : P_COUNT;
+    case 'f':
+        if (grove > 0.4f) {
+            return r < 260 ? P_SWOOD5 : r < 430 ? P_SWOOD3 : r < 460 ? P_LWOOD : r < 700 ? P_GRASS7 : P_COUNT;
+        }
+        return r < 300 ? P_GRASS21 : r < 520 ? P_GRASS7 : r < 600 ? P_SWOOD3 : P_COUNT;
+    case 'd':
+        return r < 30 ? P_PALM : r < 120 ? P_GRASS1 : r < 160 ? P_GRASS7 : r < 175 ? P_PEBBLE : P_COUNT;
+    case 'r':
+        return r < 40 ? P_ROCK : r < 90 ? P_PEBBLE : r < 200 ? P_GRASS1 : r < 230 ? P_GRASS7 : P_COUNT;
+    case 'v':
+        return r < 30 ? P_ROCK : r < 55 ? P_BOMBFLOWER : r < 100 ? P_PEBBLE : P_COUNT;
+    case 's':
+        return r < 30 ? P_ROCK2 : r < 70 ? P_PEBBLE : P_COUNT;
+    default:
+        return P_COUNT;
+    }
+}
+
 void scatterProps(int roomNo) {
-    const int cells = pc_rplus_cells(), n = pc_rplus_squares();
+    const int n = pc_rplus_squares();
     const int r = roomNo - 1;
-    const int gx0 = (r % n) * cells, gy0 = (r / n) * cells;
     float x0, z0;
     worldOrigin(&x0, &z0);
     const float cs = cellSize();
+    float rx, rz;
+    roomCentre(roomNo, &rx, &rz);
+    const float bx = rx - ROOM_UNITS * 0.5f, bz = rz - ROOM_UNITS * 0.5f;
+    (void)n;
+    (void)r;
+    const Layout& L = layout();
     std::vector<const GenDoor*> doors;
-    for (const GenDoor& gd : genDoors()) {
+    for (const GenDoor& gd : L.doors) {
         if (gd.seaRoom == roomNo) {
             doors.push_back(&gd);
         }
     }
-    u32 total = 0;
-    for (const PropKind& k : kProps) {
-        total += k.weight;
+    // The candidate spots on land, nearest the room's doors and towns first (each with a little jitter in its
+    // order), so a room's budget goes first where people are.
+    struct Spot {
+        float x, z, y, key;
+        u32 h;
+    };
+    std::vector<Spot> spots;
+    const int side = (int)(ROOM_UNITS / PROP_STEP);
+    for (int j = 0; j < side; j++) {
+        for (int i = 0; i < side; i++) {
+            const u32 h = hash2(i * 7 + roomNo * 9973, j * 13 + 0x5151);
+            const float x = bx + (i + ((h >> 4) & 0xFF) / 256.0f) * PROP_STEP;
+            const float z = bz + (j + ((h >> 12) & 0xFF) / 256.0f) * PROP_STEP;
+            const float gx = (x - x0) / cs, gy = (z - z0) / cs;
+            if (pc_rplus_cell_height((int)gx, (int)gy) == 0) {
+                // Open sea (no land in the cells round it either) costs nothing more.
+                bool land = false;
+                for (int dj = -1; dj <= 1 && !land; dj++) {
+                    for (int di = -1; di <= 1 && !land; di++) {
+                        land = pc_rplus_cell_height((int)gx + di, (int)gy + dj) != 0;
+                    }
+                }
+                if (!land || naturalY(gx, gy) < LAND_BASE) {
+                    continue;
+                }
+            }
+            const float y = meshY(gx, gy);
+            if (y < LAND_BASE + 15.0f) {
+                continue;  // in the surf
+            }
+            float near = 1e12f;
+            for (const GenDoor* d : doors) {
+                near = std::min(near, (x - d->pos.x) * (x - d->pos.x) + (z - d->pos.z) * (z - d->pos.z));
+            }
+            for (const Town& t : L.towns) {
+                near = std::min(near, (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z));
+            }
+            spots.push_back({x, z, y, sqrtf(near) * (0.75f + 0.5f * ((h >> 20) & 0xFF) / 256.0f), h});
+        }
     }
+    std::sort(spots.begin(), spots.end(), [](const Spot& a, const Spot& b) { return a.key < b.key; });
+
+    int used[4] = {};
+    int made[P_COUNT] = {};
     struct Placed {
         float x, z, clear;
     };
     std::vector<Placed> placed;
-    int made = 0;
-    for (int cy = gy0; cy < gy0 + cells && made < PROPS_PER_ROOM; cy++) {
-        for (int cx = gx0; cx < gx0 + cells && made < PROPS_PER_ROOM; cx++) {
-            if (pc_rplus_cell_height(cx, cy) == 0) {
-                continue;
+    // Placed props by coarse grid cell, for the clearance check.
+    const float GRID = 1200.0f;
+    const int gside = (int)(ROOM_UNITS / GRID) + 1;
+    std::vector<std::vector<int>> grid((size_t)gside * gside);
+    for (const Spot& sp : spots) {
+        const float x = sp.x, z = sp.z, y = sp.y;
+        const float gx = (x - x0) / cs, gy = (z - z0) / cs;
+        // Clear of houses, doorsteps, plazas, paths and fences.
+        bool blocked = false;
+        for (const GenDoor* d : doors) {
+            if ((x - d->pos.x) * (x - d->pos.x) + (z - d->pos.z) * (z - d->pos.z) < 800.0f * 800.0f) {
+                blocked = true;
+                break;
             }
-            for (int t = 0; t < PROP_TRIES_PER_CELL && made < PROPS_PER_ROOM; t++) {
-                const u32 h1 = hash2(cx * 7 + t, cy * 13 + 0x5151), h2 = hash2(cy * 11 + t, cx * 3 + 0x7a7a);
-                if ((h1 & 3) == 0) {
-                    continue;  // a quarter of the tries leave the spot bare
-                }
-                const float gx = cx + ((h1 >> 8) & 0xFFF) / 4096.0f, gy = cy + ((h2 >> 8) & 0xFFF) / 4096.0f;
-                const float y = meshY(gx, gy);
-                if (y < LAND_BASE + 15.0f) {
-                    continue;  // in the surf
-                }
-                const float x = x0 + gx * cs, z = z0 + gy * cs;
-                bool nearDoor = false;
-                for (const GenDoor* d : doors) {
-                    if ((x - d->pos.x) * (x - d->pos.x) + (z - d->pos.z) * (z - d->pos.z) < 900.0f * 900.0f) {
-                        nearDoor = true;  // the house and its doorstep
-                        break;
-                    }
-                }
-                if (nearDoor) {
+        }
+        if (blocked || groundMark(x, z) != 0) {
+            continue;
+        }
+        for (const Town& t : L.towns) {
+            const float d2 = (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z);
+            if (d2 < (t.r + 450.0f) * (t.r + 450.0f) && d2 > PLAZA_R * PLAZA_R) {
+                blocked = true;  // the houses' ring and yards (the plaza is already kept clear)
+                break;
+            }
+        }
+        for (const Fence& f : L.fences) {
+            if (!blocked && segDist2(Seg{f.x0, f.z0, f.x1, f.z1}, x, z) < 220.0f * 220.0f) {
+                blocked = true;
+            }
+        }
+        for (const Seg& p : L.paths) {
+            if (!blocked && segDist2(p, x, z) < (PATH_HALF + 160.0f) * (PATH_HALF + 160.0f)) {
+                blocked = true;
+            }
+        }
+        if (blocked) {
+            continue;
+        }
+        const float dxy = fabsf(meshY(gx + 0.02f, gy) - y) + fabsf(meshY(gx, gy + 0.02f) - y);
+        if (dxy > 0.02f * cs * 0.9f) {
+            continue;  // too steep
+        }
+        const bool beach = y < LAND_BASE + 70.0f;
+        const float meadow = fbm(x * 0.00022f, z * 0.00022f, 151, 3);
+        const float grove = fbm(x * 0.00030f, z * 0.00030f, 163, 3);
+        const PropId id = propAt(biomeNear(gx, gy), beach, meadow, grove, sp.h >> 3);
+        if (id == P_COUNT) {
+            continue;
+        }
+        const PropKind& kind = kProps[id];
+        const int cost = kind.pool == 3 ? 1 : kind.cost;
+        if (used[kind.pool] + cost > kPoolBudget[kind.pool]) {
+            continue;
+        }
+        const int gi = std::min(gside - 1, std::max(0, (int)((x - bx) / GRID)));
+        const int gj = std::min(gside - 1, std::max(0, (int)((z - bz) / GRID)));
+        bool clear = true;
+        for (int dj = -1; dj <= 1 && clear; dj++) {
+            for (int di = -1; di <= 1 && clear; di++) {
+                const int ci = gi + di, cj = gj + dj;
+                if (ci < 0 || cj < 0 || ci >= gside || cj >= gside) {
                     continue;
                 }
-                const float dxy = fabsf(meshY(gx + 0.02f, gy) - y) + fabsf(meshY(gx, gy + 0.02f) - y);
-                if (dxy > 0.02f * cs * 0.9f) {
-                    continue;  // too steep
-                }
-                const bool beach = y < LAND_BASE + 70.0f;
-                const char b = biomeNear(gx, gy);
-                // A kind that grows here, by weight.
-                u32 pick = h2 % total;
-                const PropKind* kind = nullptr;
-                for (int tries = 0; tries < 4 && kind == nullptr; tries++) {
-                    u32 acc = 0;
-                    for (const PropKind& k : kProps) {
-                        acc += k.weight;
-                        if (pick < acc) {
-                            const bool fits = beach ? strchr(k.biomes, 'b') != nullptr || (strchr(k.biomes, 'd') && b == 'd')
-                                                    : strchr(k.biomes, b) != nullptr;
-                            if (fits) {
-                                kind = &k;
-                            }
-                            break;
-                        }
-                    }
-                    pick = (pick * 2654435761u + 977u) % total;
-                }
-                if (kind == nullptr) {
-                    continue;
-                }
-                bool clear = true;
-                for (const Placed& p : placed) {
-                    const float c2 = std::max(p.clear, kind->clearance);
+                for (int k : grid[(size_t)cj * gside + ci]) {
+                    const Placed& p = placed[k];
+                    const float c2 = std::max(p.clear, kind.clearance);
                     if ((p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) < c2 * c2) {
                         clear = false;
                         break;
                     }
                 }
-                if (!clear) {
-                    continue;
-                }
-                cXyz pos(x, y, z);
-                csXyz angle(0, (s16)(h1 >> 16), 0);
-                fopAcM_create((char*)kind->name, kind->params, &pos, roomNo, &angle, nullptr);
-                placed.push_back({x, z, kind->clearance});
-                made++;
             }
         }
+        if (!clear) {
+            continue;
+        }
+        cXyz pos(x, y, z);
+        csXyz angle(0, (s16)(sp.h >> 16), 0);
+        fopAcM_create((char*)kind.name, kind.params, &pos, roomNo, &angle, nullptr);
+        grid[(size_t)gj * gside + gi].push_back((int)placed.size());
+        placed.push_back({x, z, kind.clearance});
+        used[kind.pool] += cost;
+        made[id]++;
     }
-    if (made > 0) {
-        fprintf(stderr, "[rplus] room %d: %d props\n", roomNo, made);
+    if (!placed.empty()) {
+        fprintf(stderr, "[rplus] room %d: %d props (grass %d tufts, flowers %d, trees %d, others %d)\n", roomNo,
+                (int)placed.size(), used[0], used[1], used[2], used[3]);
     }
 }
-
 } // namespace
+
+namespace rplus {
+
+std::vector<TownInfo> towns() {
+    std::vector<TownInfo> out;
+    if (!pc_rplus_active()) {
+        return out;
+    }
+    const Layout& L = layout();
+    for (const Town& t : L.towns) {
+        out.push_back({t.x, t.z, t.y, t.r, PLAZA_R, roomAtXZ(L, t.x, t.z)});
+    }
+    return out;
+}
+
+float groundY(float x, float z) {
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    return meshY((x - x0) / cs, (z - z0) / cs);
+}
+
+int roomAt(float x, float z) {
+    return roomAtXZ(layout(), x, z);
+}
+
+char biomeAt(float x, float z) {
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    return biomeNear((x - x0) / cs, (z - z0) / cs);
+}
+
+bool openGround(float x, float z, float clear) {
+    const Layout& L = layout();
+    if (groundMark(x, z) != 0) {
+        return false;
+    }
+    const float c2 = clear * clear;
+    for (const GenDoor& d : L.doors) {
+        if ((x - d.pos.x) * (x - d.pos.x) + (z - d.pos.z) * (z - d.pos.z) < c2 + 700.0f * 700.0f) {
+            return false;
+        }
+    }
+    for (const Deco& d : L.decos) {
+        if ((x - d.pos.x) * (x - d.pos.x) + (z - d.pos.z) * (z - d.pos.z) < c2 + 700.0f * 700.0f) {
+            return false;
+        }
+    }
+    for (const Fence& f : L.fences) {
+        if (segDist2(Seg{f.x0, f.z0, f.x1, f.z1}, x, z) < c2 + 150.0f * 150.0f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void cellSpot(int cx, int cy, float* x, float* z) {
+    const Layout& L = layout();
+    *x = L.x0 + (cx + 0.5f) * L.cs;
+    *z = L.z0 + (cy + 0.5f) * L.cs;
+    landSpot(L, x, z);
+}
+
+void startXZ(float* x, float* z) {
+    startSpot(x, z);
+}
+
+void roomCorner(int roomNo, float* x, float* z) {
+    roomCentre(roomNo, x, z);
+    *x -= ROOM_UNITS * 0.5f;
+    *z -= ROOM_UNITS * 0.5f;
+}
+
+bool steep(float x, float z) {
+    const float y = groundY(x, z);
+    return fabsf(groundY(x + 150.0f, z) - y) + fabsf(groundY(x, z + 150.0f) - y) > 150.0f;
+}
+
+} // namespace rplus
 
 void pc_rplus_room_actors(int roomNo) {
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
@@ -1472,17 +2415,21 @@ void pc_rplus_room_actors(int roomNo) {
     }
     if (pc_rplus_sea_room_generated(roomNo)) {
         scatterProps(roomNo);
+        pc_rplus_life_room(roomNo);
     }
     for (const GenDoor& gd : genDoors()) {
         if (gd.seaRoom != roomNo) {
             continue;
         }
-        // The cabana's door (KNOB01, shape 4: the villa door) without its deed lock (type 0), both sides a
-        // stage exit (angle x 0x0FFF), no event or switch.
+        // A KNOB01 door, both sides a stage exit (angle x 0x0FFF), no lock (type 0), event or switch. Its model
+        // is the shape (params bits 20-27, the Knob archive's door_a..h): Link's home the cabana's (4, its
+        // deed lock skipped in Abesso), houses the plain wooden door (0), the rest by style.
+        static const u32 kShape[3] = {0, 2, 3};
+        const u32 shape = gd.exitId == HOME_EXIT ? 4 : kShape[gd.style];
         cXyz pos = gd.pos;
         csXyz angle(0x0FFF, gd.angle, 0);
         cXyz scale(1.0f, 1.0f, 1.0f);
-        fopAcM_create((char*)"KNOB01", 0x004FF0FFu, &pos, roomNo, &angle, &scale);
+        fopAcM_create((char*)"KNOB01", 0x000FF0FFu | (shape << 20), &pos, roomNo, &angle, &scale);
         fprintf(stderr, "[rplus] door %s (%s) in room %d at %.0f %.0f %.0f\n", gd.id, gd.stage, roomNo, pos.x,
                 pos.y, pos.z);
     }
@@ -1560,6 +2507,30 @@ void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
     pos->set(sx, 0.0f, sz);
 }
 
+namespace {
+
+// What the world's logic starts with (scripts/rplus/wwlogic.py DEFAULT_START, wwrando's defaults with "Start with
+// Hero's Sword"): given at sea to a file that has no sword yet, as a new file in Randomizer+ is.
+void giveStartGear() {
+    if (dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) ||
+        dComIfGs_isCollect(0, 3)) {
+        return;
+    }
+    static const u8 kGear[] = {dItemNo_SWORD_e,         dItemNo_SHIELD_e,          dItemNo_WIND_WAKER_e,
+                               dItemNo_WINDS_REQUIEM_e, dItemNo_BALLAD_OF_GALES_e, dItemNo_SONG_OF_PASSING_e,
+                               dItemNo_SAIL_e,          dItemNo_MAGIC_POWER_e};
+    for (u8 item : kGear) {
+        execItemGet(item);
+    }
+    if (dComIfGs_getMaxMagic() == 0) {
+        dComIfGp_setItemMaxMagicCount(16);
+        dComIfGp_setItemMagicCount(16);
+    }
+    fprintf(stderr, "[rplus] new file: gave the start gear (sword, shield, Wind Waker, 3 songs, sail, magic)\n");
+}
+
+} // namespace
+
 void pc_rplus_place_player(int roomNo) {
     static bool placed = false;
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
@@ -1588,27 +2559,120 @@ void pc_rplus_place_player(int roomNo) {
                     sea ? daSea_calcWave(p.x, p.z) : 0.0f);
         }
     }
+    giveStartGear();
     if (placed || sStartPointSet) {
         return;
     }
-    int cx, cy;
-    pc_rplus_start_cell(&cx, &cy);
-    float x0, z0;
-    worldOrigin(&x0, &z0);
-    const float cs = cellSize();
-    cXyz pos(x0 + (cx + 0.5f) * cs, 0.0f, z0 + (cy + 0.5f) * cs);
-    pos.y = heightAt(cx + 0.5f, cy + 0.5f) + 150.0f;
+    float sx, sz;
+    const int startRoom = startSpot(&sx, &sz);
+    cXyz pos(sx, heightAt_world(sx, sz) + 150.0f, sz);
     player->current.pos = pos;
     player->old.pos = pos;
     player->speedF = 0.0f;
     player->speed = cXyz(0.0f, 0.0f, 0.0f);
     // Held there until the start room's own land is loaded. The game loads rooms from the ground under Link
     // (dStage_RoomCheck), and there is none until the start room is in, so its load is asked for here.
-    const int startRoom = (cy / pc_rplus_cells()) * pc_rplus_squares() + (cx / pc_rplus_cells()) + 1;
     if (roomNo != startRoom) {
         requestRoomLoad(startRoom);
         return;
     }
     placed = true;
-    fprintf(stderr, "[rplus] Link put on the start cell %d,%d at %.0f %.0f %.0f\n", cx, cy, pos.x, pos.y, pos.z);
+    fprintf(stderr, "[rplus] Link put on the start spot at %.0f %.0f %.0f\n", pos.x, pos.y, pos.z);
 }
+
+#ifdef PC_RPLUS_DEBUG_MAP
+// An offline check of the generated land (built only into a test with PC_RPLUS_DEBUG_MAP): the whole world as a
+// PPM, px world units a pixel: land shaded by height and slope, paths, plazas, fences, doors.
+extern "C" void pc_rplus_debug_map(const char* path, float px, float cx, float cz, float size) {
+    const Layout& L = layout();
+    const float worldW = pc_rplus_squares() * ROOM_UNITS;
+    const float ox = size > 0 ? cx - size / 2 : L.x0, oz = size > 0 ? cz - size / 2 : L.z0;
+    const int W = (int)((size > 0 ? size : worldW) / px);
+    std::vector<u8> img((size_t)W * W * 3);
+    float hmin = 1e9f, hmax = -1e9f, steep = 0;
+    int landPx = 0;
+    for (int j = 0; j < W; j++) {
+        for (int i = 0; i < W; i++) {
+            const float x = ox + (i + 0.5f) * px, z = oz + (j + 0.5f) * px;
+            const float y = heightAt_world(x, z);
+            u8* o = &img[((size_t)j * W + i) * 3];
+            if (y <= 0.0f) {
+                o[0] = 40; o[1] = 90; o[2] = (u8)std::max(120.0f, 200.0f + y * 0.05f);
+                continue;
+            }
+            landPx++;
+            hmin = std::min(hmin, y);
+            hmax = std::max(hmax, y);
+            const float yx = heightAt_world(x + 50.0f, z), yz = heightAt_world(x, z + 50.0f);
+            const float sl = sqrtf((yx - y) * (yx - y) + (yz - y) * (yz - y)) / 50.0f;
+            steep = std::max(steep, sl);
+            float shade = 0.75f + 0.25f * std::max(-1.0f, std::min(1.0f, -(yx - y + yz - y) / 50.0f));
+            Rgb c = biomeColour(biomeNear((x - L.x0) / L.cs, (z - L.z0) / L.cs));
+            if (y < LAND_BASE + 60.0f) c = biomeColour('d');
+            if (sl > 0.9f) c = {120, 110, 100};
+            const int m = groundMark(x, z);
+            if (m == 1) c = {172, 136, 92};
+            if (m == 2) c = {196, 188, 172};
+            const float lift = 0.7f + 0.3f * std::min(1.0f, y / 3000.0f);
+            o[0] = (u8)std::min(255.0f, c.r * shade * lift);
+            o[1] = (u8)std::min(255.0f, c.g * shade * lift);
+            o[2] = (u8)std::min(255.0f, c.b * shade * lift);
+        }
+    }
+    auto dot = [&](float x, float z, int rad, u8 r, u8 g, u8 b) {
+        const int ci = (int)((x - ox) / px), cj = (int)((z - oz) / px);
+        for (int dj = -rad; dj <= rad; dj++)
+            for (int di = -rad; di <= rad; di++) {
+                const int i = ci + di, j = cj + dj;
+                if (i >= 0 && j >= 0 && i < W && j < W) {
+                    u8* o = &img[((size_t)j * W + i) * 3];
+                    o[0] = r; o[1] = g; o[2] = b;
+                }
+            }
+    };
+    for (const Fence& f : L.fences) {
+        for (int k = 0; k <= 8; k++) {
+            dot(f.x0 + (f.x1 - f.x0) * k / 8.0f, f.z0 + (f.z1 - f.z0) * k / 8.0f, 0, f.kind ? 160 : 90,
+                f.kind ? 40 : 60, f.kind ? 30 : 20);
+        }
+    }
+    for (const Deco& d : L.decos) {
+        dot(d.pos.x, d.pos.z, 2, 240, 150, 40);
+    }
+    for (const GenDoor& d : L.doors) {
+        dot(d.pos.x, d.pos.z, 2, d.exitId == HOME_EXIT ? 255 : 220, d.exitId == HOME_EXIT ? 255 : 30, 30);
+    }
+    FILE* f = fopen(path, "wb");
+    fprintf(f, "P6\n%d %d\n255\n", W, W);
+    fwrite(img.data(), 1, img.size(), f);
+    fclose(f);
+    fprintf(stderr, "[rplus] map %dx%d: land %d px, height %.0f..%.0f, steepest slope %.2f\n", W, W, landPx, hmin, hmax,
+            steep);
+    {
+        // The mesh's slopes (the samples SUB to a cell), what Link walks on.
+        const float st = L.cs / SUB;
+        const int ns = size > 0 ? 0 : (int)(worldW / st);
+        int land = 0, over40 = 0, over50 = 0;
+        for (int j = 0; j < ns; j++) {
+            for (int i = 0; i < ns; i++) {
+                const float a = heightAt(i / (float)SUB, j / (float)SUB);
+                const float bq = heightAt((i + 1) / (float)SUB, j / (float)SUB), c = heightAt(i / (float)SUB, (j + 1) / (float)SUB);
+                if (a <= LAND_BASE + 30.0f) continue;
+                land++;
+                const float sl = std::max(fabsf(bq - a), fabsf(c - a)) / st;
+                over40 += sl > 0.84f;
+                over50 += sl > 1.19f;
+            }
+        }
+        fprintf(stderr, "[rplus] mesh: %d land samples, %.1f%% steeper than 40 deg, %.1f%% steeper than 50 deg\n", land,
+                100.0f * over40 / std::max(1, land), 100.0f * over50 / std::max(1, land));
+    }
+    for (const Town& t : L.towns) {
+        fprintf(stderr, "  town at %.0f %.0f y %.0f r %.0f%s\n", t.x, t.z, t.y, t.r, t.start ? " (start)" : "");
+    }
+    for (const GenDoor& d : L.doors) {
+        fprintf(stderr, "  door %-20s %-8s room %2d at %7.0f %6.0f %7.0f ang %6d town %d ground %.0f\n", d.id, d.stage,
+                d.seaRoom, d.pos.x, d.pos.y, d.pos.z, d.angle, d.town, heightAt_world(d.pos.x, d.pos.z));
+    }
+}
+#endif

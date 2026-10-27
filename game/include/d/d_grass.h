@@ -76,7 +76,12 @@ public:
 
     /* 0x00010 */ u16 mNextIdx;
     /* 0x00012 */ u8 field_0x00012[0x00014 - 0x00012];
+#if TARGET_PC
+    // Randomizer+ scatters far more of these on generated land than any original room had.
+    /* 0x00014 */ dGrass_data_c mGrassData[16000];
+#else
     /* 0x00014 */ dGrass_data_c mGrassData[1500];
+#endif
     /* 0x18E84 */ dGrass_anm_c mGrassAnm[104];
     /* 0x1A544 */ dGrass_room_c mGrassRoom[64];
     /* 0x1A644 */ Vec* mpPosArr;
