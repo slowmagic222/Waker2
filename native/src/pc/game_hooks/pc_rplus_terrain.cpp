@@ -917,6 +917,9 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
     if (exitId != HOME_EXIT || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return 0;
     }
+    if (dComIfGp_isEnableNextStage()) {
+        return 1;  // already on the way (Link stands on the exit floor for a few frames)
+    }
     fprintf(stderr, "[rplus] into Link's home (Abesso)\n");
     dComIfGp_setNextStage("Abesso", 0, 0, -1, speed, mode, TRUE, 0);
     return 1;
