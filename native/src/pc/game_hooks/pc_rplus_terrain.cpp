@@ -428,7 +428,20 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
             at(0.0f, -(HUT_DEPTH * 0.5f + 10.0f), &fx, &fz);
             const float hw = HUT_HALF - 10.0f, hd = HUT_DEPTH * 0.5f - 20.0f;  // half extents across, along
             const float ex = fabsf(c) * hw + fabsf(s) * hd, ez = fabsf(s) * hw + fabsf(c) * hd;
-            floors.push_back({blkOf(fx, fz), fx - ex, fz - ez, fx + ex, fz + ez, door.y + 3.0f});
+            // Above the land everywhere inside (it rises behind the door on a slope), or Link's ground is the
+            // land under it and its exit never counts.
+            float wx0, wz0;
+            worldOrigin(&wx0, &wz0);
+            const float wcs = cellSize();
+            float top = door.y;
+            for (int a = 0; a <= 8; a++) {
+                for (int b = 0; b <= 8; b++) {
+                    const float x = fx - ex + 2.0f * ex * a / 8.0f, z = fz - ez + 2.0f * ez * b / 8.0f;
+                    top = std::max(top, heightAt((x - wx0) / wcs, (z - wz0) / wcs));
+                }
+            }
+            floors.push_back({blkOf(fx, fz), fx - ex, fz - ez, fx + ex, fz + ez, top + 3.0f});
+            fprintf(stderr, "[rplus] Link's home's exit floor at %.0f (door at %.0f)\n", top + 3.0f, door.y);
         }
     }
     // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall, 4 per floor.
