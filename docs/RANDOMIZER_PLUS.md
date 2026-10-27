@@ -113,7 +113,12 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   up to three squares Link is within 22000 units of (dropped past 34000), so an island over a square's edge has its
   props, people and doors on both sides.
 - **Enemy camps** (`placeCamps`): up to two a room on open flat land away from the start and towns: a campfire
-  (`Fire`, no switch), three to five Bokoblins round it facing in, sometimes a Moblin, two pots.
+  (`Fire`, no switch), three to five Bokoblins round it facing in, sometimes a Moblin, two pots. The Bokoblins
+  stand (type 0) instead of sitting by the fire, so they see Link and fight; camps and enemy groups need gentle
+  ground round them.
+- **Open-air chests** (`placeChests`, `COS_RPLUS_CHESTS=0` to leave out): each puzzle anchor gets its home island's
+  disc chest (from the room's TRES), on the highest open ground near the anchor, as a plain chest (its switch,
+  lighthouse or enemy puzzle is not built). Its item and save flag are the disc's.
 - **Link's home** (the cabana, `Abesso`, unlocked): its dishes, pots and tubs become things to carry instead
   (stools, buckets, barrels, pots, small crates: `pc_rplus_home_actor`), which land whole when thrown there.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link

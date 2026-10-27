@@ -46,7 +46,7 @@ float bef(const u8* p) {
     return f;
 }
 
-// The actors of a room.dzr: ACTR and ACT0..ACTb (each entry 0x20 bytes).
+// The actors of a room.dzr: ACTR and ACT0..ACTb, and its chests: TRES and TRE0..TREb (each entry 0x20 bytes).
 void parseDzr(const std::vector<uint8_t>& d, int room, std::vector<Entry>& out) {
     if (d.size() < 4) {
         return;
@@ -55,9 +55,10 @@ void parseDzr(const std::vector<uint8_t>& d, int room, std::vector<Entry>& out) 
     for (u32 c = 0; c < chunks && 4 + (size_t)c * 12 + 12 <= d.size(); c++) {
         const u8* h = d.data() + 4 + c * 12;
         int layer;
-        if (memcmp(h, "ACTR", 4) == 0) {
+        if (memcmp(h, "ACTR", 4) == 0 || memcmp(h, "TRES", 4) == 0) {
             layer = -1;
-        } else if (memcmp(h, "ACT", 3) == 0 && ((h[3] >= '0' && h[3] <= '9') || (h[3] >= 'a' && h[3] <= 'b'))) {
+        } else if ((memcmp(h, "ACT", 3) == 0 || memcmp(h, "TRE", 3) == 0) &&
+                   ((h[3] >= '0' && h[3] <= '9') || (h[3] >= 'a' && h[3] <= 'b'))) {
             layer = h[3] <= '9' ? h[3] - '0' : h[3] - 'a' + 10;
         } else {
             continue;
@@ -163,6 +164,7 @@ struct Pools {
     std::vector<Entry> npcs;               // movable NPCs of the generated sea rooms
     std::vector<Entry> enemies;            // one entry per (kind, params) seen
     std::vector<Entry> campDecor;          // a camp's fire and pots, as the disc has them (first seen of each)
+    std::vector<Entry> chests;             // the chests of the generated sea rooms, in disc order
 };
 const char* const kCampDecor[] = {"Fire", "kotubo", "ootubo1"};
 
@@ -182,6 +184,9 @@ Pools& pools() {
             for (const Entry& e : here) {
                 if (movable(e.proc) && pc_rplus_sea_room_generated(r)) {
                     p.npcs.push_back(e);
+                }
+                if (e.proc == fpcNm_TBOX_e && pc_rplus_sea_room_generated(r)) {
+                    p.chests.push_back(e);
                 }
             }
             all.insert(all.end(), here.begin(), here.end());
@@ -239,6 +244,14 @@ u32 mix(u32 a, u32 b) {
 }
 
 void spawn(const Entry& e, float x, float z, s16 ay, int roomNo, u32 params) {
+    if (strcmp(e.name, "Bk") == 0) {
+        // A Bokoblin's type (bits 0-3, d_a_bk jyunkai): sitting by a fire (4, 10), asleep until a switch (6), on a
+        // path (9) or in an event (8) only wake in their own scenes; here they all stand and look out (0).
+        const u32 type = params & 0xF;
+        if (type == 4 || type == 6 || type == 8 || type == 9 || type == 10) {
+            params &= ~0xFu;
+        }
+    }
     cXyz pos(x, rplus::groundY(x, z) + 5.0f, z);
     csXyz angle(e.ax, ay, e.az);
     // By name, so the profile's argument (a ChuChu's colour, a person's look) comes with it.
@@ -324,6 +337,19 @@ void placeNpcs(int roomNo) {
     }
 }
 
+// Gentle ground round (x, z): within r the ground rises or falls at most `rise` (enemies on steep ground lose their
+// footing and stop fighting).
+bool gentle(float x, float z, float r, float rise) {
+    const float y = rplus::groundY(x, z);
+    for (int k = 0; k < 8; k++) {
+        const float a = k * 0.785398f;
+        if (fabsf(rplus::groundY(x + sinf(a) * r, z + cosf(a) * r) - y) > rise) {
+            return false;
+        }
+    }
+    return true;
+}
+
 const Entry* findEntry(const std::vector<Entry>& v, const char* name) {
     for (const Entry& e : v) {
         if (strcmp(e.name, name) == 0) {
@@ -358,7 +384,8 @@ int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::
         const float z = rz0 + (0.05f + ((h >> 16) & 0xFFFF) / 65536.0f * 0.9f) * 100000.0f;
         const char b = rplus::biomeAt(x, z);
         const float y = rplus::groundY(x, z);
-        if (strchr("gfrd", b) == nullptr || y < 160.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1400.0f)) {
+        if (strchr("gfrd", b) == nullptr || y < 160.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1400.0f) ||
+            !gentle(x, z, 1000.0f, 160.0f)) {
             continue;
         }
         if ((x - sx) * (x - sx) + (z - sz) * (z - sz) < 14000.0f * 14000.0f) {
@@ -421,7 +448,8 @@ void placeEnemies(int roomNo) {
         const float z = rz0 + ((h >> 16) & 0xFFFF) / 65536.0f * 100000.0f;
         const char b = rplus::biomeAt(x, z);
         const float y = rplus::groundY(x, z);
-        if (b == '.' || y < 120.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1500.0f)) {
+        if (b == '.' || y < 120.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1500.0f) ||
+            !gentle(x, z, 700.0f, 220.0f)) {
             continue;
         }
         if ((x - sx) * (x - sx) + (z - sz) * (z - sz) < 9000.0f * 9000.0f) {
@@ -498,6 +526,83 @@ void placeEnemies(int roomNo) {
     }
 }
 
+// The island a puzzle anchor's chest came from (scripts/rplus/anchors.py, the anchor's home): its sea room.
+struct PuzzleHome {
+    const char* id;
+    int room;
+};
+const PuzzleHome kPuzzleHomes[] = {
+    {"transparent_chest", 11}, {"boulder_chest", 13}, {"sky_platforms", 13}, {"fh_small_island", 41},
+    {"greatfish_chest", 23},   {"frozen_chest", 40},  {"headstone_top", 45}, {"waterfall_chest", 33},
+    {"needle_chest", 29},      {"angular_peak", 47},  {"crescent_chest", 5},
+};
+
+// The highest standable open ground within r of (x, z): a chest on a hilltop or ledge, seen from below.
+void highSpot(float* x, float* z, float r) {
+    float bx = *x, bz = *z, by = rplus::groundY(bx, bz);
+    for (int i = -3; i <= 3; i++) {
+        for (int j = -3; j <= 3; j++) {
+            const float px = *x + i * r / 3.0f, pz = *z + j * r / 3.0f;
+            if (rplus::biomeAt(px, pz) == '.' || rplus::steep(px, pz) || !rplus::openGround(px, pz, 300.0f)) {
+                continue;
+            }
+            const float py = rplus::groundY(px, pz);
+            if (py > by) {
+                bx = px, bz = pz, by = py;
+            }
+        }
+    }
+    *x = bx, *z = bz;
+}
+
+// The open-air chests: each puzzle anchor gets its home island's chests (the k-th anchor of an island its k-th
+// chest), standing on the anchor's high ground. The island's own puzzle (a switch, the lighthouse, enemies) is not
+// built, so the chest is a plain one (function type 0; the randomizer's trap bit 0x40 stays). Its item (angle z) and
+// save flag (params) are the disc's; its room (angle x, bits 0-5) is the one it now stands in.
+void placeChests(int roomNo) {
+    Pools& P = pools();
+    int used[50] = {};
+    for (int i = 0; i < pc_rplus_anchor_count(); i++) {
+        const char *id, *kind, *stage;
+        int cx, cy;
+        if (!pc_rplus_anchor(i, &id, &kind, &stage, &cx, &cy) || strcmp(kind, "puzzle") != 0) {
+            continue;
+        }
+        int home = 0;
+        for (const PuzzleHome& ph : kPuzzleHomes) {
+            home = strcmp(ph.id, id) == 0 ? ph.room : home;
+        }
+        if (home == 0) {
+            continue;
+        }
+        const Entry* chest = nullptr;
+        for (int k = 0, n = 0; k < (int)P.chests.size(); k++) {
+            const Entry& e = P.chests[k];
+            if (e.room != home || (e.layer >= 0 && e.layer != dComIfG_play_c::getLayerNo(e.room))) {
+                continue;
+            }
+            if (n++ == used[home]) {
+                chest = &e;
+                break;
+            }
+        }
+        used[home]++;
+        if (chest == nullptr) {
+            continue;
+        }
+        float x, z;
+        rplus::cellSpot(cx, cy, &x, &z);
+        highSpot(&x, &z, 1500.0f);
+        if (rplus::roomAt(x, z) != roomNo) {
+            continue;
+        }
+        Entry e = *chest;
+        e.ax = (s16)((e.ax & ~0x3F) | roomNo);
+        spawn(e, x, z, (s16)(mix((u32)i, pc_rplus_seed()) & 0xFFFF), roomNo, e.params & ~0x3Fu);
+        fprintf(stderr, "[rplus] room %d: chest %s (%s) from sea room %d\n", roomNo, id, e.name, home);
+    }
+}
+
 } // namespace
 
 void pc_rplus_life_room(int roomNo) {
@@ -509,5 +614,8 @@ void pc_rplus_life_room(int roomNo) {
     }
     if (enabled("COS_RPLUS_ENEMIES")) {
         placeEnemies(roomNo);
+    }
+    if (enabled("COS_RPLUS_CHESTS")) {
+        placeChests(roomNo);
     }
 }
