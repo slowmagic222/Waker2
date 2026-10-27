@@ -311,6 +311,9 @@ int pc_rplus_start_room(void);
 /* dStage_playerInit: the first time Link enters the sea, his spawn moves to the world's start cell, and the
    spawn's room (which the stage loads first) to the start cell's room. */
 void pc_rplus_start_point(u32* params, class cXyz* pos);
+/* dStage_setShipPos: in a generated sea room, the boat's spot moved to the nearest open water (from the start cell
+   in the start room, else from the room's own spot), facing away from the land. */
+void pc_rplus_ship_pos(int roomNo, class cXyz* pos, s16* angle);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);

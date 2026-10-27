@@ -1972,7 +1972,10 @@ bool dStage_setShipPos(int param_0, int i_roomNo) {
 #if TARGET_PC
                 // SHIP entries are big-endian in the room data: take the position in host order.
                 cXyz ship_pos = ship_data_p->m_pos;
-                ship_p->initStartPos(&ship_pos, ship_data_p->m_angle);
+                s16 ship_angle = ship_data_p->m_angle;
+                // Randomizer+: the island's boat spot may be on the generated land: the nearest open water instead.
+                pc_rplus_ship_pos(roomNo, &ship_pos, &ship_angle);
+                ship_p->initStartPos(&ship_pos, ship_angle);
 #else
                 ship_p->initStartPos(&ship_data_p->m_pos, ship_data_p->m_angle);
 #endif

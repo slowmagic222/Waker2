@@ -19,6 +19,7 @@
 #include "d/d_stage.h"
 #include "d/actor/d_a_sea.h"
 #include "f_op/f_op_actor_mng.h"
+#include "SSystem/SComponent/c_math.h"
 #include "SSystem/SComponent/c_bg_s.h"
 #include "JSystem/J3DGraphBase/J3DPacket.h"
 #include "JSystem/J3DGraphBase/J3DSys.h"
@@ -680,6 +681,65 @@ void pc_rplus_start_point(u32* params, cXyz* pos) {
     *params = (*params & ~0xF0BFu) | (u32)startRoom;
     fprintf(stderr, "[rplus] Link starts on the start cell %d,%d in room %d at %.0f %.0f %.0f\n", cx, cy, startRoom,
             pos->x, pos->y, pos->z);
+}
+
+void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
+        !pc_rplus_sea_room_generated(roomNo)) {
+        return;
+    }
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    // From the start cell in the start room (Link's first spawn there is moved to it), else from the SHIP entry.
+    int rx, ry;
+    pc_rplus_start_cell(&rx, &ry);
+    const int startRoom = (ry / pc_rplus_cells()) * pc_rplus_squares() + (rx / pc_rplus_cells()) + 1;
+    if (roomNo != startRoom) {
+        rx = (int)floorf((pos->x - x0) / cs);
+        ry = (int)floorf((pos->z - z0) / cs);
+    }
+    // The nearest open water: a sea cell with sea all around (off the beach's slope).
+    auto open = [](int cx, int cy) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (pc_rplus_cell_height(cx + dx, cy + dy) != 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    const int n = pc_rplus_squares() * pc_rplus_cells();
+    for (int r = 0; r < n; r++) {
+        int best = -1, bx = 0, by = 0;
+        for (int dy = -r; dy <= r; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) {
+                    continue;  // the ring at distance r only
+                }
+                const int cx = rx + dx, cy = ry + dy;
+                if (cx < 0 || cy < 0 || cx >= n || cy >= n || !open(cx, cy)) {
+                    continue;
+                }
+                const int d = dx * dx + dy * dy;
+                if (best < 0 || d < best) {
+                    best = d;
+                    bx = cx;
+                    by = cy;
+                }
+            }
+        }
+        if (best >= 0) {
+            const float sx = x0 + (bx + 0.5f) * cs, sz = z0 + (by + 0.5f) * cs;
+            const float lx = x0 + (rx + 0.5f) * cs, lz = z0 + (ry + 0.5f) * cs;
+            *angle = cM_atan2s(sx - lx, sz - lz);  // facing away from the land
+            fprintf(stderr, "[rplus] the boat in room %d moved from %.0f %.0f to open water at %.0f %.0f\n", roomNo,
+                    pos->x, pos->z, sx, sz);
+            pos->set(sx, 0.0f, sz);
+            return;
+        }
+    }
 }
 
 void pc_rplus_place_player(int roomNo) {
