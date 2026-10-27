@@ -83,11 +83,12 @@ const std::vector<Decor>& catalog() {
         tsubo("seed2", "Spiky seed (small)", 13, false);
         tsubo("kutani", "Kutani pot", 14, false);
         tsubo("kkiba", "Odd prop", 15, false);
-        // d_a_stone (koisi), d_a_stone2: the type in bits 24-26; no item, switch or saved item
+        // d_a_stone (koisi: types 0, 1), d_a_stone2 (M_attr: 2 Ebrock, 3 Ekao; 0 and 1 have no archive): the type in bits
+        // 24-26; no item, switch or saved item
         v.push_back({"rock_small", "Small rock", "koisi1", 0x007FFF3Fu, K_STONE, false});
         v.push_back({"rock", "Rock", "koisi1", 0x017FFF3Fu, K_STONE, false});
-        v.push_back({"boulder", "Boulder", "Ebrock", 0x007FFF3Fu, K_STONE2, false});
-        v.push_back({"stone_head", "Stone head", "Ebrock", 0x017FFF3Fu, K_STONE2, false});
+        v.push_back({"boulder", "Boulder", "Ebrock", 0x027FFF3Fu, K_STONE2, false});
+        v.push_back({"stone_head", "Stone head", "Ebrock", 0x037FFF3Fu, K_STONE2, false});
         // d_a_kb: its look (bits 0-3), roaming 100 units round where it stands (4-7), no big pig or path
         static const char* const kPigs[3] = {"Pig", "Pig (second look)", "Pig (third look)"};
         for (int i = 0; i < 3; i++) {
