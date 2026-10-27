@@ -758,27 +758,18 @@ void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
         rx = (int)floorf((pos->x - x0) / cs);
         ry = (int)floorf((pos->z - z0) / cs);
     }
-    // The nearest open water: a sea cell with sea all around (off the beach's slope).
-    auto open = [](int cx, int cy) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                if (pc_rplus_cell_height(cx + dx, cy + dy) != 0) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    };
+    // The nearest sea cell, then out from the land toward it to the first wet quad (the shore walls stand on the
+    // dry quads' edges, d_a_ship's wall circles are 250 across) and a boat's length on: just off the shore.
     const int n = pc_rplus_squares() * pc_rplus_cells();
-    for (int r = 0; r < n; r++) {
-        int best = -1, bx = 0, by = 0;
+    int best = -1, bx = 0, by = 0;
+    for (int r = 1; r < n && best < 0; r++) {
         for (int dy = -r; dy <= r; dy++) {
             for (int dx = -r; dx <= r; dx++) {
                 if (abs(dx) != r && abs(dy) != r) {
                     continue;  // the ring at distance r only
                 }
                 const int cx = rx + dx, cy = ry + dy;
-                if (cx < 0 || cy < 0 || cx >= n || cy >= n || !open(cx, cy)) {
+                if (cx < 0 || cy < 0 || cx >= n || cy >= n || pc_rplus_cell_height(cx, cy) != 0) {
                     continue;
                 }
                 const int d = dx * dx + dy * dy;
@@ -789,16 +780,38 @@ void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
                 }
             }
         }
-        if (best >= 0) {
-            const float sx = x0 + (bx + 0.5f) * cs, sz = z0 + (by + 0.5f) * cs;
-            const float lx = x0 + (rx + 0.5f) * cs, lz = z0 + (ry + 0.5f) * cs;
-            *angle = cM_atan2s(sx - lx, sz - lz);  // facing away from the land
-            fprintf(stderr, "[rplus] the boat in room %d moved from %.0f %.0f to open water at %.0f %.0f\n", roomNo,
-                    pos->x, pos->z, sx, sz);
-            pos->set(sx, 0.0f, sz);
-            return;
+    }
+    if (best < 0) {
+        return;
+    }
+    const float lx = x0 + (rx + 0.5f) * cs, lz = z0 + (ry + 0.5f) * cs;
+    float dx = (bx - rx), dz = (by - ry);
+    const float len = sqrtf(dx * dx + dz * dz);
+    dx /= len;
+    dz /= len;
+    const float q = cs / SUB;  // a quad's side
+    auto wetQuad = [&](float x, float z) {
+        const float qx = floorf((x - x0) / q), qz = floorf((z - z0) / q);
+        for (int k = 0; k < 4; k++) {
+            if (heightAt((qx + (k & 1)) / SUB, (qz + (k >> 1)) / SUB) > 0.0f) {
+                return false;
+            }
+        }
+        return true;
+    };
+    float sx = x0 + (bx + 0.5f) * cs, sz = z0 + (by + 0.5f) * cs;  // the sea cell's centre if nothing nearer
+    for (float t = 0.0f; t < len * cs + cs; t += 100.0f) {
+        const float x = lx + dx * t, z = lz + dz * t;
+        if (wetQuad(x, z) && wetQuad(x + dx * 600.0f, z + dz * 600.0f)) {
+            sx = x + dx * 600.0f;
+            sz = z + dz * 600.0f;
+            break;
         }
     }
+    *angle = cM_atan2s(dx, dz);  // facing away from the land
+    fprintf(stderr, "[rplus] the boat in room %d moved from %.0f %.0f to the shore at %.0f %.0f\n", roomNo, pos->x,
+            pos->z, sx, sz);
+    pos->set(sx, 0.0f, sz);
 }
 
 void pc_rplus_place_player(int roomNo) {
