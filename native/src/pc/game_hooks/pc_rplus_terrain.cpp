@@ -389,8 +389,12 @@ class PcRplusPacket : public J3DPacket {
 public:
     Vtx* mVtx = nullptr;   // triangle list, 3 per triangle
     int mTriCount = 0;
-    int mRowTris[257] = {};  // triangles per sample row, to split GXBegin calls (and one row for the house)
-    int mRows = 0;
+    // Pieces drawn (and culled) on their own: a cell's quads each, and the house.
+    struct Chunk {
+        int first, tris;
+        float cx, cy, cz, rad;  // bounding sphere
+    };
+    std::vector<Chunk> mChunks;
     void draw() override;
 };
 
@@ -488,12 +492,45 @@ void PcRplusPacket::draw() {
     GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
     GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
 
-    const Vtx* v = mVtx;
-    for (int row = 0; row < mRows; row++) {
-        int n = mRowTris[row] * 3;
-        if (n == 0) {
+    // Every vertex goes through Aurora's per-frame buffers (16 MiB, patch 0023; past them it aborts): chunks
+    // behind the camera or outside a wide cone round its view are left out, and the frame's land stops at a
+    // budget (the rooms' own land is drawn before the far rooms').
+    MtxP vm = j3dSys.getViewMtx();
+    const float camX = -(vm[0][0] * vm[0][3] + vm[1][0] * vm[1][3] + vm[2][0] * vm[2][3]);
+    const float camY = -(vm[0][1] * vm[0][3] + vm[1][1] * vm[1][3] + vm[2][1] * vm[2][3]);
+    const float camZ = -(vm[0][2] * vm[0][3] + vm[1][2] * vm[1][3] + vm[2][2] * vm[2][3]);
+    const float fx = -vm[2][0], fy = -vm[2][1], fz = -vm[2][2];  // the view's forward, in the world
+    static u32 sFrame = ~0u;
+    static int sDrawn = 0;
+    static bool sWarned = false;
+    if (sFrame != g_Counter.mCounter0) {
+        sFrame = g_Counter.mCounter0;
+        sDrawn = 0;
+    }
+    constexpr int FRAME_TRIS = 150000;
+    for (const Chunk& c : mChunks) {
+        if (c.tris == 0) {
             continue;
         }
+        const float vx = c.cx - camX, vy = c.cy - camY, vz = c.cz - camZ;
+        const float d = vx * fx + vy * fy + vz * fz;
+        if (d < -c.rad) {
+            continue;
+        }
+        const float ax = vx - d * fx, ay = vy - d * fy, az = vz - d * fz;
+        if (sqrtf(ax * ax + ay * ay + az * az) > std::max(d, 0.0f) * 1.5f + c.rad) {
+            continue;
+        }
+        if (sDrawn + c.tris > FRAME_TRIS) {
+            if (!sWarned) {
+                sWarned = true;
+                fprintf(stderr, "[rplus] land: over %d triangles in a frame, the rest left out\n", FRAME_TRIS);
+            }
+            continue;
+        }
+        sDrawn += c.tris;
+        const Vtx* v = mVtx + c.first * 3;
+        const int n = c.tris * 3;
         GXBegin(GX_TRIANGLES, GX_VTXFMT0, (u16)n);
         for (int i = 0; i < n; i++, v++) {
             GXPosition3f32(v->x, v->y, v->z);
@@ -860,7 +897,24 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     }
     std::vector<Vtx> dv;
     dv.reserve((size_t)n * n + house.size() * 6);
-    pk.mRows = n < 256 ? n : 256;
+    // A chunk of the triangles from `first` (in triangles) to the end so far, with its bounding sphere.
+    auto closeChunk = [&](int first) {
+        const int last = (int)(dv.size() / 3);
+        if (last <= first) {
+            return;
+        }
+        float mn[3] = {1e30f, 1e30f, 1e30f}, mx[3] = {-1e30f, -1e30f, -1e30f};
+        for (size_t k = (size_t)first * 3; k < dv.size(); k++) {
+            const float p[3] = {dv[k].x, dv[k].y, dv[k].z};
+            for (int a = 0; a < 3; a++) {
+                mn[a] = std::min(mn[a], p[a]);
+                mx[a] = std::max(mx[a], p[a]);
+            }
+        }
+        const float ex = mx[0] - mn[0], ey = mx[1] - mn[1], ez = mx[2] - mn[2];
+        pk.mChunks.push_back({first, last - first, (mn[0] + mx[0]) * 0.5f, (mn[1] + mx[1]) * 0.5f,
+                              (mn[2] + mx[2]) * 0.5f, 0.5f * sqrtf(ex * ex + ey * ey + ez * ez)});
+    };
     const float lx = 0.42f, ly = 0.80f, lz = 0.42f;  // light direction (normalised enough)
     auto emitTri = [&](const float (&px)[3], const float (&py)[3], const float (&pz)[3]) {
         // Normal (v1 - v0) x (v2 - v0), up for this winding.
@@ -907,6 +961,20 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         const float dx = c.qx - c.px, dz = c.qz - c.pz, l = sqrtf(dx * dx + dz * dz);
         if (l <= 0.0f) {
             return 0;
+        }
+        if (far) {
+            // Far away: the plain face.
+            const float px[2][3] = {{c.px, c.qx, c.qx}, {c.px, c.qx, c.px}};
+            const float py[2][3] = {{c.y0 - 40.0f, c.y0 - 40.0f, c.y1}, {c.y0 - 40.0f, c.y1, c.y1}};
+            const float pz[2][3] = {{c.pz, c.qz, c.qz}, {c.pz, c.qz, c.pz}};
+            const Rgb rock = biomeColour('r');
+            for (int t2 = 0; t2 < 2; t2++) {
+                for (int k = 0; k < 3; k++) {
+                    dv.push_back({px[t2][k], py[t2][k], pz[t2][k], (u8)(rock.r * 0.8f), (u8)(rock.g * 0.8f),
+                                  (u8)(rock.b * 0.8f), 0xFF});
+                }
+            }
+            return 2;
         }
         const float nx = dz / l, nz = -dx / l;  // out, toward the lower shelf
         const float yb = c.y0 - 40.0f, h = c.y1 - yb;
@@ -964,8 +1032,11 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         }
         return tris;
     };
-    for (int j = 0; j < n && j < 256; j++) {
-        for (int i = 0; i < n; i++) {
+    for (int cj = 0; cj < n; cj += SUB) {
+      for (int ci = 0; ci < n; ci += SUB) {
+        const int first = (int)(dv.size() / 3);
+        for (int j = cj; j < std::min(n, cj + SUB); j++) {
+          for (int i = ci; i < std::min(n, ci + SUB); i++) {
             if (!keep(i, j)) {
                 continue;
             }
@@ -981,28 +1052,33 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                             py[k] = tierY(pc.tier, q[k]->e);
                         }
                         emitTri(px, py, pz);
-                        pk.mRowTris[j]++;
                     }
                 }
                 for (const Cliff& c : cliffs) {
-                    pk.mRowTris[j] += emitCliff(c);
+                    emitCliff(c);
                 }
             }
+          }
         }
+        closeChunk(first);
+      }
     }
     pk.mTriCount = (int)(dv.size() / 3);
     // The house, after the land's rows.
-    for (const HouseQuad& h : house) {
+    int houseFirst = pk.mTriCount;
+    for (size_t hq = 0; hq < house.size(); hq++) {
+        const HouseQuad& h = house[hq];
         const int order[6] = {0, 1, 2, 0, 2, 3};
         for (int k = 0; k < 6; k++) {
             const float* p = h.p[order[k]];
             dv.push_back({p[0], p[1], p[2], h.r, h.g, h.b, 0xFF});
         }
+        if ((hq + 1) % 64 == 0 || hq + 1 == house.size()) {
+            closeChunk(houseFirst);
+            houseFirst = (int)(dv.size() / 3);
+        }
     }
-    if (!house.empty()) {
-        pk.mRowTris[pk.mRows++] = (int)house.size() * 2;
-        pk.mTriCount += (int)house.size() * 2;
-    }
+    pk.mTriCount = (int)(dv.size() / 3);
     pk.mVtx = far ? (Vtx*)std::malloc(sizeof(Vtx) * dv.size() + 1) : new Vtx[dv.size() + 1];
     if (pk.mVtx == nullptr) {
         pk.mTriCount = 0;
