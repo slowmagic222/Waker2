@@ -333,18 +333,77 @@ struct PcRplusTerrain {
     u8* dzb = nullptr;
 };
 
+namespace {
+
+// The ground's detail: a 64 x 64 I8 texture of soft noise and short streaks (blades, grit), light enough to only
+// shade the vertex colours, tiled over the world from the positions (GX_TG_POS) every TEX_SPAN units.
+constexpr int TEX_N = 64;
+constexpr float TEX_SPAN = 420.0f;
+alignas(32) u8 sDetailTex[TEX_N * TEX_N];
+
+const u8* detailTexture() {
+    static bool made = false;
+    if (made) {
+        return sDetailTex;
+    }
+    made = true;
+    for (int y = 0; y < TEX_N; y++) {
+        for (int x = 0; x < TEX_N; x++) {
+            // Tileable: the noise is sampled on a lattice that wraps at TEX_N.
+            auto wrapNoise = [](float fx, float fy, int cells, int salt) {
+                const float sx = fx * cells / TEX_N, sy = fy * cells / TEX_N;
+                const int ix = (int)floorf(sx), iy = (int)floorf(sy);
+                float tx = sx - ix, ty = sy - iy;
+                tx = tx * tx * (3 - 2 * tx);
+                ty = ty * ty * (3 - 2 * ty);
+                auto v = [&](int i, int j) {
+                    i = ((i % cells) + cells) % cells;
+                    j = ((j % cells) + cells) % cells;
+                    u32 h = (u32)i * 374761393u + (u32)j * 668265263u + (u32)salt * 2246822519u;
+                    h = (h ^ (h >> 13)) * 1274126177u;
+                    return ((h ^ (h >> 16)) & 0xFFFF) / 65535.0f;
+                };
+                return (v(ix, iy) * (1 - tx) + v(ix + 1, iy) * tx) * (1 - ty) +
+                       (v(ix, iy + 1) * (1 - tx) + v(ix + 1, iy + 1) * tx) * ty;
+            };
+            const float n = wrapNoise((float)x, (float)y, 4, 1) * 0.45f + wrapNoise((float)x, (float)y, 16, 2) * 0.35f +
+                            wrapNoise((float)x * 1.0f, (float)y, 64, 3) * 0.2f;
+            // Streaks: brighter dashes along one way, as blades or grit catch the light.
+            const float streak = wrapNoise((float)x, (float)y * 0.25f, 32, 4);
+            float v = 205.0f + n * 40.0f + (streak > 0.72f ? 12.0f : 0.0f);
+            v = v > 255.0f ? 255.0f : v;
+            // I8 is in 8 x 4 tiles.
+            const int tile = (y / 4) * (TEX_N / 8) + (x / 8);
+            sDetailTex[tile * 32 + (y % 4) * 8 + (x % 8)] = (u8)v;
+        }
+    }
+    return sDetailTex;
+}
+
+} // namespace
+
 void PcRplusPacket::draw() {
     if (mTriCount == 0) {
         return;
     }
     j3dSys.reinitGX();
     GXSetNumIndStages(0);
-    GXSetNumTexGens(0);
     GXSetNumChans(1);
     GXSetChanCtrl(GX_COLOR0A0, GX_FALSE, GX_SRC_VTX, GX_SRC_VTX, GX_LIGHT_NULL, GX_DF_NONE, GX_AF_NONE);
+    // The detail texture, its coordinates from the world position: s along x, t along z (and a little y, so
+    // slopes and walls aren't smeared flat).
+    GXTexObj tex;
+    GXInitTexObj(&tex, (void*)detailTexture(), TEX_N, TEX_N, GX_TF_I8, GX_REPEAT, GX_REPEAT, GX_FALSE);
+    GXInitTexObjLOD(&tex, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+    GXLoadTexObj(&tex, GX_TEXMAP0);
+    const float k = 1.0f / TEX_SPAN;
+    Mtx texMtx = {{k, 0.0f, 0.0f, 0.0f}, {0.0f, k * 0.6f, k, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    GXLoadTexMtxImm(texMtx, GX_TEXMTX0, GX_MTX2x4);
+    GXSetNumTexGens(1);
+    GXSetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_POS, GX_TEXMTX0);
     GXSetNumTevStages(1);
-    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
-    GXSetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+    GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
+    GXSetTevOp(GX_TEVSTAGE0, GX_MODULATE);
     GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
     GXSetZCompLoc(GX_TRUE);
     GXSetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
