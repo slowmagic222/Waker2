@@ -9,6 +9,9 @@
 #include "d/actor/d_a_player.h"
 #include "d/actor/d_a_sea.h"
 #include "d/actor/d_a_obj_eff.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 #include "res/Object/Always.h"
 #include "res/Object/Kmtub_00.h"
 #include "res/Object/Ktaru_01.h"
@@ -2472,6 +2475,17 @@ bool Act_c::damage_bg_proc_directly() {
     bool uVar11 = mAcch.ChkGroundHit();
     bool uVar8 = mAcch.ChkGroundLanding();
     bool iVar10 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, thrown things land and stay whole.
+    if (pc_rplus_home_unbreakable()) {
+        if (m678 == 5 && uVar11) {
+            cam_lockoff();
+            mode_wait_init();
+        }
+        m6FC = current.pos.y;
+        return false;
+    }
+#endif
 
     if (m678 == 2 || m678 == 3) {
         bool uVar7 = mAcch.ChkRoofHit();

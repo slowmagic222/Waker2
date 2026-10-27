@@ -126,6 +126,42 @@ float cellRugged(int cx, int cy) {
 // The natural height at grid position (gx, gy) in cells from the world's corner. The cells' heights blended smoothly (on a
 // grid bent by noise, so coasts wander instead of following the cells), then on land: rolling hills everywhere,
 // ridges where the biome is rugged, and small bumps. The ground made from it rises in shelves (tierY).
+float smooth01(float a, float b, float x) {
+    const float t = fminf(1.0f, fmaxf(0.0f, (x - a) / (b - a)));
+    return t * t * (3.0f - 2.0f * t);
+}
+
+// Ridged multifractal (Musgrave): the creases of noise, each octave weighted by the ridges of the one before, so
+// ridgelines stay sharp and the slopes between them long and smooth. About 0 to 1.
+float ridged(float x, float y, int salt) {
+    float sum = 0.0f, amp = 1.0f, w = 1.0f, norm = 0.0f;
+    for (int o = 0; o < 5; o++) {
+        float r = 1.0f - fabsf(vnoise(x, y, salt + o * 13) * 2.0f - 1.0f);
+        r *= r * w;
+        sum += r * amp;
+        norm += amp;
+        w = fminf(1.0f, r * 2.0f);
+        x *= 2.07f;
+        y *= 2.07f;
+        amp *= 0.5f;
+    }
+    return sum / norm;
+}
+
+// Mountains, the way BotW-like ranges are made procedurally: a slow mask says where a range stands (some lands
+// get one, most don't); in it a broad massif with ridged multifractal on top, domain-warped (sampled through an
+// offset of more noise) so the ridges flow instead of lining up with the grid. Rising from inland only.
+float mountainAt(float gx, float gy, float inland) {
+    const float m = smooth01(0.515f, 0.6f, fbm(gx * 0.09f, gy * 0.09f, 211, 3));
+    if (m <= 0.0f || inland <= 0.0f) {
+        return 0.0f;
+    }
+    const float wx = gx + (fbm(gx * 0.25f, gy * 0.25f, 223, 2) - 0.5f) * 3.0f;
+    const float wy = gy + (fbm(gx * 0.25f, gy * 0.25f, 229, 2) - 0.5f) * 3.0f;
+    const float r = ridged(wx * 0.32f, wy * 0.32f, 233);
+    return m * inland * (1600.0f * m + 5200.0f * r);
+}
+
 float naturalY(float gx, float gy) {
     // (fbm's spread is narrow: about 0.5 +- 0.1, so the bends are some 0.4 cells broad and 0.15 fine.)
     const float wx = gx + (fbm(gx * 0.35f, gy * 0.35f, 11, 3) - 0.5f) * 4.0f +
@@ -153,6 +189,8 @@ float naturalY(float gx, float gy) {
     h += r * r * r * 1500.0f * rug * inland;
     // Bumps.
     h += (fbm(gx * 3.0f, gy * 3.0f, 73, 2) - 0.5f) * 140.0f * inland;
+    // Some big mountains, from well inland.
+    h += mountainAt(gx, gy, smooth01(250.0f, 1400.0f, land));
     return LAND_BASE + fmaxf(h, 5.0f * inland);
 }
 
@@ -172,7 +210,14 @@ constexpr float TIER1 = LAND_BASE + 420.0f;
 constexpr float TIER_H = 760.0f;
 constexpr float SHELF = 0.22f;
 
+// Off for now (Dillon, 2026-10-27: hills and big sloped mountains instead of cliffs): every height is tier 0, so
+// no cliffs and no stairs; the steep faces are climbed with the "climb any wall" QoL.
+constexpr bool TIERS = false;
+
 int tierOf(float e) {
+    if (!TIERS) {
+        return 0;
+    }
     return e < TIER1 ? 0 : 1 + (int)floorf((e - TIER1) / TIER_H);
 }
 // Where tier k starts in e (k >= 1).
@@ -612,8 +657,8 @@ namespace {
 
 // Link's home's house, drawn: walls round the door's hut (its collision is in buildTerrain) with a doorway the
 // door fills and a gable roof. Each quad is 4 corners (p0 p1 p2 p3 going round) and its colour.
-constexpr float HUT_HALF = 260.0f, HUT_DEPTH = 420.0f, DOORWAY_HALF = 85.0f;
-constexpr float HUT_WALL = 300.0f, HUT_DOOR_TOP = 235.0f, HUT_RIDGE = 470.0f, HUT_EAVE = 45.0f;
+constexpr float HUT_HALF = 260.0f, HUT_DEPTH = 420.0f, DOORWAY_HALF = 75.0f;  // KNOB01's door, a little over (85 x 235 showed gaps round it)
+constexpr float HUT_WALL = 300.0f, HUT_DOOR_TOP = 205.0f, HUT_RIDGE = 470.0f, HUT_EAVE = 45.0f;
 
 struct HouseQuad {
     float p[4][3];
@@ -1015,6 +1060,13 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                 } else if (mark == 2) {
                     col = {196, 188, 172};  // the plaza's paving
                 }
+            }
+            if (py[k] > 3200.0f && ny > 0.55f) {
+                // Snow on the high mountains' gentler faces.
+                const float sn = smooth01(3200.0f, 4200.0f, py[k] + (vnoise(px[k] * 0.001f, pz[k] * 0.001f, 241) - 0.5f) * 600.0f);
+                col.r = (u8)(col.r + (240 - col.r) * sn);
+                col.g = (u8)(col.g + (244 - col.g) * sn);
+                col.b = (u8)(col.b + (250 - col.b) * sn);
             }
             float tk = tone * (py[k] < 0.0f ? 0.85f : 1.0f);
             dv.push_back({px[k], py[k], pz[k], (u8)(col.r * tk), (u8)(col.g * tk), (u8)(col.b * tk), 0xFF});
@@ -2800,6 +2852,35 @@ int pc_rplus_fmap_centre(int grid, s16* x, s16* y) {
 
 int pc_rplus_home_unlocked(void) {
     return pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "Abesso") == 0;
+}
+
+// Link's home (the cabana) emptied for him to make his own: its dishes, pots and tubs become things to carry
+// about instead, picked by where each stood (stools, buckets, barrels, pots, small crates), and none of those
+// break there (pc_rplus_home_unbreakable).
+int pc_rplus_home_actor(char* name, u32* params) {
+    if (!pc_rplus_home_unlocked()) {
+        return 0;
+    }
+    static const char* const kGone[] = {"MPot", "MKoppu", "Ptubo", "Kmtub"};
+    bool gone = false;
+    for (const char* g : kGone) {
+        gone = gone || strncmp(name, g, 8) == 0;
+    }
+    if (!gone) {
+        return 0;
+    }
+    static const char* const kCarry[] = {"Ostool", "Okioke", "Ktaru", "kotubo", "ootubo1", "Hbox2S"};
+    static int n = 0;
+    const char* pick = kCarry[(hash2(n++, (int)pc_rplus_seed()) >> 4) % 6];
+    memset(name, 0, 8);
+    strncpy(name, pick, 8);
+    *params = 0x007F3F3Fu;  // no item, no switch (shown at once), no saved item
+    fprintf(stderr, "[rplus] home: a %s to carry about\n", pick);
+    return 1;
+}
+
+int pc_rplus_home_unbreakable(void) {
+    return pc_rplus_home_unlocked();
 }
 
 namespace {

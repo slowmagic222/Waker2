@@ -81,7 +81,10 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   as a DZB made in memory (passed through `cBgS::ConvDzb` like a room's `room.dzb`) and a draw packet with vertex
   colours by biome and light baked in two tones. The ground (`naturalY`): the cells' heights blended smoothly on a
   grid bent by noise (coasts wander off the cells), rolling hills, ridges on rock, volcanic and snow land, small
-  bumps; then levelled where the world builds (`shapeGround`). That height (`e`) makes the ground in tiers
+  bumps, and on some lands a mountain range (`mountainAt`: a slow mask, a broad massif and domain-warped ridged
+  multifractal noise on top, up to some 7000 units, snow on the high gentle faces); then levelled where the world
+  builds (`shapeGround`). Tiers are off for now (`TIERS`: the ground is `e` itself, no cliffs or stairs; steep
+  faces are climbed with the QoL). With them on, that height (`e`) makes the ground in tiers
   (`tierY`): the beach rises smoothly into tier 1, and above it each tier is a nearly flat shelf with an upright
   rock cliff to the next (the mesh's triangles are cut along the crossings, `splitTri`, drawn and solid). Cliffs
   are drawn as rough rock (bulges, a set-back lip, scree at the foot, coloured in layers) over flat walls, which the
@@ -111,6 +114,8 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   props, people and doors on both sides.
 - **Enemy camps** (`placeCamps`): up to two a room on open flat land away from the start and towns: a campfire
   (`Fire`, no switch), three to five Bokoblins round it facing in, sometimes a Moblin, two pots.
+- **Link's home** (the cabana, `Abesso`, unlocked): its dishes, pots and tubs become things to carry instead
+  (stools, buckets, barrels, pots, small crates: `pc_rplus_home_actor`), which land whole when thrown there.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models
