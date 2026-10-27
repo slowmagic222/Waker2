@@ -1789,6 +1789,13 @@ void dSv_info_c::onSwitch(int i_no, int i_roomNo) {
         JUT_ASSERT(VERSION_SELECT(3360, 3397, 3424, 3424), 0 <= i_roomNo && i_roomNo < 64);
 
         int zoneId = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+        // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+        // about the new stay room before it is in): nothing is set there.
+        if (zoneId < 0 || zoneId >= ZONE_MAX) {
+            return;
+        }
+#endif
         JUT_ASSERT(VERSION_SELECT(3362, 3399, 3426, 3426), 0 <= zoneId && zoneId < ZONE_MAX);
 
         mZone[zoneId].getZoneBit().onSwitch(i_no - (MEMORY_SWITCH + DAN_SWITCH));
@@ -1812,6 +1819,13 @@ void dSv_info_c::offSwitch(int i_no, int i_roomNo) {
         JUT_ASSERT(VERSION_SELECT(3397, 3434, 3461, 3461), 0 <= i_roomNo && i_roomNo < 64);
 
         int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+        // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+        // about the new stay room before it is in): nothing is set there.
+        if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+            return;
+        }
+#endif
         JUT_ASSERT(VERSION_SELECT(3399, 3436, 3463, 3463), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
         mZone[zoneNo].getZoneBit().offSwitch(i_no - (MEMORY_SWITCH + DAN_SWITCH));
@@ -1832,6 +1846,13 @@ BOOL dSv_info_c::isSwitch(int i_no, int i_roomNo) {
         JUT_ASSERT(VERSION_SELECT(3445, 3482, 3509, 3509), 0 <= i_roomNo && i_roomNo < 64);
 
         int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+        // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+        // about the new stay room before it is in): nothing is set there.
+        if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+            return FALSE;
+        }
+#endif
         JUT_ASSERT(VERSION_SELECT(3447, 3484, 3511, 3511), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
         return mZone[zoneNo].getZoneBit().isSwitch(i_no - (MEMORY_SWITCH + DAN_SWITCH));
@@ -1855,6 +1876,13 @@ BOOL dSv_info_c::revSwitch(int i_no, int i_roomNo) {
         JUT_ASSERT(VERSION_SELECT(3480, 3517, 3544, 3544), 0 <= i_roomNo && i_roomNo < 64);
 
         int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+        // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+        // about the new stay room before it is in): nothing is set there.
+        if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+            return FALSE;
+        }
+#endif
         JUT_ASSERT(VERSION_SELECT(3482, 3519, 3546, 3546), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
         return mZone[zoneNo].getZoneBit().revSwitch(i_no - (MEMORY_SWITCH + DAN_SWITCH));
@@ -1876,6 +1904,13 @@ void dSv_info_c::onItem(int i_no, int i_roomNo) {
         JUT_ASSERT(VERSION_SELECT(3511, 3548, 3575, 3575), 0 <= i_roomNo && i_roomNo < 64);
 
         int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+        // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+        // about the new stay room before it is in): nothing is set there.
+        if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+            return;
+        }
+#endif
         JUT_ASSERT(VERSION_SELECT(3513, 3550, 3577, 3577), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
         mZone[zoneNo].getZoneBit().onItem(i_no - MEMORY_ITEM);
@@ -1897,6 +1932,13 @@ BOOL dSv_info_c::isItem(int i_no, int i_roomNo) {
         JUT_ASSERT(VERSION_SELECT(3574, 3611, 3638, 3638), 0 <= i_roomNo && i_roomNo < 64);
 
         int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+        // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+        // about the new stay room before it is in): nothing is set there.
+        if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+            return FALSE;
+        }
+#endif
         JUT_ASSERT(VERSION_SELECT(3576, 3613, 3640, 3640), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
         return mZone[zoneNo].getZoneBit().isItem(i_no - MEMORY_ITEM);
@@ -1912,6 +1954,13 @@ void dSv_info_c::onActor(int i_id, int i_roomNo) {
     JUT_ASSERT(VERSION_SELECT(3629, 3666, 3693, 3693), (0 <= i_id && i_id < dSv_zoneActor_c::ACTOR_MAX) && (0 <= i_roomNo && i_roomNo < 64));
 
     int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+    // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+    // about the new stay room before it is in): nothing is set there.
+    if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+        return;
+    }
+#endif
     JUT_ASSERT(VERSION_SELECT(3631, 3668, 3695, 3695), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
     mZone[zoneNo].getActor().on(i_id);
@@ -1930,6 +1979,13 @@ BOOL dSv_info_c::isActor(int i_id, int i_roomNo) {
     JUT_ASSERT(VERSION_SELECT(3682, 3719, 3746, 3746), 0 <= i_roomNo && i_roomNo < 64);
 
     int zoneNo = dComIfGp_roomControl_getZoneNo(i_roomNo);
+#if TARGET_PC
+    // A room still loading has no zone yet (Randomizer+ rooms load as Link sails in, and actors may ask
+    // about the new stay room before it is in): nothing is set there.
+    if (zoneNo < 0 || zoneNo >= ZONE_MAX) {
+        return FALSE;
+    }
+#endif
     JUT_ASSERT(VERSION_SELECT(3684, 3721, 3748, 3748), 0 <= zoneNo && zoneNo < ZONE_MAX);
 
     return mZone[zoneNo].getActor().is(i_id);

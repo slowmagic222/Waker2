@@ -483,7 +483,7 @@ void houseQuads(const cXyz& door, s16 ang, int style, int variant, std::vector<H
         h.b = b;
         out.push_back(h);
     };
-    const float W = HUT_HALF, D = -HUT_DEPTH, B = -200.0f, T = HUT_WALL;
+    const float W = HUT_HALF, D = -HUT_DEPTH, B = -700.0f, T = HUT_WALL;  // walls reach well into the ground
     const u8 wr = col[0][0], wg = col[0][1], wb = col[0][2];  // walls
     const u8 sr = col[1][0], sg = col[1][1], sb = col[1][2];  // walls in shade
     const u8 tr = col[2][0], tg = col[2][1], tb = col[2][2];  // trim
@@ -1678,7 +1678,9 @@ const Layout& layout() {
         }
         const int t = (int)L.towns.size();
         L.towns.push_back({cx, cz, ty, R, start, a0, slots});
-        L.pads.push_back({cx, cz, ty, R + 500.0f, R + 1800.0f});
+        // Level past the houses' backs by a whole mesh step, so the mesh is flat under every house.
+        const float flat = R + HUT_DEPTH + 100.0f + L.cs / SUB;
+        L.pads.push_back({cx, cz, ty, flat, flat + 1800.0f});
         // The ring's slots: the doors spread evenly, the homes without a way in between.
         int next = 0;
         for (int k = 0; k < slots; k++) {
@@ -1715,7 +1717,10 @@ const Layout& layout() {
         landSpot(L, &c.x, &c.z);
         c.y = natAt(L, c.x, c.z);
         c.placed = true;
-        L.pads.push_back({c.x, c.z, c.y, 650.0f, 1500.0f});
+        // Wider than a mesh step (cs / SUB, ~1400 units), or the mesh's triangles span the levelled spot and
+        // the house stands above the ground on a slope or a ledge.
+        const float flat = std::max(650.0f, 1.6f * L.cs / SUB);
+        L.pads.push_back({c.x, c.z, c.y, flat, flat + std::max(850.0f, 1.5f * L.cs / SUB)});
     }
 
     // The doors, with their exit ids.
@@ -1846,6 +1851,19 @@ float shapeGround(float gx, float gy, float y) {
     }
     const Layout& L = layout();
     const float x = L.x0 + gx * L.cs, z = L.z0 + gy * L.cs;
+    // Inside a pad's level middle the ground is that pad's height, whatever other pads blend in nearby.
+    const Pad* core = nullptr;
+    float coreD2 = 0.0f;
+    for (const Pad& p : L.pads) {
+        const float dx = x - p.x, dz = z - p.z, d2 = dx * dx + dz * dz;
+        if (d2 < p.r0 * p.r0 && (core == nullptr || d2 < coreD2)) {
+            core = &p;
+            coreD2 = d2;
+        }
+    }
+    if (core != nullptr) {
+        return core->y;
+    }
     for (const Pad& p : L.pads) {
         const float dx = x - p.x, dz = z - p.z, d2 = dx * dx + dz * dz;
         if (d2 >= p.r1 * p.r1) {
