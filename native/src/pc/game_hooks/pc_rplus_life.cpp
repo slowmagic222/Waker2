@@ -147,10 +147,10 @@ struct EnemyKind {
 const EnemyKind kEnemies[] = {
     {"Bk", "gfr", 1, 2, 10, 0xFFFF0000u},      // Bokoblins (d_a_bk: bits 16-23 path, 24-31 switch)
     {"mo2", "rf", 1, 1, 4, 0xFFFF0000u},       // Moblins (d_a_mo2: 16-23 path, 24-31 spawn switch)
-    {"c_green", "gfd", 2, 4, 10, 0},           // ChuChus
-    {"c_red", "rv", 1, 3, 6, 0},
-    {"c_blue", "s", 1, 2, 3, 0},
-    {"c_kiiro", "db", 1, 3, 4, 0},
+    {"c_green", "gfd", 2, 4, 10, 0xFF000000u}, // ChuChus (d_a_cc: 24-31 spawn switch)
+    {"c_red", "rv", 1, 3, 6, 0xFF000000u},
+    {"c_blue", "s", 1, 2, 3, 0xFF000000u},
+    {"c_kiiro", "db", 1, 3, 4, 0xFF000000u},
     {"keeth", "grfs", 2, 4, 6, 0x00FF0000u},   // Keese (d_a_ki: 16-23 path)
     {"Fkeeth", "v", 2, 4, 6, 0x00FF0000u},
     {"bbaba", "f", 1, 2, 6, 0},                // Boko Babas
