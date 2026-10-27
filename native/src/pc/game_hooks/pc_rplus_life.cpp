@@ -603,6 +603,54 @@ void placeChests(int roomNo) {
     }
 }
 
+// Weather by biome: a weather tag (ky_tag0, d_a_kytag00) over each part of the room where one biome holds most of
+// the land: snow and a grey sky on snowfields, haze and a dark sky over volcanoes, a light mist in forests. Each tag
+// fades in over 3000 units at its edge. The sea's own weather (rain and storms rolled each day) runs as before.
+void placeWeather(int roomNo) {
+    struct Look {
+        char biome;
+        u8 psel, mode;  // the sky's palette (0xFF: as it is), the effect (2 snow, 3 haze, 4 mist)
+    };
+    static const Look kLooks[] = {{'s', 1, 2}, {'v', 2, 3}, {'f', 0xFF, 4}};
+    constexpr float BLOCK = 12500.0f;
+    float rx0, rz0;
+    rplus::roomCorner(roomNo, &rx0, &rz0);
+    int made = 0;
+    for (int bj = 0; bj < 8; bj++) {
+        for (int bi = 0; bi < 8; bi++) {
+            int count[3] = {}, land = 0;
+            for (int j = 0; j < 5; j++) {
+                for (int i = 0; i < 5; i++) {
+                    const char b = rplus::biomeAt(rx0 + (bi + (i + 0.5f) / 5.0f) * BLOCK,
+                                                  rz0 + (bj + (j + 0.5f) / 5.0f) * BLOCK);
+                    land += b != '.';
+                    for (int k = 0; k < 3; k++) {
+                        count[k] += b == kLooks[k].biome;
+                    }
+                }
+            }
+            int best = 0;
+            for (int k = 1; k < 3; k++) {
+                best = count[k] > count[best] ? k : best;
+            }
+            if (land < 6 || count[best] * 2 < land) {
+                continue;
+            }
+            const Look& lk = kLooks[best];
+            cXyz pos(rx0 + (bi + 0.5f) * BLOCK, -1000.0f, rz0 + (bj + 0.5f) * BLOCK);
+            cXyz scale(0.8f, 3.0f, 0.8f);  // 4000 units round, then 3000 fading; 15000 high
+            csXyz angle(0x00FF, 0, 0);       // no switch; mode 0 (the large radii)
+            // psel bits 0-7, effect 8-15, fade width 16-23 (x100 units), height fade 24-31 (x100 units).
+            const u32 params = lk.psel | (u32)lk.mode << 8 | 30u << 16 | 10u << 24;
+            fopAcM_create((char*)"kytag00", params, &pos, roomNo, &angle, &scale);
+            made++;
+        }
+    }
+    if (made > 0) {
+        fprintf(stderr, "[rplus] room %d: %d weather tags\n", roomNo, made);
+    }
+}
+
 } // namespace
 
 void pc_rplus_life_room(int roomNo) {
@@ -617,5 +665,8 @@ void pc_rplus_life_room(int roomNo) {
     }
     if (enabled("COS_RPLUS_CHESTS")) {
         placeChests(roomNo);
+    }
+    if (enabled("COS_RPLUS_WEATHER")) {
+        placeWeather(roomNo);
     }
 }

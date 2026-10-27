@@ -119,6 +119,12 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
 - **Forests** (`forestAt`): broad patches of grassland and most of the forest biome, thinning up the mountains and
   gone at the beach. Four candidate spots per prop square there, trees half as far apart, big trees (`lwood`) among
   clusters of small ones over grass, flowers at the edges, a darker floor. The tree packet holds 2048 (420 a room).
+- **Weather by biome** (`placeWeather`, `COS_RPLUS_WEATHER=0` to leave out): a weather tag (`kytag00`) over each
+  12500-unit block where snow, volcanic or forest land is most of the land: snow and a grey sky, haze and a dark sky,
+  light mist. The sea's daily rolled rain and storms (`dKy_event_proc`, once Link has the Wind Waker) run as before.
+- **Leaving an interior**: `pc_rplus_next_stage` sits in `dComIfGp_setNextStage`, so every way out to the sea (an
+  exit floor, a cave mouth, a warp, an event) lands at the interior's generated door.
+- **Palms** are the straight, solid `Oyashi` (the bending `Vyasi` has no body to bump into).
 - **Open-air chests** (`placeChests`, `COS_RPLUS_CHESTS=0` to leave out): each puzzle anchor gets its home island's
   disc chest (from the room's TRES), on the highest open ground near the anchor, as a plain chest (its switch,
   lighthouse or enemy puzzle is not built). Its item and save flag are the disc's.
