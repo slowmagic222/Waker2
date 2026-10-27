@@ -116,6 +116,9 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   (`Fire`, no switch), three to five Bokoblins round it facing in, sometimes a Moblin, two pots. The Bokoblins
   stand (type 0) instead of sitting by the fire, so they see Link and fight; camps and enemy groups need gentle
   ground round them.
+- **Forests** (`forestAt`): broad patches of grassland and most of the forest biome, thinning up the mountains and
+  gone at the beach. Four candidate spots per prop square there, trees half as far apart, big trees (`lwood`) among
+  clusters of small ones over grass, flowers at the edges, a darker floor. The tree packet holds 2048 (420 a room).
 - **Open-air chests** (`placeChests`, `COS_RPLUS_CHESTS=0` to leave out): each puzzle anchor gets its home island's
   disc chest (from the room's TRES), on the highest open ground near the anchor, as a plain chest (its switch,
   lighthouse or enemy puzzle is not built). Its item and save flag are the disc's.

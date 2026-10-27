@@ -317,6 +317,17 @@ Rgb biomeColour(char b) {
     }
 }
 
+// How deep in a forest (x, z) is, 0 (open land) to 1: broad patches of the grove noise on grassland and most of the
+// forest biome, thinning out up the mountains (y) and gone on the beach.
+float forestAt(char b, float x, float z, float y) {
+    if (b != 'g' && b != 'f') {
+        return 0.0f;
+    }
+    const float grove = fbm(x * 0.00030f, z * 0.00030f, 163, 3);
+    const float f = b == 'f' ? smooth01(0.36f, 0.50f, grove) : smooth01(0.58f, 0.68f, grove);
+    return f * (1.0f - smooth01(2200.0f, 3400.0f, y)) * smooth01(LAND_BASE + 70.0f, LAND_BASE + 220.0f, y);
+}
+
 // Ground kinds: the poly info table, and the attribute each uses (dBgS::GetAttributeCode's atr_conv index).
 // G_SHORE: the boat's shore walls, which Link, the camera and arrows pass through (poly info 3's pass bits,
 // dBgW::ChkPolyThrough).
@@ -1123,7 +1134,10 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                 // Patches: the grass (and the rest) lighter and darker in broad soft blotches.
                 const float patch = vnoise(px[k] * 0.00035f, pz[k] * 0.00035f, 131) * 0.6f +
                                     vnoise(px[k] * 0.0012f, pz[k] * 0.0012f, 137) * 0.4f;
-                const float m = 0.86f + patch * 0.26f;
+                // Under the trees the floor is darker and a little mossier.
+                const float shade = forestAt(b, px[k], pz[k], py[k]);
+                const float m = (0.86f + patch * 0.26f) * (1.0f - 0.32f * shade);
+                col.g = (u8)std::min(255.0f, col.g * (1.0f + 0.06f * shade));
                 col.r = (u8)std::min(255.0f, col.r * m);
                 col.g = (u8)std::min(255.0f, col.g * m);
                 col.b = (u8)std::min(255.0f, col.b * m);
@@ -2984,8 +2998,8 @@ const PropKind kProps[P_COUNT] = {
     {"BFlower", 0x0000FF0F, 0, 3, 320.0f},
 };
 // What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 512 trees,
-// shared by the rooms loaded at once) and how many plain actors it makes.
-const int kPoolBudget[4] = {3000, 320, 90, 100};
+// shared by the rooms loaded at once; up to four rooms) and how many plain actors it makes.
+const int kPoolBudget[4] = {3000, 320, 420, 170};
 constexpr float PROP_STEP = 420.0f;  // the candidate spots' spacing
 
 // The drawn land's height.
@@ -2996,8 +3010,10 @@ float meshY(float gx, float gy) {
 // What grows at a spot: meadows (dense grass and flowers in broad patches), groves and forests of trees, rock
 // on rugged land, palms on beaches; P_COUNT for nothing. h is a hash of the spot.
 // edge: 1 at a cliff's foot (rocks), 2 along a shelf's top edge (a line of trees); lawn: thick grass in clumps
-// where it is high; pathSide: just off a path (grass and flowers along it).
-PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, float lawn, bool pathSide) {
+// where it is high; pathSide: just off a path (grass and flowers along it); forest: forestAt (deep forest is thick
+// with big and small trees over grass, its edge thinner with flowers).
+PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, float lawn, bool pathSide,
+              float forest) {
     const u32 r = h % 1000;
     const bool green = b == 'g' || b == 'f';
     if (edge == 1 && !beach) {
@@ -3005,6 +3021,14 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
     }
     if (edge == 2 && green) {
         return r < 240 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 560 ? P_GRASS7 : P_COUNT;
+    }
+    if (forest > 0.55f && !beach && !pathSide) {
+        return r < 110 ? P_LWOOD : r < 430 ? P_SWOOD5 : r < 620 ? P_SWOOD3 : r < 700 ? P_SWOOD : r < 900 ? P_GRASS7
+                                                                                                     : P_COUNT;
+    }
+    if (forest > 0.25f && !beach) {
+        return r < 40 ? P_LWOOD : r < 220 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 600 ? P_GRASS7 : r < 680 ? P_FLWR7
+               : r < 740 ? P_FLOWER : P_COUNT;
     }
     if (lawn > 0.6f && (green || b == 'd') && !beach) {
         return r < 620 ? P_GRASS21 : r < 860 ? P_GRASS7 : r < 910 && green ? P_FLWR7 : P_COUNT;
@@ -3071,6 +3095,19 @@ void scatterProps(int roomNo) {
         u32 h;
     };
     std::vector<Spot> spots;
+    auto pushSpot = [&](float x, float z, float y, u32 h) {
+        float near = 1e12f;
+        for (const GenDoor* d : doors) {
+            near = std::min(near, (x - d->pos.x) * (x - d->pos.x) + (z - d->pos.z) * (z - d->pos.z));
+        }
+        for (const Town& t : L.towns) {
+            near = std::min(near, (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z));
+        }
+        constexpr float NEAR = 3000.0f;
+        const float jit = (hash2((int)h, 0x77) & 0xFFFFFF) / 16777216.0f;
+        const float dn = sqrtf(near);
+        spots.push_back({x, z, y, dn < NEAR ? dn / NEAR * (0.75f + 0.25f * jit) : 1.0f + jit, h});
+    };
     const int side = (int)(ROOM_UNITS / PROP_STEP);
     for (int j = 0; j < side; j++) {
         for (int i = 0; i < side; i++) {
@@ -3094,17 +3131,19 @@ void scatterProps(int roomNo) {
             if (y < LAND_BASE + 15.0f) {
                 continue;  // in the surf
             }
-            float near = 1e12f;
-            for (const GenDoor* d : doors) {
-                near = std::min(near, (x - d->pos.x) * (x - d->pos.x) + (z - d->pos.z) * (z - d->pos.z));
+            pushSpot(x, z, y, h);
+            // In a forest, three more spots in this one's square: the trees stand closer.
+            if (forestAt(biomeNear(gx, gy), x, z, y) > 0.25f) {
+                for (int k = 1; k <= 3; k++) {
+                    const u32 hk = hash2((int)h + k * 0x3D, k * 0x91 + 0x4F);
+                    const float sx = bx + (i + ((hk >> 4) & 0xFF) / 256.0f) * PROP_STEP;
+                    const float sz = bz + (j + ((hk >> 12) & 0xFF) / 256.0f) * PROP_STEP;
+                    const float sy = meshY((sx - x0) / cs, (sz - z0) / cs);
+                    if (sy >= LAND_BASE + 15.0f) {
+                        pushSpot(sx, sz, sy, hk);
+                    }
+                }
             }
-            for (const Town& t : L.towns) {
-                near = std::min(near, (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z));
-            }
-            constexpr float NEAR = 3000.0f;
-            const float jit = (hash2((int)h, 0x77) & 0xFFFFFF) / 16777216.0f;
-            const float dn = sqrtf(near);
-            spots.push_back({x, z, y, dn < NEAR ? dn / NEAR * (0.75f + 0.25f * jit) : 1.0f + jit, h});
         }
     }
     std::sort(spots.begin(), spots.end(), [](const Spot& a, const Spot& b) { return a.key < b.key; });
@@ -3184,11 +3223,15 @@ void scatterProps(int roomNo) {
         const float meadow = fbm(x * 0.00022f, z * 0.00022f, 151, 3);
         const float grove = fbm(x * 0.00030f, z * 0.00030f, 163, 3);
         const float lawn = fbm(x * 0.0007f, z * 0.0007f, 171, 2) + (meadow - 0.5f) * 0.6f;
-        const PropId id = propAt(biomeNear(gx, gy), beach, meadow, grove, sp.h >> 3, edge, lawn, pathSide);
+        const char biome = biomeNear(gx, gy);
+        const float forest = forestAt(biome, x, z, y);
+        const PropId id = propAt(biome, beach, meadow, grove, sp.h >> 3, edge, lawn, pathSide, forest);
         if (id == P_COUNT) {
             continue;
         }
         const PropKind& kind = kProps[id];
+        // Trees in a forest stand about half as far apart as in the open.
+        const float clearance = kind.clearance * (forest > 0.25f && (kind.pool == 2 || id == P_LWOOD) ? 0.55f : 1.0f);
         const int cost = kind.pool == 3 ? 1 : kind.cost;
         if (used[kind.pool] + cost > (sp.key < 1.0f ? kPoolBudget[kind.pool] / 2 : kPoolBudget[kind.pool])) {
             continue;
@@ -3204,7 +3247,7 @@ void scatterProps(int roomNo) {
                 }
                 for (int k : grid[(size_t)cj * gside + ci]) {
                     const Placed& p = placed[k];
-                    const float c2 = std::max(p.clear, kind.clearance);
+                    const float c2 = std::max(p.clear, clearance);
                     if ((p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) < c2 * c2) {
                         clear = false;
                         break;
@@ -3219,7 +3262,7 @@ void scatterProps(int roomNo) {
         csXyz angle(0, (s16)(sp.h >> 16), 0);
         fopAcM_create((char*)kind.name, kind.params, &pos, roomNo, &angle, nullptr);
         grid[(size_t)gj * gside + gi].push_back((int)placed.size());
-        placed.push_back({x, z, kind.clearance});
+        placed.push_back({x, z, clearance});
         used[kind.pool] += cost;
         made[id]++;
     }
