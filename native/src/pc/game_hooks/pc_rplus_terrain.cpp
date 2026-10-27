@@ -1064,8 +1064,8 @@ u32 fmapPicture(float cx, float cz, float span, u8* out, u32 size) {
     }
     memset(out, 0, bytes);
     BeOut o{out};
-    out[0x00] = 0x01;  // GX_TF_IA4
-    out[0x01] = 1;     // alpha
+    out[0x00] = 0x02;  // GX_TF_IA4 (GX: I4 0, I8 1, IA4 2, IA8 3)
+    out[0x01] = 2;     // alpha, as the disc's
     o.u16at(0x02, W);
     o.u16at(0x04, H);
     out[0x14] = 1;     // linear
@@ -1088,7 +1088,7 @@ u32 fmapPicture(float cx, float cz, float span, u8* out, u32 size) {
             any = true;
             const bool shore = !land[y + 1][x] || !land[y + 1][x + 2] || !land[y][x + 1] || !land[y + 2][x + 1];
             const int tile = (y / 4) * (PW / 8) + (x / 8);
-            out[0x20 + tile * 32 + (y % 4) * 8 + (x % 8)] = shore ? 0xF6 : 0xFF;  // alpha high nibble, intensity low
+            out[0x20 + tile * 32 + (y % 4) * 8 + (x % 8)] = shore ? 0xF0 : 0xFF;  // alpha high nibble, intensity low: the disc's dark rim
         }
     }
     return any ? bytes : 0;
