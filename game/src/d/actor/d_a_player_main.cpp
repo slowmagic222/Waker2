@@ -76,6 +76,30 @@ u8 daPy_matAnm_c::m_morf_frame;
 
 #include "d/actor/d_a_player_hang.inc"
 
+#if TARGET_PC
+// QoL "Trepar cualquier pared": a door's own body (its wall code 0) is no wall to climb.
+static bool pcClimbDoorWall(cBgS_PolyInfo& poly) {
+    fopAc_ac_c* actor = dComIfG_Bgsp()->GetActorPointer(poly);
+    if (actor == NULL) {
+        return false;
+    }
+    switch (fopAcM_GetName(actor)) {
+    case fpcNm_KNOB00_e:
+    case fpcNm_DOOR10_e:
+    case fpcNm_DOOR12_e:
+    case fpcNm_KDDOOR_e:
+    case fpcNm_MDOOR_e:
+    case fpcNm_MBDOOR_e:
+    case fpcNm_ATDOOR_e:
+    case fpcNm_SWTDOOR_e:
+    case fpcNm_OBJ_MJDOOR_e:
+        return true;
+    default:
+        return false;
+    }
+}
+#endif
+
 #include "d/actor/d_a_player_climb.inc"
 
 #include "d/actor/d_a_player_whide.inc"
@@ -4646,7 +4670,7 @@ void daPy_lk_c::setFrontWallType() {
     }
     // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): a plain wall (code 0) is a candidate for ivy; the
     // wall it hit is kept, as the checks below reuse the line check
-    const bool climbCandidate = wall_code == 0 && pc_qol_climb_can_grab();
+    const bool climbCandidate = wall_code == 0 && pc_qol_climb_can_grab() && !pcClimbDoorWall(mLinkLinChk);
     cBgS_PolyInfo climbPoly;
     if (climbCandidate) {
         climbPoly = mLinkLinChk;

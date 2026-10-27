@@ -118,7 +118,7 @@ BOOL daPy_lk_c::setMoveBGCorrectClimb() {
     // stamina wheel has some left (pc_climb.cpp); once empty he falls off as from the end of the ivy
     const BOOL climbHit = dComIfG_Bgsp()->LineCross(&mLinkLinChk);
     int climbCode = climbHit ? dComIfG_Bgsp()->GetWallCode(mLinkLinChk) : -1;
-    if (climbCode == 0 && pc_qol_climb_can_grab()) {
+    if (climbCode == 0 && pc_qol_climb_can_grab() && !pcClimbDoorWall(mLinkLinChk)) {
         climbCode = 1;
         pc_qol_climb_plain();
     }
