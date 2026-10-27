@@ -15,7 +15,9 @@
 // on 0 (dMap_c::point2Grid), x to the east (columns 1-7), z to the south (rows A-G).
 #include "pc_internal.h"
 
+#include "pc/game_hooks.h"
 #include "pc/pc_qol.h"
+#include "pc/pc_rplus.h"
 #include "pc/pc_settings.h"
 #include "JSystem/JKernel/JKRArchive.h"
 #include "JSystem/JUtility/JUTTexture.h"
@@ -218,6 +220,7 @@ struct IslandArt {
     int w = 0, h = 0;
     bool grey = false;  // an intensity texture (I4/I8/IA4/IA8): tinted with the land colour
     float ox = 0, oy = 0; // where the island sits in its sector, in units (x east, y south)
+    bool whole = false;   // Randomizer+: the picture is the whole sector (pc_rplus_fmap_texture), no shape without
 };
 IslandArt sIslands[49];
 // How much of a cell an island's picture fills (its larger side); tune here if the islands look too big
@@ -226,26 +229,36 @@ constexpr float kIslandFit = 0.9f;
 void readIsland(int no) {
     IslandArt& art = sIslands[no];
     art.state = IslandArt::None;
+    alignas(32) static u8 sBuf[0x2c00]; // the size the chart's own buffer has (mChkPntTxt_p)
+    char name[16];
+    snprintf(name, sizeof(name), "R%02X_b.bti", no + 1);
+    // Randomizer+: a generated sector's picture is made from its land and covers the whole sector
+    const int made = pc_rplus_fmap_texture(name, sBuf, sizeof sBuf);
+    if (made >= 0) {
+        art.whole = true;
+        art.ox = art.oy = 0;
+    }
+    if (made == 0) {
+        return; // open sea
+    }
     // the chart's check point for the sector: where the island is in it (dMenu_Fmap_c::setDispIslandPos)
     const dMap_FmapChkPnt* chk = static_cast<const dMap_FmapChkPnt*>(dComIfGp_getFmapData());
     const int gx = no % 7 - 3, gy = no / 7 - 3;
     bool found = false;
     for (u32 i = 0; chk != nullptr && i < u32(chk->field_0x0) && i < 64; i++) {
         const FmapChkPnt& p = chk->field_0x4[i];
-        if (p.mSectorX == gx && p.mSectorY == gy) {
+        if (p.mSectorX == gx && p.mSectorY == gy && !art.whole) {
             art.ox = s16(p.field_0x2);
             art.oy = s16(p.field_0x4);
             found = true;
             break;
         }
     }
-    if (!found) {
+    if (!found && made < 0) {
         return; // the chart shows no island picture there either
     }
-    char name[16];
-    snprintf(name, sizeof(name), "R%02X_b.bti", no + 1);
-    alignas(32) static u8 sBuf[0x2c00]; // the size the chart's own buffer has (mChkPntTxt_p)
-    const u32 size = JKRReadTypeResource(sBuf, sizeof sBuf, 'FM  ', name, dComIfGp_getFmapArchive());
+    const u32 size = made > 0 ? u32(made)
+                              : JKRReadTypeResource(sBuf, sizeof sBuf, 'FM  ', name, dComIfGp_getFmapArchive());
     if (size < sizeof(ResTIMG)) {
         return;
     }
@@ -432,7 +445,7 @@ void seaMapFrame() {
             // in the sector; full colour where reached, a faint silhouette elsewhere
             const IslandArt& art = sIslands[no];
             if (art.state == IslandArt::Ready) {
-                const float fit = cell * kIslandFit / (float)(art.w > art.h ? art.w : art.h);
+                const float fit = (art.whole ? cell : cell * kIslandFit) / (float)(art.w > art.h ? art.w : art.h);
                 const ImVec2 c(a.x + cell / 2.0f + art.ox / 100000.0f * cell, a.y + cell / 2.0f + art.oy / 100000.0f * cell);
                 const ImVec2 half(art.w * fit / 2.0f, art.h * fit / 2.0f);
                 const ImU32 tint = known ? (art.grey ? C(150, 205, 110, 255) : C(255, 255, 255, 255))
@@ -441,7 +454,7 @@ void seaMapFrame() {
                 dl->AddImage(art.tex, ImVec2(c.x - half.x, c.y - half.y), ImVec2(c.x + half.x, c.y + half.y), ImVec2(0, 0),
                              ImVec2(1, 1), tint);
                 dl->PopClipRect();
-            } else {
+            } else if (!art.whole) {
                 // not read yet or no picture: a simple shape, in land colours where reached, a faint outline elsewhere
                 drawIsland(dl, no, ImVec2(a.x + cell / 2.0f, a.y + cell / 2.0f), cell,
                            known ? C(96, 150, 70, 235) : C(255, 255, 255, 45), known ? C(60, 40, 20, 200) : C(0, 0, 0, 0));
@@ -490,7 +503,8 @@ void seaMapFrame() {
     const int no = row * 7 + col;
     char label[48];
     snprintf(label, sizeof(label), "%c%d %s", 'A' + row, col + 1,
-             pc_qol(PC_QOL_REVEAL_CHART) || dComIfGs_isSaveArriveGrid(no) ? kSectorNames[no] : "?");
+             pc_rplus_active() && pc_rplus_sea_room_generated(no + 1) ? ""
+             : pc_qol(PC_QOL_REVEAL_CHART) || dComIfGs_isSaveArriveGrid(no) ? kSectorNames[no] : "?");
     const ImVec2 ts = ImGui::CalcTextSize(label);
     const float tx = ts.x > size ? o.x + size - ts.x : o.x + (size - ts.x) / 2.0f;
     dl->AddText(ImVec2(tx, o.y + size + 3.0f), C(255, 255, 255, 235), label);
