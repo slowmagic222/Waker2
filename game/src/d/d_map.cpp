@@ -27,6 +27,7 @@
 #include "string.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/game_hooks.h"
 #endif
 
 
@@ -2447,6 +2448,18 @@ void dMap_c::getFmapChkPntPrm(int i_no, s8* i_gridX_p, s8* i_gridY_p, s16* i_x_p
     if (i_prm_p) {
         *i_prm_p = pnt->field_0x6;
     }
+#if TARGET_PC
+    // Randomizer+: a generated square's island sits at its land's middle.
+    s16 x, y;
+    if (pc_rplus_fmap_centre((pnt->mSectorX + 3) + (pnt->mSectorY + 3) * 7, &x, &y)) {
+        if (i_x_p) {
+            *i_x_p = x;
+        }
+        if (i_y_p) {
+            *i_y_p = y;
+        }
+    }
+#endif
 }
 
 /* 8004ACD8-8004AD00       .text setFmapChkDtPrm__6dMap_cFv */

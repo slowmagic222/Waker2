@@ -26,6 +26,7 @@
 #include "JSystem/J3DGraphBase/J3DSys.h"
 #include "JSystem/J3DGraphBase/J3DShape.h"
 #include "dolphin/gx/GX.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1032,19 +1033,35 @@ int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 m
     return 1;
 }
 
-int pc_rplus_fmap_texture(const char* name, void* buf, u32 size) {
-    // The sea chart's close-up of one square, "R%02X_b.bti" (room number in hex): IA4 100x100 (the disc's size),
-    // the land opaque and light, its shore darker, the sea clear.
-    unsigned room = 0;
-    if (!pc_rplus_active() || sscanf(name, "R%02X_b.bti", &room) != 1 || !pc_rplus_sea_room_generated((int)room)) {
-        return -1;
+namespace {
+
+constexpr float FMAP_CLOSE_SPAN = 20000.0f;  // the chart's island close-up covers this much (d_menu_fmap.cpp /20000)
+
+// The world position of a chart square's centre (grid 0..48 = sea room 1..49).
+bool fmapRoom(int grid, float* rx, float* rz) {
+    const int room = grid + 1;
+    if (!pc_rplus_active() || grid < 0 || grid >= 49 || !pc_rplus_sea_room_generated(room)) {
+        return false;
     }
+    roomCentre(room, rx, rz);
+    return true;
+}
+
+bool landAt(float x, float z) {
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    return heightAt((x - x0) / cs, (z - z0) / cs) > 0.0f;
+}
+
+// An IA4 100x100 picture (the disc's size) of span x span units round (x, z): the land opaque and light, its
+// shore darker, the sea clear. The bytes written, 0 with no land in it.
+u32 fmapPicture(float cx, float cz, float span, u8* out, u32 size) {
     constexpr int W = 100, H = 100, PW = 104;  // IA4 tiles are 8x4: the width padded to 104
     const u32 bytes = 0x20 + PW * H;
     if (bytes > size) {
-        return -1;
+        return 0;
     }
-    u8* out = (u8*)buf;
     memset(out, 0, bytes);
     BeOut o{out};
     out[0x00] = 0x01;  // GX_TF_IA4
@@ -1055,29 +1072,88 @@ int pc_rplus_fmap_texture(const char* name, void* buf, u32 size) {
     out[0x15] = 1;
     out[0x18] = 1;     // one image
     o.u32at(0x1C, 0x20);
-    const int cells = pc_rplus_cells(), n = pc_rplus_squares();
-    const int r = (int)room - 1;
-    const float gx0 = (float)((r % n) * cells), gy0 = (float)((r / n) * cells);
-    auto land = [&](int x, int y) {
-        if (x < 0 || y < 0 || x >= W || y >= H) {
-            return false;
+    static bool land[H + 2][W + 2];
+    for (int y = -1; y <= H; y++) {
+        for (int x = -1; x <= W; x++) {
+            land[y + 1][x + 1] = x >= 0 && y >= 0 && x < W && y < H &&
+                                 landAt(cx - span / 2 + (x + 0.5f) * span / W, cz - span / 2 + (y + 0.5f) * span / H);
         }
-        return heightAt(gx0 + (x + 0.5f) * cells / W, gy0 + (y + 0.5f) * cells / H) > 0.0f;
-    };
+    }
     bool any = false;
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
-            if (!land(x, y)) {
+            if (!land[y + 1][x + 1]) {
                 continue;
             }
             any = true;
-            const bool shore = !land(x - 1, y) || !land(x + 1, y) || !land(x, y - 1) || !land(x, y + 1);
-            const u8 v = shore ? 0xF6 : 0xFF;  // alpha high nibble, intensity low
+            const bool shore = !land[y + 1][x] || !land[y + 1][x + 2] || !land[y][x + 1] || !land[y + 2][x + 1];
             const int tile = (y / 4) * (PW / 8) + (x / 8);
-            out[0x20 + tile * 32 + (y % 4) * 8 + (x % 8)] = v;
+            out[0x20 + tile * 32 + (y % 4) * 8 + (x % 8)] = shore ? 0xF6 : 0xFF;  // alpha high nibble, intensity low
         }
     }
-    return any ? (int)bytes : 0;  // no land: no close-up (the chart hides it, as for a missing file)
+    return any ? bytes : 0;
+}
+
+// The middle of a square's land (its bounding box's centre), in units from the square's centre.
+bool fmapLandCentre(int grid, float* ox, float* oz) {
+    float rx, rz;
+    if (!fmapRoom(grid, &rx, &rz)) {
+        return false;
+    }
+    float x0 = 1e9f, z0 = 1e9f, x1 = -1e9f, z1 = -1e9f;
+    for (int j = 0; j < 100; j++) {
+        for (int i = 0; i < 100; i++) {
+            const float x = rx - ROOM_UNITS / 2 + (i + 0.5f) * ROOM_UNITS / 100, z = rz - ROOM_UNITS / 2 + (j + 0.5f) * ROOM_UNITS / 100;
+            if (landAt(x, z)) {
+                x0 = std::min(x0, x);
+                x1 = std::max(x1, x);
+                z0 = std::min(z0, z);
+                z1 = std::max(z1, z);
+            }
+        }
+    }
+    if (x1 < x0) {
+        *ox = *oz = 0.0f;
+        return true;
+    }
+    *ox = (x0 + x1) * 0.5f - rx;
+    *oz = (z0 + z1) * 0.5f - rz;
+    return true;
+}
+
+} // namespace
+
+int pc_rplus_fmap_texture(const char* name, void* buf, u32 size) {
+    // The chart's island close-up, "R%02X_b.bti" (room number in hex): the land round its middle.
+    unsigned room = 0;
+    if (sscanf(name, "R%02X_b.bti", &room) != 1) {
+        return -1;
+    }
+    float rx, rz, ox, oz;
+    if (!fmapRoom((int)room - 1, &rx, &rz) || !fmapLandCentre((int)room - 1, &ox, &oz)) {
+        return -1;
+    }
+    return (int)fmapPicture(rx + ox, rz + oz, FMAP_CLOSE_SPAN, (u8*)buf, size);
+}
+
+const void* pc_rplus_fmap_whole(int grid, u32* size) {
+    float rx, rz;
+    if (!fmapRoom(grid, &rx, &rz)) {
+        return nullptr;
+    }
+    alignas(32) static u8 sPics[49][0x2c00];
+    *size = fmapPicture(rx, rz, ROOM_UNITS, sPics[grid], sizeof sPics[grid]);
+    return sPics[grid];
+}
+
+int pc_rplus_fmap_centre(int grid, s16* x, s16* y) {
+    float ox, oz;
+    if (!fmapLandCentre(grid, &ox, &oz)) {
+        return 0;
+    }
+    *x = (s16)ox;
+    *y = (s16)oz;
+    return 1;
 }
 
 int pc_rplus_home_unlocked(void) {
