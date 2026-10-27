@@ -86,6 +86,10 @@ static const cursorTable_t* dMenu_Fmap_cursorTable() {
 #define COS_FMAP_CURSOR_TABLE g_cursorTable
 #endif
 
+#if TARGET_PC
+static J2DPicture* sRplusChart[49];  // Randomizer+: the generated squares' land on the chart (setScreen)
+#endif
+
 extern const u32 hist[] = {
     'mR01', 'mR02', 'mR03', 'mR04', 'mR05', 'mR06', 'mR07',
     'mR08', 'mR09', 'mR0A', 'mR0B', 'mR0C', 'mR0D', 'mR0E',
@@ -548,6 +552,30 @@ void dMenu_Fmap_c::screenSet() {
         };
         fopMsgM_setPaneData(&mR0xPanes[i], fmapDl.scrn, l_island[i]);
     }
+#if TARGET_PC
+    // Randomizer+: each generated square's land on the chart, a picture under its square's fog pane (drawn
+    // before it), the size of the square, in the island icons' browns.
+    for (i = 0; i < 49; i++) {
+        sRplusChart[i] = NULL;
+        u32 size = 0;
+        const void* whole = pc_rplus_fmap_whole(i, &size);
+        J2DPane* fog = fmapDl.scrn->search(hist[i]);
+        J2DPane* parent = fmapDl.scrn->search('fddm');
+        if (whole == NULL || size == 0 || fog == NULL || parent == NULL) {
+            continue;
+        }
+        J2DPicture* pic = new J2DPicture('rpl0' + i, fog->getBounds(), (const ResTIMG*)whole, NULL);
+        if (pic == NULL) {
+            continue;
+        }
+        pic->setBlackWhite(JUtility::TColor(70, 46, 24, 255), JUtility::TColor(196, 160, 104, 255));
+        if (!parent->insertChild(fog, pic)) {
+            delete pic;
+            continue;
+        }
+        sRplusChart[i] = pic;
+    }
+#endif
 
     for (i = 0; i < 49; i++) {
         static const u32 endSalv[] = {
@@ -796,7 +824,21 @@ void dMenu_Fmap_c::displayinit() {
         } else {
             mR0xPanes[i].pane->hide();
         }
+#if TARGET_PC
+        // Randomizer+: the disc's islands aren't there.
+        u32 wholeSize;
+        if (pc_rplus_fmap_whole(islandPos[i] - 1, &wholeSize) != NULL) {
+            mR0xPanes[i].pane->hide();
+        }
+#endif
     }
+#if TARGET_PC
+    for (i = 0; i < 49; i++) {
+        if (sRplusChart[i] != NULL) {
+            sRplusChart[i]->show();
+        }
+    }
+#endif
 
     dispEndSalvageMark();
     fopMsgM_paneTrans(&mAreaPane, mGridX * mAreaPane.mSizeOrig.x, mGridY * mAreaPane.mSizeOrig.y);
@@ -1540,28 +1582,33 @@ aramCmapDatPnt_t* dMenu_Fmap_c::getGridNumToCmapDatPnt(int i_gridIdx) {
 /* 801B37B0-801B392C       .text setDispIslandPos__12dMenu_Fmap_cFScSc */
 void dMenu_Fmap_c::setDispIslandPos(s8 i_x, s8 i_y) {
 #if TARGET_PC
-    // Randomizer+: a generated square's picture is the whole square (pc_rplus_fmap_texture), centred and as big
-    // as the square, shown wherever the square has land (not only where the disc had an island).
+    // Randomizer+: a generated square's picture here is the whole square (pc_rplus_fmap_whole), centred and as
+    // big as the square, shown wherever it has land; the island close-up (R01G) is the land round its middle.
     static fopMsgM_f2d_class sIslandSize = {-1.0f, -1.0f};
     if (sIslandSize.x < 0.0f) {
         sIslandSize = mR01bPane.mSizeOrig;
     }
-    char name[16];
-    sprintf(name, "R%02X_b.bti", i_x + (i_y + 3) * 7 + 3 + 1);
-    if (int made = pc_rplus_fmap_texture(name, mChkPntTxt_p, 0x2c00); made >= 0) {
+    u32 wholeSize = 0;
+    if (const void* whole = pc_rplus_fmap_whole(i_x + (i_y + 3) * 7 + 3, &wholeSize); whole != NULL) {
         mTsw1Pane.pane->hide();
-        if (made == 0) {
+        if (wholeSize == 0) {
             mR01bPane.pane->hide();
             return;
         }
         mR01bPane.mSizeOrig.x = mClbPane.mSizeOrig.x - 50.0f;
         mR01bPane.mSizeOrig.y = mClbPane.mSizeOrig.y - 50.0f;
         mR01bPane.mSize = mR01bPane.mSizeOrig;
-        mDispIslandPosX = 0;
-        mDispIslandPosY = 0;
         setIslandPos(&mR01bPane, 0.0f, 0.0f);
-        ((J2DPicture*)mR01bPane.pane)->changeTexture(mChkPntTxt_p, 0);
-        ((J2DPicture*)mR01gPane.pane)->changeTexture(mChkPntTxt_p, 0);
+        ((J2DPicture*)mR01bPane.pane)->changeTexture((const ResTIMG*)whole, 0);
+        char name[16];
+        sprintf(name, "R%02X_b.bti", i_x + (i_y + 3) * 7 + 3 + 1);
+        if (readFmapTexture(name) != 0) {
+            ((J2DPicture*)mR01gPane.pane)->changeTexture(mChkPntTxt_p, 0);
+        }
+        s16 cx = 0, cy = 0;
+        pc_rplus_fmap_centre(i_x + (i_y + 3) * 7 + 3, &cx, &cy);
+        mDispIslandPosX = cx;
+        mDispIslandPosY = cy;
         mR01bPane.pane->show();
         return;
     }
