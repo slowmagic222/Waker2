@@ -749,6 +749,9 @@ const PcSettingDesc kBuiltins[] = {
     {"COS_QOL_SEA_MAP_OPACITY", "Mapa del mar: opacidad", "Menos opacidad deja ver el juego a través del mapa.",
      PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapOpacity), "100", nullptr, nullptr, 173,
      "Sea map: opacity", "Less opacity lets the game show through the map."},
+    {"COS_QOL_NO_MUSIC", "Sin música", "Quita la música de fondo; los efectos de sonido siguen.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", nullptr, nullptr, 185,
+     "Music off", "Turns the background music off; the sound effects keep playing."},
     {"COS_QOL_AUTOSAVE", "Autoguardado",
      "La partida se guarda sola, como en la pantalla de guardar: al conseguir un objeto o mejora, cada 10 "
      "minutos o ambos. Solo cuando no hay menú, mensaje ni escena, y si la partida ya se guardó a mano en "
