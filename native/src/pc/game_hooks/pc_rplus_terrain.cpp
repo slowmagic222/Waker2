@@ -20,6 +20,7 @@
 #include "d/actor/d_a_sea.h"
 #include "f_op/f_op_actor_mng.h"
 #include "SSystem/SComponent/c_math.h"
+#include "SSystem/SComponent/c_counter.h"
 #include "SSystem/SComponent/c_bg_s.h"
 #include "JSystem/J3DGraphBase/J3DPacket.h"
 #include "JSystem/J3DGraphBase/J3DSys.h"
@@ -584,12 +585,15 @@ PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** o_bgw) {
 }
 
 void pc_rplus_far_draw(int roomNo) {
-    // Once a frame, from the room Link is in: the land of every generated room not drawn by its own room (the
-    // original sea shows far islands with LOD models, which a generated world has none of).
-    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 ||
-        roomNo != dComIfGp_roomControl_getStayNo()) {
+    // Once a frame, from the first room drawn (the room Link is in can be room 0, the sea floor, or a room still
+    // loading): the land of every generated room not drawn by its own room (the original sea shows far islands
+    // with LOD models, which a generated world has none of).
+    (void)roomNo;
+    static u32 sDrawnAt = ~0u;
+    if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0 || sDrawnAt == g_Counter.mCounter0) {
         return;
     }
+    sDrawnAt = g_Counter.mCounter0;
     static PcRplusTerrain* sFar[64] = {};
     const int rooms = pc_rplus_squares() * pc_rplus_squares();
     for (int r = 1; r <= rooms && r < 64; r++) {
@@ -644,8 +648,9 @@ void requestRoomLoad(int roomNo) {
     }
     roomRead_data_class* d = rr->m_entries[entry];
     int ok = dComIfGp_roomControl_loadRoom(d->num, d->m_rooms);
-    static int tries = 0;
-    if (++tries <= 5 || tries % 300 == 0) {
+    static int tries = 0, lastOk = -1;
+    if (++tries <= 5 || tries % 300 == 0 || ok != lastOk) {
+        lastOk = ok;
         fprintf(stderr, "[rplus] room load for room %d (entry %d, %d rooms): %s (try %d)\n", roomNo, entry, d->num,
                 ok ? "asked" : "busy", tries);
     }
