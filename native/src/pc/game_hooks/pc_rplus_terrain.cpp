@@ -14,6 +14,7 @@
 // baked in two tones; the game's own textures come later.
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
+#include "pc_rplus_world.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
@@ -2269,12 +2270,93 @@ void scatterProps(int roomNo) {
 }
 } // namespace
 
+namespace rplus {
+
+std::vector<TownInfo> towns() {
+    std::vector<TownInfo> out;
+    if (!pc_rplus_active()) {
+        return out;
+    }
+    const Layout& L = layout();
+    for (const Town& t : L.towns) {
+        out.push_back({t.x, t.z, t.y, t.r, PLAZA_R, roomAtXZ(L, t.x, t.z)});
+    }
+    return out;
+}
+
+float groundY(float x, float z) {
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    return meshY((x - x0) / cs, (z - z0) / cs);
+}
+
+int roomAt(float x, float z) {
+    return roomAtXZ(layout(), x, z);
+}
+
+char biomeAt(float x, float z) {
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    return biomeNear((x - x0) / cs, (z - z0) / cs);
+}
+
+bool openGround(float x, float z, float clear) {
+    const Layout& L = layout();
+    if (groundMark(x, z) != 0) {
+        return false;
+    }
+    const float c2 = clear * clear;
+    for (const GenDoor& d : L.doors) {
+        if ((x - d.pos.x) * (x - d.pos.x) + (z - d.pos.z) * (z - d.pos.z) < c2 + 700.0f * 700.0f) {
+            return false;
+        }
+    }
+    for (const Deco& d : L.decos) {
+        if ((x - d.pos.x) * (x - d.pos.x) + (z - d.pos.z) * (z - d.pos.z) < c2 + 700.0f * 700.0f) {
+            return false;
+        }
+    }
+    for (const Fence& f : L.fences) {
+        if (segDist2(Seg{f.x0, f.z0, f.x1, f.z1}, x, z) < c2 + 150.0f * 150.0f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void cellSpot(int cx, int cy, float* x, float* z) {
+    const Layout& L = layout();
+    *x = L.x0 + (cx + 0.5f) * L.cs;
+    *z = L.z0 + (cy + 0.5f) * L.cs;
+    landSpot(L, x, z);
+}
+
+void startXZ(float* x, float* z) {
+    startSpot(x, z);
+}
+
+void roomCorner(int roomNo, float* x, float* z) {
+    roomCentre(roomNo, x, z);
+    *x -= ROOM_UNITS * 0.5f;
+    *z -= ROOM_UNITS * 0.5f;
+}
+
+bool steep(float x, float z) {
+    const float y = groundY(x, z);
+    return fabsf(groundY(x + 150.0f, z) - y) + fabsf(groundY(x, z + 150.0f) - y) > 150.0f;
+}
+
+} // namespace rplus
+
 void pc_rplus_room_actors(int roomNo) {
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return;
     }
     if (pc_rplus_sea_room_generated(roomNo)) {
         scatterProps(roomNo);
+        pc_rplus_life_room(roomNo);
     }
     for (const GenDoor& gd : genDoors()) {
         if (gd.seaRoom != roomNo) {

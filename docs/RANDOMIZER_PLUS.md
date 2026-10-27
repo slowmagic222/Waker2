@@ -70,20 +70,41 @@ python3 scripts/rplus/worldgen.py --test 200                   # many seeds, rep
 room, sea position in game units and requirement, the sea objects and the item placement. The in-game loader
 will read this file.
 
-## In the game (first step: the land)
+## In the game
 
 With `COS_RPLUS_WORLD=<path to world.rpw>` (in `[dev]` of `native/user/settings.ini`, or the environment) the game
 reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the Great Sea:
 
-- every sea room except the two kept ones (Forsaken Fortress, Tower of the Gods) has the world's land instead of
-  its island: `daBg_c::createHeap` asks `pc_rplus_terrain_create` (`native/src/pc/game_hooks/pc_rplus_terrain.cpp`),
-  which builds the surface from the cell heights (bilinear between cell centres, 4 samples a cell, a little noise),
-  its collision as a DZB made in memory (passed through `cBgS::ConvDzb` like a room's `room.dzb`), and a draw
-  packet with vertex colours by biome (grass, forest, rock, volcanic, snow, sand beaches), light baked in two tones;
-- the generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`), so no NPC, chest or door of the
-  old island is left floating;
-- the far-away island models (`d_a_lod_bg.cpp`) are off;
-- Link is put on the start cell (where Link's house will be) once the sea is loaded.
+- **Land.** Every sea room except the two kept ones (Forsaken Fortress, Tower of the Gods) has the world's land
+  instead of its island: `daBg_c::createHeap` asks `pc_rplus_terrain_create`
+  (`native/src/pc/game_hooks/pc_rplus_terrain.cpp`), which samples the ground 6 times a cell, builds its collision
+  as a DZB made in memory (passed through `cBgS::ConvDzb` like a room's `room.dzb`) and a draw packet with vertex
+  colours by biome and light baked in two tones. The ground (`naturalY`): the cells' heights blended smoothly on a
+  grid bent by noise (coasts wander off the cells), rolling hills, ridges and terraced shelves on rock, volcanic and
+  snow land, small bumps; then levelled where the world builds (`shapeGround`).
+- **Layout** (`layout()`, made once from the anchors): a door (`KNOB01`) and a house for every anchor whose
+  interior stage is known (`kInteriors`), each with an exit floor inside (exit ids `0x20` + its number in its room;
+  Link's home, the cabana `Abesso`, is `0x3A`). Houses near each other gather into towns: round a paved plaza, the
+  ground levelled, doors facing the middle, more houses without a way in, dirt paths to each door, low brick walls
+  by the yards and a wooden fence round the town with gates between the houses. Paths join the towns and lone
+  doors of each land. Link starts in the start town's plaza. Going through a door enters its interior; the
+  interior's way out to the sea comes back out of that door (`pc_rplus_exit`, `pc_rplus_exit_return`).
+- **Props** (`scatterProps`): meadows of grass and flowers, groves and forests, palms on beaches, rocks on rugged
+  land, with the disc's params, nearest the towns and doors first within a budget per room. On PC the game's
+  grass, flower and tree packets hold 16000 tufts, 2000 flowers and 512 trees.
+- **People and enemies** (`native/src/pc/game_hooks/pc_rplus_life.cpp`): the disc's sea rooms are read once
+  (`Room<n>.arc`'s `room.dzr`). The townsfolk of the generated rooms move to the towns, and NPCs the world gave an
+  anchor of their own (Maggie, Zunari, Tott, the Killer Bees...) stand at it. Generated rooms have no paths
+  (`dPath_GetRoomPath`), so moved people stand rather than walk. Enemies (Bokoblins, Moblins, ChuChus, Keese, Boko
+  Babas, Magtails) are spread over open land by biome, away from towns and the start, with params from the
+  islands and some dungeons. `COS_RPLUS_NPCS=0` or `COS_RPLUS_ENEMIES=0` leaves them out.
+- **Start gear**: a file with no sword gets the logic's start items at sea (Hero's Sword, shield, Wind Waker,
+  Wind's Requiem, Ballad of Gales, Song of Passing, sail, magic).
+- The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models
+  (`d_a_lod_bg.cpp`) are off; the sea chart and the QoL sea map draw the generated land.
+
+An offline map of the land and layout: build `pc_rplus_terrain.cpp` with `PC_RPLUS_DEBUG_MAP` and call
+`pc_rplus_debug_map(path, units per pixel, centre x, centre z, size)` (a PPM).
 
 To try it on a new file, skipping the intro:
 
@@ -111,14 +132,12 @@ The options menu has a **Randomizer+** tab (`native/src/pc/features/pc_rplus_men
 The choices are kept in `user/rando/rplus.ini`; `pc_rplus_boot` applies them at start (`COS_RPLUS_WORLD`, and
 `COS_SAVE_DIR` for the card's folder, given to Aurora in `pc_aurora_init`).
 
-Doors, NPCs, villages and items are not placed in the game yet: this step is only the land, to see it and walk and
-sail on it.
+Items are not placed in the game yet.
 
 ## Not done yet
 
-- **The game side.** The game doesn't use the world yet. Next comes a loader that builds the terrain of each sea
-  room from `world.json` (mesh and collision made in memory, see `dBgW_NewSet`), sets door exits to the interior
-  stages and places the NPCs and objects as actors.
+- **Textures** on the land (vertex colours only so far), a corner minimap for generated squares, the Ballad of
+  Gales' warp spots on the generated land.
 - **Item placement on the disc.** wwrando writes items into the stage files of their original rooms. A generated
   world needs those items to follow their anchors: the loader gives each actor its item from `world.json`.
 - **NPC code that knows its island.** About 150 places in the game check a room number or the stage `sea`
