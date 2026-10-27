@@ -324,6 +324,9 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode);
 /* dStage_changeScene: 1 when the exit to (stage, point, room) is an interior's way back to a door that the
    generated world moved (it set the next stage: the door's room, Link in front of it). */
 int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe);
+/* dMenu_Fmap(2)_c::readFmapTexture: the sea chart's close-up of a generated square, made into buf (size bytes);
+   the bytes written (0: no land, hide it), or -1 for the disc's file. */
+int pc_rplus_fmap_texture(const char* name, void* buf, u32 size);
 /* daKnob00_c::CreateInit: 1 when a locked door is Link's home's (the cabana, Abesso, needs no deed). */
 int pc_rplus_home_unlocked(void);
 /* dStage_dt_c_roomReLoader of room roomNo: the generated world's actors there (Link's home's door). */
