@@ -1,0 +1,21 @@
+gfx: larger per-frame vertex and index buffers
+
+Randomizer+ land (docs/RANDOMIZER_PLUS.md) draws thousands of grass tufts, flowers and trees, towns and
+NPCs in one frame. That went over the 5 MiB vertex buffer, and ByteBuffer::resize aborted on the mapped
+staging memory. 16 MiB of vertices and 6 MiB of indices give it room.
+
+diff --git a/lib/gfx/resources.hpp b/lib/gfx/resources.hpp
+index 3fdc0ee..bcda1c1 100644
+--- a/lib/gfx/resources.hpp
++++ b/lib/gfx/resources.hpp
+@@ -5,8 +5,8 @@
+ namespace aurora::gfx {
+ inline constexpr bool UseTextureBuffer = true;
+ inline constexpr uint64_t UniformBufferSize = 25165824; // 24 MiB
+-inline constexpr uint64_t VertexBufferSize = 5242880;   // 5 MiB
+-inline constexpr uint64_t IndexBufferSize = 2097152;    // 2 MiB
++inline constexpr uint64_t VertexBufferSize = 16777216;  // 16 MiB (Waker2: Randomizer+ land draws far more per frame)
++inline constexpr uint64_t IndexBufferSize = 6291456;    // 6 MiB (Waker2)
+ inline constexpr uint64_t StorageBufferSize = 8388608;  // 8 MiB
+ inline constexpr uint64_t TextureUploadSize = 25165824; // 24 MiB
+ 

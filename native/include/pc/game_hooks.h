@@ -308,6 +308,9 @@ int pc_rplus_room_check(void);
 int pc_rplus_room_actors_off(int roomNo);
 /* 1 for an actor of a generated sea room that is still made (by its stage name: the ship, the sea). */
 int pc_rplus_keep_room_actor(const char* name);
+/* dGrass/dFlower/dTree_packet_c calc: on generated land, the farthest a prop of that kind (0 grass, 1 flowers,
+   2 trees) is drawn, so a dense square stays inside Aurora's per-frame vertex buffer; 0 elsewhere (no limit). */
+float pc_rplus_prop_far(int kind);
 /* daLodbg create: 1 when the far islands of the original sea stay out. */
 int pc_rplus_lod_off(void);
 /* daPy_lk_c::makeBgWait: a spawn point of the original island under the generated land is lifted onto it
