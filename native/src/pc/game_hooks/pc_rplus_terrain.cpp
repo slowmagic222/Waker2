@@ -943,6 +943,10 @@ int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 m
     return 1;
 }
 
+int pc_rplus_home_unlocked(void) {
+    return pc_rplus_active() && strcmp(dComIfGp_getStartStageName(), "Abesso") == 0;
+}
+
 void pc_rplus_room_actors(int roomNo) {
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return;

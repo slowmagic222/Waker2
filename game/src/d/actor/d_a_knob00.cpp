@@ -15,6 +15,7 @@
 #include "ctype.h"
 #if TARGET_PC
 #include <cstdio>
+#include "pc/game_hooks.h"
 #endif
 
 const char daKnob00_c::M_arcname[] = "knob";
@@ -355,6 +356,12 @@ BOOL daKnob00_c::CreateInit() {
     initProc(0);
 
     mDoorType = getType();
+#if TARGET_PC
+    // Randomizer+: the cabana is Link's home; its door needs no Cabana Deed (no lock, no deed tag).
+    if (getShapeType() == 4 && mDoorType == 1 && pc_rplus_home_unlocked()) {
+        mDoorType = 0;
+    }
+#endif
     if (getShapeType() == 4 && mDoorType == 1) {
         mDoorType = 5;
         fopAcM_create(fpcNm_TAG_MK_e, 0xffffff03, &current.pos, fopAcM_GetRoomNo(this), &current.angle, NULL, 0, NULL);

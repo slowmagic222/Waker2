@@ -324,6 +324,8 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode);
 /* dStage_changeScene: 1 when the exit to (stage, point, room) is an interior's way back to a door that the
    generated world moved (it set the next stage: the door's room, Link in front of it). */
 int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe);
+/* daKnob00_c::CreateInit: 1 when a locked door is Link's home's (the cabana, Abesso, needs no deed). */
+int pc_rplus_home_unlocked(void);
 /* dStage_dt_c_roomReLoader of room roomNo: the generated world's actors there (Link's home's door). */
 void pc_rplus_room_actors(int roomNo);
 /* dStage_setShipPos: in a generated sea room, the boat's spot moved to the nearest open water (from the start cell
