@@ -140,7 +140,21 @@ enum Ground { G_GRASS, G_STONE, G_SAND, G_DIRT, G_SHORE, G_EXIT, G_COUNT };
 const u32 kGroundAttr[G_COUNT] = {0x04, 0x03, 0x0B, 0x01, 0x03, 0x03};
 const u32 kGroundPass[G_COUNT] = {0, 0, 0, 0, 0x01 | 0x04 | 0x08, 0};
 constexpr int HOME_EXIT = 0x3A;  // Link's home's door (pc_rplus_exit; not a room SCLS index)
+constexpr int DOOR_EXIT0 = 0x20; // the other generated doors: 0x20 + their number in their room
 int homeDoor(cXyz* pos, s16* angleY);
+// A generated building's door: the interior it opens to and where it stands.
+struct GenDoor {
+    const char* stage;  // the interior
+    s8 spawn, room;     // where Link comes in
+    const char* also;   // another interior whose way out to the sea comes back here too (or nullptr)
+    const char* id;     // the anchor ("home": Link's home)
+    int style;          // its look (houseQuads): 0 house, 1 cave or dungeon, 2 fairy fountain
+    int seaRoom;        // the sea room it stands in
+    cXyz pos;           // on the ground, the door's front facing angle
+    s16 angle;
+    int exitId;         // its exit floor's exit id
+};
+const std::vector<GenDoor>& genDoors();
 
 Ground groundOf(char b, float y, float ny) {
     if (y < LAND_BASE + 60.0f) {
@@ -257,7 +271,15 @@ struct HouseQuad {
     u8 r, g, b;
 };
 
-void houseQuads(const cXyz& door, s16 ang, std::vector<HouseQuad>& out) {
+// The house's colours by style: walls, walls in shade, trim, the roof's two slopes.
+const u8 kHouseColours[3][5][3] = {
+    {{236, 222, 186}, {196, 182, 150}, {120, 84, 52}, {178, 64, 44}, {148, 52, 36}},     // plaster, red roof
+    {{150, 146, 138}, {120, 116, 110}, {90, 84, 78}, {104, 98, 90}, {84, 80, 74}},       // stone
+    {{240, 240, 236}, {210, 212, 214}, {120, 160, 200}, {90, 140, 200}, {70, 116, 170}}, // white, blue roof
+};
+
+void houseQuads(const cXyz& door, s16 ang, int style, std::vector<HouseQuad>& out) {
+    const u8 (*col)[3] = kHouseColours[style < 0 || style > 2 ? 0 : style];
     const float s = cM_ssin(ang), c = cM_scos(ang);  // out of the door's front
     auto pt = [&](float side, float ahead, float up, float* o) {
         o[0] = door.x + c * side + s * ahead;
@@ -275,9 +297,9 @@ void houseQuads(const cXyz& door, s16 ang, std::vector<HouseQuad>& out) {
         out.push_back(h);
     };
     const float W = HUT_HALF, D = -HUT_DEPTH, B = -200.0f, T = HUT_WALL;
-    const u8 wr = 236, wg = 222, wb = 186;               // plaster
-    const u8 sr = 196, sg = 182, sb = 150;               // plaster in shade
-    const u8 tr = 120, tg = 84, tb = 52;                 // timber trim
+    const u8 wr = col[0][0], wg = col[0][1], wb = col[0][2];  // walls
+    const u8 sr = col[1][0], sg = col[1][1], sb = col[1][2];  // walls in shade
+    const u8 tr = col[2][0], tg = col[2][1], tb = col[2][2];  // trim
     // Front, either side of the doorway, and over it.
     quad({{-W, 0, B}, {-DOORWAY_HALF, 0, B}, {-DOORWAY_HALF, 0, T}, {-W, 0, T}}, wr, wg, wb);
     quad({{DOORWAY_HALF, 0, B}, {W, 0, B}, {W, 0, T}, {DOORWAY_HALF, 0, T}}, wr, wg, wb);
@@ -301,8 +323,8 @@ void houseQuads(const cXyz& door, s16 ang, std::vector<HouseQuad>& out) {
     // Roof: two slopes from the eaves (past the walls) to the ridge, front to back with an overhang.
     const float ew = W + HUT_EAVE, ey = T - HUT_EAVE * (HUT_RIDGE - T) / W;
     const float f = HUT_EAVE, k = D - HUT_EAVE;
-    quad({{-ew, f, ey}, {0, f, HUT_RIDGE + 6}, {0, k, HUT_RIDGE + 6}, {-ew, k, ey}}, 178, 64, 44);
-    quad({{0, f, HUT_RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, HUT_RIDGE + 6}}, 148, 52, 36);
+    quad({{-ew, f, ey}, {0, f, HUT_RIDGE + 6}, {0, k, HUT_RIDGE + 6}, {-ew, k, ey}}, col[3][0], col[3][1], col[3][2]);
+    quad({{0, f, HUT_RIDGE + 6}, {ew, f, ey}, {ew, k, ey}, {0, k, HUT_RIDGE + 6}}, col[4][0], col[4][1], col[4][2]);
 }
 
 // A generated room's land: the drawing, and with o_bgw its collision (allocated in the current heap, the room's).
@@ -354,11 +376,9 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     // ---- Drawing: triangles by sample row (the land and the shallows; the sea bed is not drawn).
     PcRplusPacket& pk = t->packet;
     std::vector<HouseQuad> house;
-    {
-        cXyz door;
-        s16 ang;
-        if (homeDoor(&door, &ang) == roomNo) {
-            houseQuads(door, ang, house);
+    for (const GenDoor& gd : genDoors()) {
+        if (gd.seaRoom == roomNo) {
+            houseQuads(gd.pos, gd.angle, gd.style, house);
         }
     }
     const size_t nDrawVtx = (size_t)quads * 6 + house.size() * 6;
@@ -481,10 +501,14 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         float x0, z0, x1, z1, y;
     };
     std::vector<Floor> floors;
-    {
-        cXyz door;
-        s16 ang;
-        if (homeDoor(&door, &ang) == roomNo) {
+    std::vector<int> floorExit;  // each floor's exit id (its poly info is G_COUNT + its number)
+    for (const GenDoor& gd : genDoors()) {
+        if (gd.seaRoom != roomNo) {
+            continue;
+        }
+        const cXyz& door = gd.pos;
+        const s16 ang = gd.angle;
+        {
             // A hut behind the door (collision only for now): its front in the door's plane with a doorway the
             // door fills, its sides and back facing out, so Link only reaches the door from the front (from
             // behind it plays the door's other event, which never finished). Inside, the exit floor: the door's
@@ -527,7 +551,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                 }
             }
             floors.push_back({blkOf(fx, fz), fx - ex, fz - ez, fx + ex, fz + ez, top + 3.0f});
-            fprintf(stderr, "[rplus] Link's home's exit floor at %.0f (door at %.0f)\n", top + 3.0f, door.y);
+            floorExit.push_back(gd.exitId);
         }
     }
     // Vertices: every sample (simple, and the indices are the sample grid's), then 4 per wall, 4 per floor.
@@ -568,7 +592,8 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     const u32 offTree = align4(offB + nBlk * 2);
     const u32 offG = align4(offTree + nTree * 0x14);
     const u32 offTi = align4(offG + 0x34);
-    const u32 offName = offTi + G_COUNT * 0x10;
+    const u32 nInfo = G_COUNT + (u32)floors.size();
+    const u32 offName = offTi + nInfo * 0x10;
     const u32 size = align4(offName + 8);
     u8* blob = new u8[size];
     memset(blob, 0, size);
@@ -583,7 +608,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     o.u32at(0x1C, offTree);
     o.u32at(0x20, 1);
     o.u32at(0x24, offG);
-    o.u32at(0x28, G_COUNT);
+    o.u32at(0x28, nInfo);
     o.u32at(0x2C, offTi);
     o.u32at(0x30, 0);
     for (int j = 0; j < nv; j++) {
@@ -675,7 +700,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
                     o.u16at(at, tv[k][0]);
                     o.u16at(at + 2, tv[k][1]);
                     o.u16at(at + 4, tv[k][2]);
-                    o.u16at(at + 6, (u16)G_EXIT);
+                    o.u16at(at + 6, (u16)(G_COUNT + f));
                     o.u16at(at + 8, 0);
                     tri++;
                 }
@@ -728,9 +753,11 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
     o.u16at(offG + 0x2E, (u16)(nTree - 1));
     o.u32at(offG + 0x30, (u32)roomNo & 0xFF);  // room info id (dBgS::GetGrpRoomInfId)
     // Poly infos: no camera, exit, link or path; the ground kind's attribute.
-    for (int g = 0; g < G_COUNT; g++) {
-        u32 at = offTi + g * 0x10;
-        o.u32at(at + 0x0, g == G_EXIT ? (0x07FFE0FFu & ~(0x3Fu << 13)) | ((u32)HOME_EXIT << 13) : 0x07FFE0FFu);
+    for (u32 i = 0; i < nInfo; i++) {
+        u32 at = offTi + i * 0x10;
+        const int g = i < G_COUNT ? (int)i : G_EXIT;
+        const u32 exitId = i < G_COUNT ? 0x3Fu : (u32)floorExit[i - G_COUNT];
+        o.u32at(at + 0x0, (0x07FFE0FFu & ~(0x3Fu << 13)) | (exitId << 13));
         o.u32at(at + 0x4, 0x000000FFu | (kGroundAttr[g] << 16));
         o.u32at(at + 0x8, 0xFFFFFFFFu);
         o.u32at(at + 0xC, kGroundPass[g]);
@@ -998,38 +1025,174 @@ int homeDoor(cXyz* pos, s16* angleY) {
     return sz * pc_rplus_squares() + sx + 1;
 }
 
+// The interiors a generated door can open to, and where Link comes in (from the disc's stages' first exits in).
+struct Interior {
+    const char* stage;
+    s8 spawn, room;
+    int style;
+    const char* also;  // another stage whose way out to the sea comes back to this door
+};
+const Interior kInteriors[] = {
+    {"LinkRM", 1, 0, 0, nullptr},  {"Ojhous", 0, 0, 0, nullptr},  {"Omasao", 0, 0, 0, nullptr},
+    {"Onobuta", 0, 0, 0, nullptr}, {"Kaisen", 0, 0, 0, nullptr},  {"Nitiyou", 0, 0, 0, nullptr},
+    {"Obombh", 0, 0, 0, nullptr},  {"Ocmera", 0, 0, 0, nullptr},  {"Opub", 0, 0, 0, nullptr},
+    {"Orichh", 0, 0, 0, nullptr},  {"Pdrgsh", 0, 0, 0, nullptr},  {"Pnezumi", 0, 0, 0, nullptr},
+    {"A_mori", 0, 0, 0, nullptr},  {"Pjavdou", 0, 0, 1, nullptr}, {"Atorizk", 0, 0, 1, nullptr},
+    {"Adanmae", 0, 0, 1, nullptr}, {"Edaichi", 0, 0, 1, nullptr}, {"Ekaze", 0, 0, 1, nullptr},
+    {"MiniKaz", 0, 0, 1, nullptr}, {"MiniHyo", 0, 0, 1, nullptr}, {"Omori", 1, 0, 0, nullptr},
+    {"kindan", 0, 0, 1, nullptr},  {"ShipD", 0, 0, 1, nullptr},   {"Fairy01", 0, 0, 2, nullptr},
+    {"Fairy02", 0, 0, 2, nullptr}, {"Fairy03", 0, 0, 2, nullptr}, {"Fairy05", 0, 0, 2, nullptr},
+    {"Fairy06", 0, 0, 2, nullptr}, {"Cave01", 0, 0, 1, nullptr},  {"Cave02", 0, 0, 1, nullptr},
+    {"Cave03", 0, 0, 1, nullptr},  {"Cave04", 0, 0, 1, nullptr},  {"Cave05", 0, 0, 1, nullptr},
+    {"Cave07", 0, 0, 1, nullptr},  {"Cave09", 0, 0, 1, nullptr},  {"ITest63", 0, 0, 1, nullptr},
+    {"SubD42", 0, 0, 1, nullptr},  {"SubD43", 0, 0, 1, nullptr},  {"SubD71", 0, 0, 1, nullptr},
+    {"TF_01", 0, 0, 1, nullptr},   {"TF_02", 0, 0, 1, nullptr},   {"TF_03", 0, 0, 1, nullptr},
+    {"TF_06", 0, 0, 1, nullptr},   {"TyuTyu", 0, 0, 1, nullptr},  {"WarpD", 0, 0, 1, nullptr},
+};
+
+constexpr float LINK_HOUSE_EAST = 1400.0f;  // the start cell's own house (Outset's), beside Link's home
+constexpr float DOOR_GAP = 1000.0f;         // doors closer than this to one already placed are left out
+constexpr int DOORS_PER_ROOM = 0x3A - DOOR_EXIT0;
+
+// All the world's doors, made from its anchors: Link's home first, then every anchor with an interior this
+// table knows, at its cell's centre facing south, in a generated room, on land. Kept once made at sea (where
+// the room positions come from the stage); made again each time elsewhere.
+const std::vector<GenDoor>& genDoors() {
+    static std::vector<GenDoor> doors;
+    static bool made = false;
+    if (made || !pc_rplus_active()) {
+        return doors;
+    }
+    doors.clear();
+    made = strcmp(dComIfGp_getStartStageName(), "sea") == 0;
+    float x0, z0;
+    worldOrigin(&x0, &z0);
+    const float cs = cellSize();
+    auto roomAt = [&](float x, float z) {
+        const int sx = (int)floorf((x - x0) / ROOM_UNITS), sz = (int)floorf((z - z0) / ROOM_UNITS);
+        const int n = pc_rplus_squares();
+        return sx < 0 || sz < 0 || sx >= n || sz >= n ? 0 : sz * n + sx + 1;
+    };
+    int perRoom[64] = {};
+    {
+        GenDoor home{"Abesso", 0, 0, nullptr, "home", 0, 0, cXyz(), 0, HOME_EXIT};
+        home.seaRoom = homeDoor(&home.pos, &home.angle);
+        doors.push_back(home);
+    }
+    int sx, sy;
+    pc_rplus_start_cell(&sx, &sy);
+    for (int i = 0; i < pc_rplus_anchor_count(); i++) {
+        const char *id, *kind, *stage;
+        int cx, cy;
+        if (!pc_rplus_anchor(i, &id, &kind, &stage, &cx, &cy) || stage[0] == '\0' || strcmp(stage, "Abesso") == 0) {
+            continue;
+        }
+        const Interior* in = nullptr;
+        for (const Interior& k : kInteriors) {
+            if (strcmp(k.stage, stage) == 0) {
+                in = &k;
+                break;
+            }
+        }
+        if (in == nullptr || pc_rplus_cell_height(cx, cy) == 0) {
+            continue;
+        }
+        float x = x0 + (cx + 0.5f) * cs, z = z0 + (cy + 0.5f) * cs;
+        if (cx == sx && cy == sy) {
+            x += LINK_HOUSE_EAST;
+            z -= HOME_DOOR_AHEAD;
+        }
+        const int room = roomAt(x, z);
+        if (room == 0 || !pc_rplus_sea_room_generated(room) || perRoom[room] >= DOORS_PER_ROOM) {
+            continue;
+        }
+        bool clear = true;
+        for (const GenDoor& d : doors) {
+            if ((d.pos.x - x) * (d.pos.x - x) + (d.pos.z - z) * (d.pos.z - z) < DOOR_GAP * DOOR_GAP) {
+                clear = false;
+                break;
+            }
+        }
+        if (!clear) {
+            fprintf(stderr, "[rplus] door %s (%s) left out: too close to another\n", id, stage);
+            continue;
+        }
+        GenDoor d{in->stage, in->spawn, in->room, in->also, id, in->style, room, cXyz(), 0, 0};
+        d.pos.set(x, heightAt((x - x0) / cs, (z - z0) / cs), z);
+        d.exitId = DOOR_EXIT0 + perRoom[room]++;
+        doors.push_back(d);
+    }
+    if (made) {
+        fprintf(stderr, "[rplus] %d doors in the world\n", (int)doors.size());
+    }
+    return doors;
+}
+
+// The door whose interior is stage (or whose also is), else nullptr.
+const GenDoor* doorOfStage(const char* stage) {
+    for (const GenDoor& d : genDoors()) {
+        if (strcmp(d.stage, stage) == 0) {
+            return &d;
+        }
+    }
+    for (const GenDoor& d : genDoors()) {
+        if (d.also != nullptr && strcmp(d.also, stage) == 0) {
+            return &d;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
-    if (exitId != HOME_EXIT || !pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+    if (exitId < DOOR_EXIT0 || exitId > HOME_EXIT || !pc_rplus_active() ||
+        strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        return 0;
+    }
+    const int room = dComIfGp_roomControl_getStayNo();
+    const GenDoor* door = nullptr;
+    for (const GenDoor& d : genDoors()) {
+        if (d.exitId == exitId && d.seaRoom == room) {
+            door = &d;
+            break;
+        }
+    }
+    if (door == nullptr) {
         return 0;
     }
     if (dComIfGp_isEnableNextStage()) {
         return 1;  // already on the way (Link stands on the exit floor for a few frames)
     }
-    fprintf(stderr, "[rplus] into Link's home (Abesso)\n");
-    dComIfGp_setNextStage("Abesso", 0, 0, -1, speed, mode, TRUE, 0);
+    fprintf(stderr, "[rplus] through door %s into %s (point %d, room %d)\n", door->id, door->stage, door->spawn,
+            door->room);
+    dComIfGp_setNextStage(door->stage, door->spawn, door->room, -1, speed, mode, TRUE, 0);
     return 1;
 }
 
 int pc_rplus_exit_return(const char* stage, s16 point, s8 room, f32 speed, u32 mode, s32 wipe) {
-    if (!pc_rplus_active() || strcmp(stage, "sea") != 0 || room != CABANA_ROOM || point != CABANA_OUT_POINT) {
+    if (!pc_rplus_active() || strcmp(stage, "sea") != 0) {
+        return 0;
+    }
+    // Out of an interior with a generated door, back to its island's room: out of that door instead.
+    const GenDoor* door = doorOfStage(dComIfGp_getStartStageName());
+    if (door == nullptr || (door->exitId != HOME_EXIT && !pc_rplus_sea_room_generated(room)) ||
+        (door->exitId == HOME_EXIT && (room != CABANA_ROOM || point != CABANA_OUT_POINT))) {
         return 0;
     }
     if (dComIfGp_isEnableNextStage()) {
         return 1;  // already on the way (Link stands on the exit floor for a few frames)
     }
-    cXyz door;
-    s16 ang;
-    const int doorRoom = homeDoor(&door, &ang);
     // In front of the door, facing away from it.
     sArrival.on = true;
-    sArrival.room = doorRoom;
-    sArrival.pos.set(door.x + cM_ssin(ang) * 250.0f, door.y + 10.0f, door.z + cM_scos(ang) * 250.0f);
-    sArrival.angleY = ang;
-    fprintf(stderr, "[rplus] out of Link's home to room %d\n", doorRoom);
+    sArrival.room = door->seaRoom;
+    sArrival.pos.set(door->pos.x + cM_ssin(door->angle) * 250.0f, door->pos.y + 10.0f,
+                     door->pos.z + cM_scos(door->angle) * 250.0f);
+    sArrival.angleY = door->angle;
+    fprintf(stderr, "[rplus] out of %s by door %s to room %d\n", dComIfGp_getStartStageName(), door->id,
+            door->seaRoom);
     // A point the room has (dStage_playerInit falls back to its first one; the position is ours).
-    dComIfGp_setNextStage("sea", 0, doorRoom, -1, speed, mode, TRUE, wipe);
+    dComIfGp_setNextStage("sea", 0, door->seaRoom, -1, speed, mode, TRUE, wipe);
     return 1;
 }
 
@@ -1209,9 +1372,12 @@ void scatterProps(int roomNo) {
     float x0, z0;
     worldOrigin(&x0, &z0);
     const float cs = cellSize();
-    cXyz door;
-    s16 doorAng;
-    const bool home = homeDoor(&door, &doorAng) == roomNo;
+    std::vector<const GenDoor*> doors;
+    for (const GenDoor& gd : genDoors()) {
+        if (gd.seaRoom == roomNo) {
+            doors.push_back(&gd);
+        }
+    }
     u32 total = 0;
     for (const PropKind& k : kProps) {
         total += k.weight;
@@ -1237,8 +1403,15 @@ void scatterProps(int roomNo) {
                     continue;  // in the surf
                 }
                 const float x = x0 + gx * cs, z = z0 + gy * cs;
-                if (home && (x - door.x) * (x - door.x) + (z - door.z) * (z - door.z) < 900.0f * 900.0f) {
-                    continue;  // the house and its doorstep
+                bool nearDoor = false;
+                for (const GenDoor* d : doors) {
+                    if ((x - d->pos.x) * (x - d->pos.x) + (z - d->pos.z) * (z - d->pos.z) < 900.0f * 900.0f) {
+                        nearDoor = true;  // the house and its doorstep
+                        break;
+                    }
+                }
+                if (nearDoor) {
+                    continue;
                 }
                 const float dxy = fabsf(meshY(gx + 0.02f, gy) - y) + fabsf(meshY(gx, gy + 0.02f) - y);
                 if (dxy > 0.02f * cs * 0.9f) {
@@ -1300,17 +1473,19 @@ void pc_rplus_room_actors(int roomNo) {
     if (pc_rplus_sea_room_generated(roomNo)) {
         scatterProps(roomNo);
     }
-    cXyz pos;
-    s16 ang;
-    if (homeDoor(&pos, &ang) != roomNo) {
-        return;
+    for (const GenDoor& gd : genDoors()) {
+        if (gd.seaRoom != roomNo) {
+            continue;
+        }
+        // The cabana's door (KNOB01, shape 4: the villa door) without its deed lock (type 0), both sides a
+        // stage exit (angle x 0x0FFF), no event or switch.
+        cXyz pos = gd.pos;
+        csXyz angle(0x0FFF, gd.angle, 0);
+        cXyz scale(1.0f, 1.0f, 1.0f);
+        fopAcM_create((char*)"KNOB01", 0x004FF0FFu, &pos, roomNo, &angle, &scale);
+        fprintf(stderr, "[rplus] door %s (%s) in room %d at %.0f %.0f %.0f\n", gd.id, gd.stage, roomNo, pos.x,
+                pos.y, pos.z);
     }
-    // The cabana's door (KNOB01, shape 4: the villa door) without its deed lock (type 0), both sides a stage
-    // exit (angle x 0x0FFF), no event or switch.
-    csXyz angle(0x0FFF, ang, 0);
-    cXyz scale(1.0f, 1.0f, 1.0f);
-    fopAcM_create((char*)"KNOB01", 0x004FF0FFu, &pos, roomNo, &angle, &scale);
-    fprintf(stderr, "[rplus] Link's home's door in room %d at %.0f %.0f %.0f\n", roomNo, pos.x, pos.y, pos.z);
 }
 
 void pc_rplus_ship_pos(int roomNo, cXyz* pos, s16* angle) {
