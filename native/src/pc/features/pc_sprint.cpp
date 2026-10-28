@@ -46,43 +46,13 @@ int pc_sprint_a_held(void) {
     return sAButtonHeldFrames > 9 ? 1 : 0;
 }
 
-// Update sprint stamina state each frame
-// Called from player frame update with: sprinting (A held long enough + moving on ground), ground state
+// Each player frame (daPy_lk_c::execute): `sprinting` A is held long enough while Link runs on the ground and the
+// climbing wheel (pc_climb.cpp) has stamina; the wheel itself drains through pc_qol_climb_sprint.
 void pc_sprint_frame(int sprinting, int ground, float deltaSeconds) {
-    if (!pc_qol(PC_QOL_CLIMB)) {
-        sSprintStamina = 1.0f;
-        sIsSprinting = 0;
-        return;
-    }
-
-    sFrame++;
-
-    // Use real delta time if available, otherwise use frame-based estimate
-    float dt = deltaSeconds > 0.0f ? deltaSeconds : kFrameSeconds;
-
-    if (sprinting && ground && sSprintStamina > 0.0f) {
-        // Drain stamina while sprinting
-        sSprintStamina -= kDrainRate * dt / staminaSeconds();
-        sGroundFrames = 0;
-        sIsSprinting = 1;  // actively sprinting
-        if (sSprintStamina < 0.0f) {
-            sSprintStamina = 0.0f;
-            sIsSprinting = 0;  // out of stamina, stop sprinting
-        }
-    } else {
-        sIsSprinting = 0;
-        if (!sprinting && ground) {
-            // Refill stamina on ground
-            if (++sGroundFrames > kRefillDelayFrames && sSprintStamina < 1.0f) {
-                sSprintStamina += dt / kRefillSeconds;
-                if (sSprintStamina > 1.0f) {
-                    sSprintStamina = 1.0f;
-                }
-            }
-        } else {
-            sGroundFrames = 0;
-        }
-    }
+    (void)ground;
+    (void)deltaSeconds;
+    sIsSprinting = pc_qol(PC_QOL_CLIMB) && sprinting ? 1 : 0;
+    sSprintStamina = 1.0f;
 }
 
 // Shared stamina getter (used by climbing and sprint)
@@ -102,7 +72,7 @@ int pc_sprint_is_active(void) {
 
 // Get sprint speed multiplier (1.0 for normal, 1.6 for sprinting with stamina)
 float pc_sprint_speed_multiplier(void) {
-    if (!sIsSprinting || sSprintStamina <= 0.0f) {
+    if (!sIsSprinting) {
         return 1.0f;
     }
     return 1.6f;  // 1.6x speed boost while sprinting with stamina

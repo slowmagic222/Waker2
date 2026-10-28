@@ -119,6 +119,8 @@ int pc_qol_jump_take(void);
 int pc_qol_climb_can_grab(void);
 /* Link held on to a plain wall in this frame's climbing (setMoveBGCorrectClimb). */
 void pc_qol_climb_plain(void);
+/* Link sprints in this frame (pc_sprint.cpp, before pc_qol_climb_frame): the wheel drains as for climbing. */
+void pc_qol_climb_sprint(void);
 /* Once per player frame (daPy_lk_c::execute): `climbing` Link is in a climbing proc, `ground` he stands
    on the ground (not in the air or swimming), `still` the stick is let go; `shoulder` where the wheel
    goes, in the world. Drains and refills the wheel. */
