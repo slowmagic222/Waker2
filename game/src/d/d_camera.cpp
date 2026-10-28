@@ -1042,6 +1042,10 @@ bool dCamera_c::Run() {
             res = (this->*engine_tbl[algorithmIdx])(mCurStyle);
         } else {
             // Fall back to field camera if the requested style is invalid
+            // If in an event camera, end it to prevent camera lock-out on generated worlds
+            if (mCamParam.Algorythmn() == dCamAlg_EVENT_CAMERA_e) {
+                dComIfGp_event_reset();
+            }
 #if TARGET_PC
             fprintf(stderr, "[camera] invalid camera style: type=%d mode=%d curStyle=%d algo=%d, falling back to field\n",
                     mCurType, mCurMode, mCurStyle, algorithmIdx);
