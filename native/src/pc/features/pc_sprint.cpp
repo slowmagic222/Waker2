@@ -1,6 +1,6 @@
 // Sprint with A button (QoL feature): Hold A while moving on ground to run faster,
 // drains stamina. Tap A rolls or acts as normal. Refills when not sprinting.
-// Requires climbing (COS_QOL_CLIMB) to be enabled since they share stamina.
+// Shares stamina wheel with climbing when both are enabled.
 #include "d/dolzel.h" // IWYU pragma: keep
 #include "pc_internal.h"
 
@@ -49,7 +49,7 @@ int pc_sprint_a_held(void) {
 // Update sprint stamina state each frame
 // Called from player frame update with: sprinting (A held long enough + moving on ground), ground state
 void pc_sprint_frame(int sprinting, int ground, float deltaSeconds) {
-    if (!pc_qol(PC_QOL_CLIMB)) {
+    if (!pc_qol(PC_QOL_SPRINT)) {
         sSprintStamina = 1.0f;
         sIsSprinting = 0;
         return;

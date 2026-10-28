@@ -40,6 +40,9 @@
  *                            a stamina wheel drawn beside him (COS_QOL_CLIMB_STAMINA seconds of
  *                            climbing, 12 by default); out of stamina he lets go, and grabs again once
  *                            it has refilled on the ground
+ * COS_QOL_SPRINT=1           Link sprints forward while holding A and moving on the ground, consuming
+ *                            stamina (shared wheel with climbing); tap A still rolls/acts normally;
+ *                            refills stamina when standing still
  *
  * All off by default (0: the original game). Each value is read from the environment (the settings
  * file's value, pc_settings.h) the first time the game asks; the menu's apply function sets it
@@ -74,6 +77,7 @@ typedef enum PcQol {
     PC_QOL_AUTOSAVE,
     PC_QOL_JUMP_BUTTON,
     PC_QOL_CLIMB,
+    PC_QOL_SPRINT,
     PC_QOLS
 } PcQol;
 
