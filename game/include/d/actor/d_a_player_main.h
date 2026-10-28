@@ -1182,6 +1182,8 @@ public:
     // PC QoL (pc_qol.h): COS_QOL_JUMP_BUTTON's checks, COS_QOL_CLIMB's frame (d_a_player_main.cpp)
     bool pcCanJumpFromButton();
     void pcClimbFrame();
+    // Randomizer+ (pc/game_hooks.h): the weapon button (d_a_player_main.cpp)
+    bool pcRplusWeaponFrame();
     BOOL procLand_init(f32 i_anmSpeed, BOOL);
     BOOL procLand();
     BOOL procLandDamage_init(int);

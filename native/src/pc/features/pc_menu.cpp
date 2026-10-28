@@ -785,6 +785,15 @@ const PcSettingDesc kBuiltins[] = {
      "Jump button",
      "That button makes Link jump while he stands, walks or runs: the game's own jump off a ledge, with its "
      "ledge grabs and glides. No jump while swimming, climbing, on the boat, targeting or in cutscenes."},
+    {"COS_RPLUS_WEAPON_BUTTON", "Botón de armas (Randomizer+)",
+     "En Randomizer+, las armas de los enemigos (bastón, machete, maza, espada de Darknut, lanza, espada de Ganon "
+     "Fantasma) se encuentran en cofres y otros premios. Ese botón deja delante de Link la siguiente que tiene y él "
+     "la recoge; después de la última, las manos vacías.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kQolButton), "0", nullptr, nullptr, 215,
+     "Weapon button (Randomizer+)",
+     "In Randomizer+, the enemies' weapons (staff, machete, mace, Darknut sword, spear, Phantom Ganon's sword) are "
+     "found in chests and other checks. That button lays the next one Link has in front of him and he picks it up; "
+     "after the last, empty hands."},
     {"COS_QOL_CLIMB", "Trepar cualquier pared",
      "Link trepa cualquier pared como trepa la hiedra, al estilo de Breath of the Wild, con una rueda de "
      "resistencia junto a él. Sin resistencia se suelta, y vuelve a trepar cuando se ha llenado en el suelo.",

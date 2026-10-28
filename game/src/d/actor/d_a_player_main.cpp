@@ -7202,6 +7202,34 @@ bool daPy_lk_c::pcCanJumpFromButton() {
     return mpAttention->mLockOnState == 0 && !mpAttention->chkFlag(AttnFlag_10000000 | AttnFlag_20000000);
 }
 
+// Randomizer+ weapons (pc_weapon_unlocks.cpp, COS_RPLUS_WEAPON_BUTTON): once a frame, the weapon button. A press
+// while Link could jump from the jump button lets go of the weapon in his hand (one he drew goes) and lays the next
+// of his own in front of him; once it is made he picks it up with the game's own grab, as one an enemy dropped
+// (procGrabReady_init, which makes it his equipped d_a_boko). True when that grab starts in place of this frame's proc.
+bool daPy_lk_c::pcRplusWeaponFrame() {
+    fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
+    const bool free = pcCanJumpFromButton();
+    switch (pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e, free)) {
+    case PC_RPLUS_WEAPON_PUT_AWAY:
+        deleteEquipItem(FALSE);
+        fopAcM_delete(held);
+        return false;
+    case PC_RPLUS_WEAPON_DROP:
+        deleteEquipItem(FALSE);
+        return false;
+    default:
+        break;
+    }
+    fopAc_ac_c* weapon = pc_rplus_weapon_ready();
+    if (weapon == NULL || held != NULL || !free || fopAcM_searchActorDistance(this, weapon) > 150.0f) {
+        return false;
+    }
+    pc_rplus_weapon_taken();
+    mpAttnActorA = weapon;
+    procGrabReady_init();
+    return true;
+}
+
 // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): once a frame, the stamina wheel (pc_climb.cpp) drains
 // while Link climbs and refills on the ground; it is drawn by his shoulder.
 void daPy_lk_c::pcClimbFrame() {
@@ -11512,6 +11540,8 @@ BOOL daPy_lk_c::execute() {
     // procAutoJump flies and lands it from the next frame, with its ledge grabs and glides.
     if (pc_qol_jump_take() && pcCanJumpFromButton()) {
         procAutoJump_init();
+    } else if (pcRplusWeaponFrame()) {
+        // Randomizer+ weapons: Link picks up the one he drew, in place of this frame's proc
     } else if (mCurProcFunc != NULL) {
         (this->*mCurProcFunc)();
     }

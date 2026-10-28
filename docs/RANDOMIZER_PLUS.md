@@ -144,6 +144,15 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   `COS_RPLUS_DECOR_FIGURES` (48) figurines stand there at once, the last found. What was found and where it stands
   is kept per save file in `rplus-decor-<seed>-<slot>.txt` next to the memory card, written with the save
   (`dSv_info_c::memory_to_card`) and read with the file (`card_to_memory`).
+- **Weapon unlocks** (`pc_weapon_unlocks.cpp`, `COS_RPLUS_WEAPONS=0` to turn it off): the six enemy weapons Link
+  can pick up (`d_a_boko`: Bokoblin staff, machete, Stalfos mace, Darknut sword, Moblin spear, Phantom Ganon's
+  sword) are check rewards. A filler check the seed picks (about the 2nd, 5th, 9th, 14th, 20th and 27th, each up
+  to two later, the weapons in a seed order) gives a weapon in place of that check's decor piece, with a notice.
+  The weapon button (`COS_RPLUS_WEAPON_BUTTON`: L, D-pad down or a stick click, Quality of life tab) lays the next
+  weapon Link has in front of him and he picks it up with the game's own grab (`daPy_lk_c::pcRplusWeaponFrame`);
+  the next press puts it away and draws the next one, and after the last his hands are empty. An enemy's weapon
+  he holds is dropped instead. Kept per save file in `rplus-weapons-<seed>-<slot>.txt`, as the decor's. The
+  file is not named `pc_rplus_*` so that a push of it does not start the Steam Deck workflow.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models
