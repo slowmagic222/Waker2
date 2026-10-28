@@ -116,6 +116,10 @@ static BOOL dScnRoom_Delete(room_of_scene_class* i_this) {
     int roomNo = fopScnM_GetParam(i_this);
     deleteMapImage(i_this);
     const char * arcName = setArcName(i_this);
+#ifdef TARGET_PC
+    extern void pc_rplus_clear_camera_lock_on_room(int roomNo);
+    pc_rplus_clear_camera_lock_on_room(roomNo);
+#endif
     dComIfG_deleteStageRes(arcName);
     dStage_roomControl_c::mStatus[roomNo].mFlags = 0;
     dComIfGp_roomControl_getStatusRoomDt(roomNo)->init();

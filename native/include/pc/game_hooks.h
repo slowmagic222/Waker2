@@ -356,5 +356,8 @@ void pc_rplus_place_player(int roomNo);
 /* setInitEventBit (d_save_init.cpp): mark story events as complete for randomizer+ mode (Forest of Fairies,
    etc.) so skipped sequences don't crash. */
 void pc_rplus_init_story_events(void);
+/* dScnRoom_Delete: clear camera lock-on targets when they're from the room being deleted, to prevent
+   dangling pointers when streamed rooms unload. */
+void pc_rplus_clear_camera_lock_on_room(int roomNo);
 
 #endif /* PC_GAME_HOOKS_H */

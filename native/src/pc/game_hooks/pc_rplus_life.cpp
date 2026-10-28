@@ -686,3 +686,23 @@ void pc_rplus_init_story_events() {
     dComIfGs_setEventReg(0x2A80, 1);
     dComIfGs_setEventReg(0x2A81, 1);
 }
+
+void pc_rplus_clear_camera_lock_on_room(int roomNo) {
+    // Get the camera and check if its lock-on target is from the room being deleted
+    // This prevents dangling pointers when streamed rooms unload while the camera
+    // is still locked onto an actor in that room.
+    dCamera_c* camera = dCam_getBody();
+    if (!camera) {
+        return;
+    }
+
+    // Check force lock-on (mLockOnActorId / mpLockonActor)
+    fopAc_ac_c* target = camera->GetForceLockOnActor();
+    if (target && target->current.roomNo == roomNo) {
+        // ForceLockOff with fpcM_ERROR_PROCESS_ID_e will clear any lock-on
+        camera->ForceLockOff(fpcM_ERROR_PROCESS_ID_e);
+    }
+
+    // Note: SubjectLockOff() clears mpLockonTarget but we don't have direct access to it
+    // from here. The force lock system handles the primary reference we care about.
+}
