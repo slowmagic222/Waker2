@@ -794,6 +794,13 @@ const PcSettingDesc kBuiltins[] = {
      "In Randomizer+, the enemies' weapons (staff, machete, mace, Darknut sword, spear, Phantom Ganon's sword) are "
      "found in chests and other checks. That button lays the next one Link has in front of him and he picks it up; "
      "after the last, empty hands."},
+    {"COS_RPLUS_WEAPONS_START", "Armas desde el principio (Randomizer+)",
+     "Link tiene las seis armas de los enemigos desde el principio, para sacarlas con el botón de armas. "
+     "Desactivado: se encuentran en cofres y otros premios.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "1", nullptr, nullptr, 216,
+     "Weapons from the start (Randomizer+)",
+     "Link has all six enemy weapons from the start, to draw with the weapon button. Off: they are found in chests "
+     "and other checks."},
     {"COS_QOL_CLIMB", "Trepar cualquier pared",
      "Link trepa cualquier pared como trepa la hiedra, al estilo de Breath of the Wild, con una rueda de "
      "resistencia junto a él. Sin resistencia se suelta, y vuelve a trepar cuando se ha llenado en el suelo.",

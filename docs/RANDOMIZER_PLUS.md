@@ -153,6 +153,8 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   the next press puts it away and draws the next one, and after the last his hands are empty. An enemy's weapon
   he holds is dropped instead. Kept per save file in `rplus-weapons-<seed>-<slot>.txt`, as the decor's. The
   file is not named `pc_rplus_*` so that a push of it does not start the Steam Deck workflow.
+  `COS_RPLUS_WEAPONS_START` (on by default, "Weapons from the start") gives Link all six at once instead, and no
+  check gives one.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models

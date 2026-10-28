@@ -10,6 +10,9 @@
 // the seed picks: the k-th weapon at about the 2nd, 5th, 9th, 14th, 20th and 27th, each a little later by the seed,
 // in an order the seed shuffles. That check gives no decor piece; the filler still comes.
 //
+// From the start (Dillon, 2026-10-28): COS_RPLUS_WEAPONS_START, on by default, gives Link all six at once and no
+// check gives one; off, they are found as above.
+//
 // The save: rplus-weapons-<seed>-<slot>.txt next to the memory card (as the decor's), read when the file is loaded
 // and written when the game saves. Picking up an enemy's weapon in the world unlocks nothing.
 //
@@ -91,10 +94,21 @@ int checkFor(int k) {
     return kAt[k] + (int)(mix((u32)k, pc_rplus_seed() ^ 0xB0C0u) % 3u);
 }
 
+// COS_RPLUS_WEAPONS_START (Dillon, 2026-10-28: "new weapons in default inventory"): Link has all six from the start
+// (the default); then no check gives one. 0: they are found at checks.
+bool allFromStart() {
+    const char* v = pc_settings_get("COS_RPLUS_WEAPONS_START");
+    return v == nullptr || v[0] == '\0' || strcmp(v, "0") != 0;
+}
+
+bool owned(int i) {
+    return sState.owned[i] || allFromStart();
+}
+
 int ownedCount() {
     int n = 0;
-    for (bool o : sState.owned) {
-        n += o;
+    for (int i = 0; i < WEAPONS; i++) {
+        n += owned(i);
     }
     return n;
 }
@@ -164,7 +178,7 @@ int sPendingFrames = 0;
 // the owned weapon after `from` (-1: the first owned), -1 past the last
 int nextOwned(int from) {
     for (int i = from + 1; i < WEAPONS; i++) {
-        if (sState.owned[i]) {
+        if (owned(i)) {
             return i;
         }
     }
@@ -252,7 +266,7 @@ void pc_rplus_weapon_save(int slot) {
 }
 
 int pc_rplus_weapon_check(int itemNo) {
-    if (!pc_rplus_active() || !enabled()) {
+    if (!pc_rplus_active() || !enabled() || allFromStart()) {
         return 0;
     }
     // filler, as the decor's: a heart, rupees, magic, bombs, arrows, a fairy, three hearts
@@ -318,7 +332,7 @@ int pc_rplus_weapon_frame(unsigned int heldId, int free) {
     if (heldId != fpcM_ERROR_PROCESS_ID_e) {
         return PC_RPLUS_WEAPON_DROP;  // an enemy's: dropped; the next press draws one of Link's
     }
-    if (sState.selected < 0 || !sState.owned[sState.selected]) {
+    if (sState.selected < 0 || !owned(sState.selected)) {
         sState.selected = nextOwned(-1);
     }
     layDown(link, sState.selected);
