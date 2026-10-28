@@ -2331,6 +2331,14 @@ bool Act_c::damage_tg_acc() {
 /* 00004384-00004768       .text damage_cc_proc__Q27daTsubo5Act_cFv */
 bool Act_c::damage_cc_proc() {
     bool bVar1 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, a sword or a bomb doesn't break the decor either.
+    if (pc_rplus_home_unbreakable()) {
+        mCyl.ClrAtHit();
+        mCyl.ClrTgHit();
+        return false;
+    }
+#endif
     if (mCyl.ChkAtHit()) {
         if (mType != 7) {
             damaged(3, NULL);
@@ -2574,6 +2582,12 @@ bool Act_c::damage_bg_proc_directly() {
 /* 00004D04-00004D58       .text damage_kill_proc__Q27daTsubo5Act_cFv */
 bool Act_c::damage_kill_proc() {
     bool bVar1 = false;
+#if TARGET_PC
+    // Randomizer+: a spiky seed that is house decor (pc_rplus_decor.cpp) doesn't wither away.
+    if (pc_rplus_decor_owns(fopAcM_GetID(this))) {
+        return false;
+    }
+#endif
     if (m800 > 0) {
         m800--;
         if (m800 == 0) {

@@ -10,6 +10,9 @@
 #include "f_op/f_op_camera.h"
 #include "d/d_com_inf_game.h"
 #include "f_op/f_op_actor_mng.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 
 namespace daStone2 {
 Mtx daStone2::Act_c::M_tmp_mtx;
@@ -276,6 +279,14 @@ void Act_c::damaged(int arg1) {
 /* 00001088-0000115C       .text damage_cc_proc__Q28daStone25Act_cFv */
 bool Act_c::damage_cc_proc() {
     bool uVar3 = 0;
+#if TARGET_PC
+    // Randomizer+: in Link's home, the decor doesn't break.
+    if (pc_rplus_home_unbreakable()) {
+        mCyl.ClrAtHit();
+        mCyl.ClrTgHit();
+        return false;
+    }
+#endif
     if (mCyl.ChkAtHit()) {
         mCyl.ClrAtHit();
         damaged(3);
@@ -303,6 +314,26 @@ bool Act_c::damage_bg_proc() {
 /* 00001164-00001214       .text damage_bg_proc_directly__Q28daStone25Act_cFv */
 bool Act_c::damage_bg_proc_directly() {
     bool uVar2 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, a boulder set down lands and stands again: still, solid (its collision back) and
+    // liftable.
+    if (pc_rplus_home_unbreakable()) {
+        if (m648 == 2 && (mAcch.ChkGroundHit() || mAcch.ChkWallHit() || mAcch.ChkRoofHit())) {
+            cam_lockoff();
+            fopAcM_SetSpeedF(this, 0.0f);
+            speed.set(0.0f, 0.0f, 0.0f);
+            shape_angle.x = 0;
+            home.pos = current.pos;
+            if (!mpBgW->ChkUsed()) {
+                dComIfG_Bgsp()->Regist(mpBgW, this);
+            }
+            cLib_onBit<u32>(attention_info.flags, fopAc_Attn_ACTION_CARRY_e);
+            m65A = 2;
+            mode_wait_init();
+        }
+        return false;
+    }
+#endif
 
     if (m648 != 0) {
         if (m648 == 2) {

@@ -7,6 +7,9 @@
 #if TARGET_PC
 #include "pc/pc_aspect.h"
 #include "pc/game_hooks.h" // dMeter_pc*: the widescreen HUD (pc_meter_hooks.cpp)
+#include "pc/pc_qol.h"
+#include "pc/pc_settings.h"
+#include <stdlib.h>
 #endif
 #include "d/d_meter.h"
 #include "JSystem/J2DGraph/J2DOrthoGraph.h"
@@ -723,7 +726,14 @@ void dMeter_PaneShow(fopMsgM_pane_class* pane) {
 
 /* 801EFAC8-801EFC40       .text dMeter_alphaControl__FP15sub_meter_class */
 void dMeter_alphaControl(sub_meter_class* i_Meter) {
+#if TARGET_PC
+    // QoL "Botón para ocultar el HUD" (pc_qol.h): the compass (the one user of this alpha) fades out and
+    // back in. Only the alpha: the 2D-hidden status flags (dMeter_statusCheck) would also take the item
+    // buttons away from the player (field_0x3024, the button action mode).
+    if (!dComIfGp_2dShowCheck() || pc_qol_hud_hidden()) {
+#else
     if (!dComIfGp_2dShowCheck()) {
+#endif
         if (i_Meter->field_0x2f6c > 0.0f) {
             i_Meter->field_0x2f6c = fopMsgM_valueIncrease(g_meterHIO.field_0x6, (int)i_Meter->field_0x2fd8, 0);
             i_Meter->field_0x2fd8--;
@@ -1111,12 +1121,36 @@ void dMeter_recollect_boss_data() {
     }
 }
 
+#if TARGET_PC
+// QoL HUD scale (COS_HUD_SCALE, the Graphics tab): the HUD's own screens drawn bigger or smaller, each part
+// about its corner of the 2D area (J2DPane::sPcHudScale); the timers and the minimap keep their size.
+static void dMeter_pcHudScale(bool on) {
+    f32 scale = 1.0f;
+    if (on) {
+        scale = (f32)atof(pc_settings_get("COS_HUD_SCALE"));
+        scale = scale < 0.5f || scale > 2.0f ? 1.0f : scale;
+    }
+    J2DPane::sPcHudScale = scale;
+    J2DPane::sPcHudLeft = pc_aspect_2d_left();
+    J2DPane::sPcHudRight = pc_aspect_2d_right();
+    J2DPane::sPcHudTop = -21.0f; // m_Do_graphic's 2D ortho: -21..503
+    J2DPane::sPcHudBottom = 503.0f;
+}
+#endif
+
 /* 801F0608-801F06CC       .text draw__16dDlst_2DMETER1_cFv */
 void dDlst_2DMETER1_c::draw() {
     J2DOrthoGraph* graf = dComIfGp_getCurrentGrafPort();
     graf->setPort();
+#if TARGET_PC
+    dMeter_pcHudScale(true);
     sMainParts3->draw(0.0f, 0.0f, graf);
     sMainParts1->draw(0.0f, 0.0f, graf);
+    dMeter_pcHudScale(false);
+#else
+    sMainParts3->draw(0.0f, 0.0f, graf);
+    sMainParts1->draw(0.0f, 0.0f, graf);
+#endif
 #if TARGET_PC
     // Widescreen (pc_aspect.h): the timers move right with the HUD (16:9 code, 0x801F0678/94).
     if (sScrTimer1 != NULL) {
@@ -1144,7 +1178,9 @@ void dDlst_2DMETER2_c::draw() {
     graf->setPort();
 #if TARGET_PC
     // Widescreen: main_parts2 moves right with the HUD (16:9 code, 0x801F0700).
+    dMeter_pcHudScale(true);
     sMainParts2->draw(pc_aspect_hud_shift(), 0.0f, graf);
+    dMeter_pcHudScale(false);
 #else
     sMainParts2->draw(0.0f, 0.0f, graf);
 #endif
@@ -5014,7 +5050,12 @@ void dMeter_menuPlusMove(sub_meter_class* i_Meter) {
     }
     dVar13 = fopMsgM_valueIncrease(5, 5 - i_Meter->field_0x02c0.mUserArea, 0);
     fopMsgM_setNowAlpha(&i_Meter->field_0x02c0, dVar13);
+#if TARGET_PC
+    // QoL "Botón para ocultar el HUD" (pc_qol.h): the minimap and its points draw with this alpha
+    dMap_c::setMapAlpha(pc_qol_hud_hidden() ? 0 : dVar13 * 255.0f);
+#else
     dMap_c::setMapAlpha(dVar13 * 255.0f);
+#endif
 #if VERSION == VERSION_DEMO
     if (!dKyw_gbwind_use_check()) {
         fopMsgM_setNowAlphaZero(&i_Meter->field_0x02f8);
@@ -7603,6 +7644,12 @@ static BOOL dMeter_Draw(sub_meter_class* i_Meter) {
 #else
     if (!fopOvlpM_IsDoingReq()) {
 #endif
+#if TARGET_PC
+        // QoL "Botón para ocultar el HUD" (pc_qol.h): the HUD's screens are not drawn while it is hidden,
+        // as during a screen fade (fopOvlpM_IsDoingReq); the meter keeps running, so the buttons work.
+        // The minimap goes with its alpha (dMap_c::setMapAlpha); the metronome below stays.
+        if (!pc_qol_hud_hidden()) {
+#endif
         dComIfGd_set2DOpa(&meter1);
         for (s32 i = 0; i < 3; i++) {
             dComIfGd_set2DOpa(&clock[i]);
@@ -7611,6 +7658,9 @@ static BOOL dMeter_Draw(sub_meter_class* i_Meter) {
             dComIfGd_set2DOpa(&tekari);
         }
         dComIfGd_set2DOpaTop(&meter2);
+#if TARGET_PC
+        }
+#endif
         dMeter_moveItemDraw(i_Meter);
         if (
 #if VERSION == VERSION_DEMO

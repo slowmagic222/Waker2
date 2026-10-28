@@ -346,10 +346,28 @@ void pc_rplus_room_actors(int roomNo);
 void pc_rplus_ship_pos(int roomNo, class cXyz* pos, s16* angle);
 // Randomizer+: the Wind's Requiem played on land calls the boat to the shore nearest `from`; true if it came.
 bool pc_rplus_call_ship(const class cXyz& from);
-// Randomizer+: in Link's home (the cabana), a dish or pot of the stage becomes something to carry (name, params
-// changed; 1 if so), and carried things there don't break.
-int pc_rplus_home_actor(char* name, u32* params);
+// Randomizer+: in Link's home (the cabana), the stage's dishes and pots are left out (1: don't make it; its spot is
+// a hint for the decor's floor), and carried things there don't break.
+int pc_rplus_home_actor(const char* name, const class cXyz& pos);
 int pc_rplus_home_unbreakable(void);
+// Randomizer+ house decor (pc_rplus_decor.cpp): what Link finds about the world and keeps in his home.
+// dSv_info_c::init: a new game's (the starting pieces); card_to_memory / memory_to_card of file slot: its decor file
+// read / written.
+void pc_rplus_decor_reset(void);
+void pc_rplus_decor_load(int slot);
+void pc_rplus_decor_save(int slot);
+// fopAcM_createItemForTrBoxDemo (a chest, sunken treasure, a demo pickup): a check of filler itemNo also gives the
+// next decor piece Link lacks; 1 if it did.
+int pc_rplus_decor_check(int itemNo);
+// pc_rplus_home_actor: where a dish or pot of the cabana stood.
+void pc_rplus_decor_home_slot(const class cXyz& pos);
+// daPy_lk_c::execute, once a frame: pieces found, the cabana's pieces made and where they were set down.
+void pc_rplus_decor_frame(void);
+// 1 when the actor procId is a decor piece (in the world or the cabana) / one in the cabana.
+int pc_rplus_decor_owns(unsigned int procId);
+int pc_rplus_decor_in_home(unsigned int procId);
+// The notice of the piece just found ("Found decor: Barrel ..."), NULL if none now.
+const char* pc_rplus_decor_notice(void);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);

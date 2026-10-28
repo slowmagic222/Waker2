@@ -84,6 +84,13 @@ public:
     /* 0x741 */ s8 m741;
     /* 0x742 */ u8 mLoadFlags;
     /* 0x743 */ u8 m743[0x744 - 0x743];
+#if TARGET_PC
+    // Randomizer+ house decor (pc_rplus_decor.cpp): a figurine found about the world or standing in Link's home,
+    // shown, carried about and set down instead of talked to.
+    u8 mPcDecor;
+    u8 mPcCarried;
+    void pcDecorExecute();
+#endif
 };
 
 #endif /* D_A_OBJ_FIGURE_H */

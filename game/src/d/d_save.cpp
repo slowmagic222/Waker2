@@ -22,6 +22,7 @@
 #include "stdio.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "pc/game_hooks.h"
 #include "d/d_item.h"
 
 // Rando (pc_rando.h): the new-game settings wwrando writes into main.dol (its custom_symbols), from
@@ -1603,6 +1604,10 @@ void dSv_info_c::init() {
 
     daNpc_Sarace_c::ship_race_rupee = 0;
     daNpc_Sarace_c::ship_race_result = 0;
+#if TARGET_PC
+    // Randomizer+: a new game's house decor (the starting pieces), until a file's is read
+    pc_rplus_decor_reset();
+#endif
 }
 
 /* 8005D660-8005D860       .text reinit__10dSv_info_cFv */
@@ -2078,6 +2083,10 @@ int dSv_info_c::memory_to_card(char* i_cardPtr, int i_dataNum) {
         return -1;
     } else {
         printf("SAVE size:%d\n", save_size);
+#if TARGET_PC
+        // Randomizer+: the house decor's file with the save
+        pc_rplus_decor_save(i_dataNum);
+#endif
         return 0;
     }
 }
@@ -2165,6 +2174,10 @@ int dSv_info_c::card_to_memory(char* i_cardPtr, int i_dataNum) {
         return -1;
     } else {
         printf("LOAD size:%d\n", load_size);
+#if TARGET_PC
+        // Randomizer+: the house decor the file had
+        pc_rplus_decor_load(i_dataNum);
+#endif
         return 0;
     }
 }

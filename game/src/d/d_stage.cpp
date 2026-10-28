@@ -1324,18 +1324,11 @@ void dStage_actorCreate(stage_actor_data_class* i_actorData, fopAcM_prm_class* i
         JKRHeap::free(i_actorPrm, NULL);
         return;
     }
-    // Randomizer+: Link's home emptied, its dishes and pots things to carry instead.
+    // Randomizer+: Link's home emptied of its dishes and pots, for the decor Link finds.
     char pcName[9] = {};
     memcpy(pcName, i_actorData->name, 8);
-    if (pc_rplus_home_actor(pcName, &i_actorPrm->base.parameters)) {
-        dStage_objectNameInf* home_p = dStage_searchName(pcName);
-        if (home_p == NULL) {
-            JKRHeap::free(i_actorPrm, NULL);
-            return;
-        }
-        i_actorPrm->argument = home_p->argument;
-        i_actorPrm->gbaName = home_p->gbaName;
-        fopAcM_Create(home_p->procname, NULL, i_actorPrm);
+    if (pc_rplus_home_actor(pcName, i_actorPrm->base.position)) {
+        JKRHeap::free(i_actorPrm, NULL);
         return;
     }
 #endif
@@ -2529,6 +2522,10 @@ void dStage_turnRestart() {
 #if VERSION > VERSION_DEMO
 /* 80043BD0-80043C84       .text dStage_escapeRestart__Fv */
 void dStage_escapeRestart() {
+#if TARGET_PC
+    fprintf(stderr, "[cos] stage: escape restart of %s (a room could not load) at frame %u\n",
+            dComIfGp_getStartStageName(), pc_frame_count());
+#endif
     daPy_lk_c* player_p = daPy_getPlayerLinkActorClass();
     dComIfGs_setTurnRestart(player_p->current.pos, player_p->shape_angle.y, fopAcM_GetRoomNo(player_p), player_p->getDayNightParamData());
 

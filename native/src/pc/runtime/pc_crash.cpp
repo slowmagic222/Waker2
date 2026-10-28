@@ -9,6 +9,11 @@
 //   (for atos), and a symbolised backtrace (backtrace_symbols_fd over the faulting pc, lr and the
 //   frame-pointer chain of the interrupted context). Everything goes to stderr and to
 //   <COS_RUN_DIR>/backtrace.txt; then exit 13. native/tools/run.sh adds atos file:line names.
+// - On Linux x86-64, an integer divide by zero (and INT_MIN / -1) does not crash: the PowerPC's
+//   divw does not trap and the Switch's sdiv gives 0, and game code relies on that (Gohma's first
+//   turn in Dragon Roost divides by a scale of 0). The handler gives the idiv/div a quotient of 0
+//   (INT_MIN for INT_MIN / -1, as sdiv) and remainder = dividend - quotient * divisor, steps over
+//   the instruction and logs the site once.
 // - pc_panic (called by OSPanic on PC) prints the same state and backtrace, then exits 12.
 // - dumpAllThreads (the stall report) suspends every other thread and walks its frame chain.
 // Memory is read with vm_read_overwrite, so a corrupt frame chain cannot fault the handler.
@@ -304,7 +309,184 @@ void crashReport(int fd, int sig, siginfo_t* info, ucontext_t* uc) {
     writeFrames(fd, frames, n, exact);
 }
 
+#if defined(__linux__) && defined(__x86_64__)
+uintptr_t sImageBase = 0;
+
+// The general register numbered as in ModRM/SIB (0 rax ... 15 r15).
+uint64_t gpr(const greg_t* g, int n) {
+    static const int kRegs[16] = {REG_RAX, REG_RCX, REG_RDX, REG_RBX, REG_RSP, REG_RBP,
+                                  REG_RSI, REG_RDI, REG_R8,  REG_R9,  REG_R10, REG_R11,
+                                  REG_R12, REG_R13, REG_R14, REG_R15};
+    return (uint64_t)g[kRegs[n]];
+}
+
+// Decodes the div/idiv at pc: its operand size in bytes (1, 2, 4 or 8), length and divisor
+// (sign-extended for idiv), or 0 if the bytes at pc are not one.
+int decodeDivide(const greg_t* g, const uint8_t* pc, int* length, int64_t* divisor) {
+    const uint8_t* p = pc;
+    bool opSize16 = false;
+    for (int i = 0; i < 4; i++) {
+        const uint8_t b = *p;
+        if (b == 0x66) {
+            opSize16 = true;
+        } else if (b != 0x67 && b != 0xF0 && b != 0xF2 && b != 0xF3 && b != 0x2E && b != 0x36 &&
+                   b != 0x3E && b != 0x26 && b != 0x64 && b != 0x65) {
+            break;
+        }
+        p++;
+    }
+    uint8_t rex = 0;
+    if ((*p & 0xF0) == 0x40) {
+        rex = *p++;
+    }
+    const uint8_t opcode = *p++;
+    if (opcode != 0xF6 && opcode != 0xF7) {
+        return 0;
+    }
+    const uint8_t modrm = *p++;
+    const int mod = modrm >> 6, reg = (modrm >> 3) & 7, rm = modrm & 7;
+    if (reg != 6 && reg != 7) {
+        return 0; // not div / idiv
+    }
+    const int size = opcode == 0xF6 ? 1 : (rex & 0x08) ? 8 : opSize16 ? 2 : 4;
+    uint64_t value;
+    if (mod == 3) {
+        const int n = rm | ((rex & 0x01) << 3);
+        if (size == 1 && rex == 0 && rm >= 4) {
+            value = gpr(g, rm - 4) >> 8; // ah, ch, dh, bh
+        } else {
+            value = gpr(g, n);
+        }
+    } else {
+        uint64_t addr = 0;
+        bool ripRelative = false;
+        if (rm == 4) {
+            const uint8_t sib = *p++;
+            const int scale = sib >> 6, index = ((sib >> 3) & 7) | ((rex & 0x02) << 2);
+            const int base = (sib & 7) | ((rex & 0x01) << 3);
+            if (index != 4) {
+                addr += gpr(g, index) << scale;
+            }
+            if (mod == 0 && (sib & 7) == 5) {
+                addr += (uint64_t)(int64_t) * (const int32_t*)p;
+                p += 4;
+            } else {
+                addr += gpr(g, base);
+            }
+        } else if (mod == 0 && rm == 5) {
+            addr = (uint64_t)(int64_t) * (const int32_t*)p;
+            p += 4;
+            ripRelative = true;
+        } else {
+            addr = gpr(g, rm | ((rex & 0x01) << 3));
+        }
+        if (mod == 1) {
+            addr += (uint64_t)(int64_t) * (const int8_t*)p;
+            p += 1;
+        } else if (mod == 2) {
+            addr += (uint64_t)(int64_t) * (const int32_t*)p;
+            p += 4;
+        }
+        if (ripRelative) {
+            addr += (uint64_t)(uintptr_t)p; // relative to the next instruction (no immediate)
+        }
+        // The divide faulted on its result, not on reading this operand, so it is readable.
+        const uint8_t* m = (const uint8_t*)(uintptr_t)addr;
+        value = size == 1 ? *m : size == 2 ? *(const uint16_t*)m : size == 4 ? *(const uint32_t*)m
+                                                                           : *(const uint64_t*)m;
+    }
+    if (size < 8) {
+        value &= (1ull << (size * 8)) - 1;
+    }
+    if (reg == 7 && size < 8 && (value >> (size * 8 - 1)) != 0) {
+        value |= ~0ull << (size * 8); // idiv: sign-extend
+    }
+    *length = (int)(p - pc);
+    *divisor = (int64_t)value;
+    return size;
+}
+
+// Finishes an integer divide that trapped as the PowerPC and the Switch would have; false if the
+// instruction is not a div/idiv (then it is a crash).
+bool recoverIntDivide(int sig, siginfo_t* info, ucontext_t* uc) {
+    // Linux reports both a zero divisor and INT_MIN / -1 as FPE_INTDIV (the CPU raises #DE for
+    // both); the divisor tells them apart.
+    if (sig != SIGFPE || uc == nullptr || (info->si_code != FPE_INTDIV && info->si_code != FPE_INTOVF)) {
+        return false;
+    }
+    greg_t* g = uc->uc_mcontext.gregs;
+    const uint8_t* pc = (const uint8_t*)g[REG_RIP];
+    int length = 0;
+    int64_t divisor = 0;
+    const int size = decodeDivide(g, pc, &length, &divisor);
+    if (size == 0) {
+        return false;
+    }
+    // Divide by zero: quotient 0, remainder the dividend. Overflow (INT_MIN / -1): quotient
+    // INT_MIN, remainder 0. Both are the dividend's low part in one of the two.
+    const bool byZero = divisor == 0;
+    if (!byZero && divisor != -1) {
+        return false; // a quotient overflow C code does not make
+    }
+    const uint64_t rax = (uint64_t)g[REG_RAX];
+    const uint64_t rdx = (uint64_t)g[REG_RDX];
+    switch (size) {
+    case 1: {
+        const uint64_t al = rax & 0xFF;
+        const uint64_t quot = byZero ? 0 : al, rem = byZero ? al : 0;
+        g[REG_RAX] = (greg_t)((rax & ~0xFFFFull) | (rem << 8) | quot);
+        break;
+    }
+    case 2: {
+        const uint64_t ax = rax & 0xFFFF;
+        g[REG_RAX] = (greg_t)((rax & ~0xFFFFull) | (byZero ? 0 : ax));
+        g[REG_RDX] = (greg_t)((rdx & ~0xFFFFull) | (byZero ? ax : 0));
+        break;
+    }
+    case 4: {
+        const uint64_t eax = rax & 0xFFFFFFFFull;
+        g[REG_RAX] = (greg_t)(byZero ? 0 : eax);
+        g[REG_RDX] = (greg_t)(byZero ? eax : 0);
+        break;
+    }
+    default:
+        g[REG_RAX] = (greg_t)(byZero ? 0 : rax);
+        g[REG_RDX] = (greg_t)(byZero ? rax : 0);
+        break;
+    }
+    g[REG_RIP] = (greg_t)(pc + length);
+
+    // One line per site (the first 32), so a divide that runs every frame does not fill the log.
+    static std::atomic<uintptr_t> sSites[32];
+    const uintptr_t site = (uintptr_t)pc;
+    for (auto& slot : sSites) {
+        uintptr_t seen = slot.load();
+        if (seen == site) {
+            return true;
+        }
+        if (seen == 0 && slot.compare_exchange_strong(seen, site)) {
+            writef(STDERR_FILENO,
+                   "[cos] %s at switchwaker+0x%llx: quotient %s, as on the GameCube and the Switch "
+                   "(scene %d)\n",
+                   byZero ? "integer divide by zero" : "integer divide overflow",
+                   (unsigned long long)(site - sImageBase), byZero ? "0" : "the dividend",
+                   sScene.load());
+            return true;
+        }
+        if (slot.load() == site) {
+            return true;
+        }
+    }
+    return true;
+}
+#endif
+
 void crashHandler(int sig, siginfo_t* info, void* context) {
+#if defined(__linux__) && defined(__x86_64__)
+    if (recoverIntDivide(sig, info, (ucontext_t*)context)) {
+        return;
+    }
+#endif
     // Only one thread reports; pc_exit makes any later caller wait.
     static std::atomic<int> sInHandler{0};
     int expected = 0;
@@ -408,6 +590,14 @@ void installCrashHandler() {
     ss.ss_flags = 0;
     sigaltstack(&ss, nullptr);
 
+#if defined(__linux__) && defined(__x86_64__)
+    dl_iterate_phdr(
+        [](struct dl_phdr_info* phdr, size_t, void*) -> int {
+            sImageBase = (uintptr_t)phdr->dlpi_addr;
+            return 1; // the first object is the executable
+        },
+        nullptr);
+#endif
     struct sigaction sa = {};
     sa.sa_sigaction = crashHandler;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;

@@ -417,6 +417,25 @@ int pc_button_remap_port_input(int port, int* backHeld) {
     return -1;
 }
 
+int pc_button_remap_input_held(int port, const char* value) {
+    Input in;
+    if (port < 0 || port >= PAD_MAX_CONTROLLERS || !remap::parseInput(value, &in) || PADIsGCAdapter((u32)port)) {
+        return 0;
+    }
+    const s32 index = PADGetIndexForPort((u32)port);
+    SDL_Gamepad* gamepad = index >= 0 ? PADGetSDLGamepadForIndex((u32)index) : nullptr;
+    if (gamepad == nullptr) {
+        return 0;
+    }
+    const u32 native = nativeButton(in);
+    if (native == PAD_NATIVE_TRIGGER_LEFT || native == PAD_NATIVE_TRIGGER_RIGHT) {
+        const SDL_GamepadAxis axis =
+            native == PAD_NATIVE_TRIGGER_LEFT ? SDL_GAMEPAD_AXIS_LEFT_TRIGGER : SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+        return SDL_GetGamepadAxis(gamepad, axis) > kTriggerPressed ? 1 : 0;
+    }
+    return SDL_GetGamepadButton(gamepad, (SDL_GamepadButton)native) ? 1 : 0;
+}
+
 int pc_button_remap_current(int action) {
     if (action < 0 || action >= (int)kActions) {
         return -1;

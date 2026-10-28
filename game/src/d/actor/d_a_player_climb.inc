@@ -114,7 +114,15 @@ BOOL daPy_lk_c::setMoveBGCorrectClimb() {
         current.pos.x + cM_ssin(shape_angle.y) * 80.0f, local_1c.y, current.pos.z + cM_scos(shape_angle.y) * 80.0f
     );
     mLinkLinChk.Set(&local_1c, &local_28, this);
-    if ((!dComIfG_Bgsp()->LineCross(&mLinkLinChk) || dComIfG_Bgsp()->GetWallCode(mLinkLinChk) != 1 ||
+    // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): a plain wall holds Link as ivy does while the
+    // stamina wheel has some left (pc_climb.cpp); once empty he falls off as from the end of the ivy
+    const BOOL climbHit = dComIfG_Bgsp()->LineCross(&mLinkLinChk);
+    int climbCode = climbHit ? dComIfG_Bgsp()->GetWallCode(mLinkLinChk) : -1;
+    if (climbCode == 0 && pc_qol_climb_can_grab() && !pcClimbDoorWall(mLinkLinChk)) {
+        climbCode = 1;
+        pc_qol_climb_plain();
+    }
+    if ((!climbHit || climbCode != 1 ||
          std::fabsf(dComIfG_Bgsp()->GetTriPla(mLinkLinChk)->GetNP()->y) > 0.05f) ||
         ((mCurProc == daPyProc_CLIMB_MOVE_UP_DOWN_e || mCurProc == daPyProc_CLIMB_MOVE_SIDE_e) &&
          current.pos.y - 15.0f < mAcch.GetGroundH()))

@@ -1567,6 +1567,13 @@ void dMap_2DSQ_c::draw() {
 
 /* 80048A20-80048B54       .text mapDrawIconFree__6dMap_cFssUc */
 void dMap_c::mapDrawIconFree(s16 param_1, s16 param_2, u8 param_3) {
+#if TARGET_PC
+    // QoL hide-HUD button (pc_qol.h): the camera icon over the minimap goes with the HUD (its own alpha,
+    // not the map's)
+    if (pc_qol_hud_hidden()) {
+        return;
+    }
+#endif
     if (param_3) {
         mIconFreeTex.setPos(param_1 - mIconFreeScale * 64.0f, param_2 - mIconFreeScale * 16.0f, param_1 + mIconFreeScale * 64.0f, param_2 + mIconFreeScale * 16.0f);
         mIconFreeTexture.mColor.r = 255;
@@ -1579,6 +1586,13 @@ void dMap_c::mapDrawIconFree(s16 param_1, s16 param_2, u8 param_3) {
 
 /* 80048B54-80048C80       .text mapDrawIconSelf__6dMap_cFssUc */
 void dMap_c::mapDrawIconSelf(s16 param_1, s16 param_2, u8 param_3) {
+#if TARGET_PC
+    // QoL hide-HUD button (pc_qol.h): the camera icon over the minimap goes with the HUD (its own alpha,
+    // not the map's)
+    if (pc_qol_hud_hidden()) {
+        return;
+    }
+#endif
     if (param_3) {
         mIconSelfTex.setPos(param_1 - mIconFreeScale * 64.0f, param_2 - mIconFreeScale * 16.0f, param_1 + mIconFreeScale * 64.0f, param_2 + mIconFreeScale * 16.0f);
         mIconSelfTexture.mColor.r = 255;

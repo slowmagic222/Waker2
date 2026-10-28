@@ -15,6 +15,9 @@
 #include "m_Do/m_Do_ext.h"
 #include "JSystem/JUtility/JUTAssert.h"
 #include "res/Object/Vtil.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 
 const int daObjVtil_c::l_daObjVtil_bdl_idx_table[5] = {
     dRes_INDEX_VTIL_BDL_VTIL1_e, dRes_INDEX_VTIL_BDL_VTIL2_e,
@@ -121,6 +124,12 @@ bool daObjVtil_c::_delete() {
 
 /* 00000718-00000750       .text check_ev_bit__11daObjVtil_cCFv */
 BOOL daObjVtil_c::check_ev_bit() const {
+#if TARGET_PC
+    // Randomizer+: a Tingle statue that is house decor (pc_rplus_decor.cpp) stands whatever its dungeon's chest says.
+    if (pc_rplus_decor_owns(fopAcM_GetID(const_cast<daObjVtil_c*>(this)))) {
+        return TRUE;
+    }
+#endif
     return dComIfGs_isStageTbox(l_daObjVtil_scene_no_table[mType], 15);
 }
 

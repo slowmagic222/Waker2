@@ -16,6 +16,10 @@
 #include "d/d_a_obj.h"
 #include "d/actor/d_a_player_main.h"
 #include "m_Do/m_Do_controller_pad.h"
+#if TARGET_PC
+#include "d/d_bg_s_gnd_chk.h"
+#include "pc/game_hooks.h"
+#endif
 #if VERSION > VERSION_DEMO
 #include "res/Object/Figure2b.h"
 #endif
@@ -392,6 +396,13 @@ daObjFigure_c::daObjFigure_c() {
     m734 = 0;
     m736 = current.angle.y;
     m73C = 0;
+#if TARGET_PC
+    mPcDecor = pc_rplus_decor_owns(fopAcM_GetID(this)) != 0;
+    mPcCarried = 0;
+    if (mPcDecor) {
+        mbDisplay = true;
+    }
+#endif
 }
 
 /* 00000588-000005A8       .text CheckCreateHeap__FP10fopAc_ac_c */
@@ -568,6 +579,12 @@ cPhs_State daObjFigure_c::createInit() {
     attention_info.distances[fopAc_Attn_TYPE_TALK_e] = 0xA8;
     attention_info.distances[fopAc_Attn_TYPE_SPEAK_e] = 0xA8;
     attention_info.flags = fopAc_Attn_LOCKON_TALK_e | fopAc_Attn_ACTION_SPEAK_e | fopAc_Attn_TALKFLAG_CHECK_e;
+#if TARGET_PC
+    if (mPcDecor) {
+        attention_info.flags = fopAc_Attn_ACTION_CARRY_e;
+        attention_info.distances[fopAc_Attn_TYPE_CARRY_e] = 0x17;
+    }
+#endif
     shape_angle = current.angle;
     dKy_tevstr_init(&mTevStrBG2, fopAcM_GetHomeRoomNo(this), 0xFF);
     cMtx_copy(cMtx_getIdentity(), mMtx);
@@ -660,6 +677,12 @@ static const ProcFunc_t moveProc[] = {
 
 /* 00000DE8-00000F10       .text _execute__13daObjFigure_cFv */
 BOOL daObjFigure_c::_execute() {
+#if TARGET_PC
+    if (mPcDecor) {
+        pcDecorExecute();
+        return true;
+    }
+#endif
     if(!dComIfGp_event_runCheck()) {
         (this->*moveProc[m73C])();
     }
@@ -685,6 +708,42 @@ BOOL daObjFigure_c::_execute() {
 
     return true;
 }
+
+#if TARGET_PC
+// Randomizer+ house decor: no gallery talk; Link lifts it like a Tingle statue (the player moves it while carried), and
+// where he lets go it stands on the floor below, facing the way he held it.
+void daObjFigure_c::pcDecorExecute() {
+    if (fopAcM_checkCarryNow(this)) {
+        mPcCarried = 1;
+        attention_info.flags &= ~fopAc_Attn_ACTION_CARRY_e;
+    } else {
+        if (mPcCarried) {
+            mPcCarried = 0;
+            dBgS_ObjGndChk gnd;
+            cXyz top(current.pos.x, current.pos.y + 100.0f, current.pos.z);
+            gnd.SetPos(&top);
+            const f32 ground = dComIfG_Bgsp()->GroundCross(&gnd);
+            if (ground > -G_CM3D_F_INF) {
+                current.pos.y = ground;
+            }
+            speedF = 0.0f;
+            speed.set(0.0f, 0.0f, 0.0f);
+        }
+        attention_info.flags |= fopAc_Attn_ACTION_CARRY_e;
+        mCyl1.SetC(current.pos);
+        dComIfG_Ccsp()->Set(&mCyl1);
+    }
+    shape_angle.x = shape_angle.z = 0;
+    current.angle.y = shape_angle.y;
+    m736 = shape_angle.y;
+    attention_info.position.set(current.pos.x, current.pos.y + 150.0f, current.pos.z);
+    eyePos.set(current.pos.x, current.pos.y + 150.0f, current.pos.z);
+    if (mpBrkAnm) {
+        mpBrkAnm->play();
+    }
+    setMtx();
+}
+#endif
 
 /* 00000F10-00000FD4       .text executeNormal__13daObjFigure_cFv */
 void daObjFigure_c::executeNormal() {
