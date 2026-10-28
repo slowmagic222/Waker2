@@ -27,6 +27,7 @@
 #include "string.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/game_hooks.h"
 #endif
 
 
@@ -1566,6 +1567,13 @@ void dMap_2DSQ_c::draw() {
 
 /* 80048A20-80048B54       .text mapDrawIconFree__6dMap_cFssUc */
 void dMap_c::mapDrawIconFree(s16 param_1, s16 param_2, u8 param_3) {
+#if TARGET_PC
+    // QoL hide-HUD button (pc_qol.h): the camera icon over the minimap goes with the HUD (its own alpha,
+    // not the map's)
+    if (pc_qol_hud_hidden()) {
+        return;
+    }
+#endif
     if (param_3) {
         mIconFreeTex.setPos(param_1 - mIconFreeScale * 64.0f, param_2 - mIconFreeScale * 16.0f, param_1 + mIconFreeScale * 64.0f, param_2 + mIconFreeScale * 16.0f);
         mIconFreeTexture.mColor.r = 255;
@@ -1578,6 +1586,13 @@ void dMap_c::mapDrawIconFree(s16 param_1, s16 param_2, u8 param_3) {
 
 /* 80048B54-80048C80       .text mapDrawIconSelf__6dMap_cFssUc */
 void dMap_c::mapDrawIconSelf(s16 param_1, s16 param_2, u8 param_3) {
+#if TARGET_PC
+    // QoL hide-HUD button (pc_qol.h): the camera icon over the minimap goes with the HUD (its own alpha,
+    // not the map's)
+    if (pc_qol_hud_hidden()) {
+        return;
+    }
+#endif
     if (param_3) {
         mIconSelfTex.setPos(param_1 - mIconFreeScale * 64.0f, param_2 - mIconFreeScale * 16.0f, param_1 + mIconFreeScale * 64.0f, param_2 + mIconFreeScale * 16.0f);
         mIconSelfTexture.mColor.r = 255;
@@ -2433,6 +2448,18 @@ void dMap_c::getFmapChkPntPrm(int i_no, s8* i_gridX_p, s8* i_gridY_p, s16* i_x_p
     if (i_prm_p) {
         *i_prm_p = pnt->field_0x6;
     }
+#if TARGET_PC
+    // Randomizer+: a generated square's island sits at its land's middle.
+    s16 x, y;
+    if (pc_rplus_fmap_centre((pnt->mSectorX + 3) + (pnt->mSectorY + 3) * 7, &x, &y)) {
+        if (i_x_p) {
+            *i_x_p = x;
+        }
+        if (i_y_p) {
+            *i_y_p = y;
+        }
+    }
+#endif
 }
 
 /* 8004ACD8-8004AD00       .text setFmapChkDtPrm__6dMap_cFv */

@@ -35,11 +35,13 @@
 #include "pc/game_hooks.h"
 #include "pc/pc_settings.h"
 #include "pc/pc_button_remap.h"
+#include "pc/pc_qol.h"
 #include "SSystem/SComponent/c_API_graphic.h"
 #include "SSystem/SComponent/c_math.h"
 #include "pc/pc_gpu_opts.h"
 #include "pc/pc_dynres.h"
 #include "pc/pc_hd_textures.h"
+#include "pc/pc_tracker.h"
 
 #include "JSystem/JAudio/osdsp_task.h"
 #include "JSystem/JKernel/JKRHeap.h"
@@ -1457,8 +1459,12 @@ int pc_frame_split(void) {
     pc_perf_begin(PC_PERF_SPLIT);
     {
         JKRPcHostAllocScope hostAlloc;
-        // The FPS overlay in paint A's frame too (it counts presents), so it does not flicker.
+        // The FPS overlay in paint A's frame too (it counts presents), so it does not flicker; the
+        // tracker the same (pc_tracker.h).
         overlayFrame(0, false);
+        pc_tracker_overlay_draw();
+        seaMapFrame(); // COS_QOL_SEA_MAP, for the same reason
+        climbWheelFrame(); // COS_QOL_CLIMB
         const uint64_t endCallStart = sPerfOn ? monotonicNs() : 0;
         aurora_end_frame();
         if (sPerfOn) {
@@ -1620,9 +1626,15 @@ void pc_frame_end(void) {
         JKRPcHostAllocScope hostAlloc;
         // The options menu (pc_menu.cpp): input, pause and its window, in this frame's ImGui frame.
         menuFrame();
+        // The tracker overlay (pc_tracker.h): L3+R3 / F2, drawn over the game.
+        pc_tracker_overlay_frame();
         // Issue #15: the button remap (pc_button_remap.h) after the menu's settings poll: a changed
         // setting or a controller connected on a port gets the map before the next PADRead.
         pc_button_remap_frame();
+        // the quality-of-life buttons (pc_qol.h: hide the HUD, swap the item sets), read after the menu
+        pc_qol_frame();
+        seaMapFrame();
+        climbWheelFrame();
         // the European build: a log line when the game's language changes (pc_language.cpp)
         languageFrame();
         if (gConfig.fpsOverlay) {
@@ -1651,6 +1663,8 @@ void pc_frame_end(void) {
         sCycleReadbackNs += monotonicNs() - readbackStart;
         // COS_HD_TEXTURES (pc_hd_textures.h): the runtime toggle and the stats line.
         pc_hd_textures_frame_end(pc_frame_count() + 1);
+        // The randomizer tracker's state, read from the save (pc_tracker.h).
+        pc_tracker_frame_end(pc_frame_count() + 1);
         stats = aurora_get_stats();
     }
     if (gConfig.heapCheckEvery != 0 && (pc_frame_count() + 1) % gConfig.heapCheckEvery == 0) {

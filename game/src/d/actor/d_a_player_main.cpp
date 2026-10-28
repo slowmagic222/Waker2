@@ -36,6 +36,7 @@
 #include "helpers/endian.h"
 #include "pc/pc_qol.h"
 #include "pc/pc_rando.h"
+#include "pc/game_hooks.h"
 #endif
 #include "d/d_material.h"
 #include "JSystem/J3DGraphLoader/J3DAnmLoader.h"
@@ -74,6 +75,30 @@ u8 daPy_matAnm_c::m_morf_frame;
 #include "d/actor/d_a_player_ladder.inc"
 
 #include "d/actor/d_a_player_hang.inc"
+
+#if TARGET_PC
+// QoL "Trepar cualquier pared": a door's own body (its wall code 0) is no wall to climb.
+static bool pcClimbDoorWall(cBgS_PolyInfo& poly) {
+    fopAc_ac_c* actor = dComIfG_Bgsp()->GetActorPointer(poly);
+    if (actor == NULL) {
+        return false;
+    }
+    switch (fopAcM_GetName(actor)) {
+    case fpcNm_KNOB00_e:
+    case fpcNm_DOOR10_e:
+    case fpcNm_DOOR12_e:
+    case fpcNm_KDDOOR_e:
+    case fpcNm_MDOOR_e:
+    case fpcNm_MBDOOR_e:
+    case fpcNm_ATDOOR_e:
+    case fpcNm_SWTDOOR_e:
+    case fpcNm_OBJ_MJDOOR_e:
+        return true;
+    default:
+        return false;
+    }
+}
+#endif
 
 #include "d/actor/d_a_player_climb.inc"
 
@@ -4643,6 +4668,13 @@ void daPy_lk_c::setFrontWallType() {
     if (wall_code == 2 || current.pos.y - m35D4 < 125.0f) {
         return;
     }
+    // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): a plain wall (code 0) is a candidate for ivy; the
+    // wall it hit is kept, as the checks below reuse the line check
+    const bool climbCandidate = wall_code == 0 && pc_qol_climb_can_grab() && !pcClimbDoorWall(mLinkLinChk);
+    cBgS_PolyInfo climbPoly;
+    if (climbCandidate) {
+        climbPoly = mLinkLinChk;
+    }
     if (checkNoResetFlg0(daPyFlg0_UNK100)) {
         if ((wall_code == 3 && !checkModeFlg(ModeFlg_SWIM)) && !checkModeFlg(ModeFlg_MIDAIR)) {
             onResetFlg0(daPyRFlg0_UNK8);
@@ -4731,6 +4763,15 @@ void daPy_lk_c::setFrontWallType() {
     end.set(start.x + (sin * (50.0f + radius)), start.y, start.z + (cos * (50.0f + radius)));
     mLinkLinChk.Set(&start, &end, this);
     BOOL cVar8 = dComIfG_Bgsp()->LineCross(&mLinkLinChk);
+    // QoL "Trepar cualquier pared": a plain wall that goes on above where Link grabs ledges (so not a ledge to
+    // pull himself onto) becomes ivy, under the game's own conditions for ivy (above), not just after letting
+    // go of a wall, and in the air only while he is steered at it. A wall to sidle along still wins below.
+    if (cVar8 && climbCandidate && mFrontWallType == 1 && !checkNoResetFlg1(daPyFlg1_VINE_CATCH) &&
+        checkNoResetFlg0(daPyFlg0_UNK100) && (!checkModeFlg(ModeFlg_MIDAIR) || mStickDistance > 0.05f))
+    {
+        mPolyInfo = climbPoly;
+        mFrontWallType = 3;
+    }
     if (!cVar8) {
         mRoofChk.SetPos(current.pos);
         if ((dComIfG_Bgsp()->RoofChk(&mRoofChk) - current.pos.y) > 10.0f + m_HIO->mWallCatch.m.field_0x18) {
@@ -7132,6 +7173,41 @@ int daPy_lk_c::checkAutoJumpFlying() const {
         return -1;
     }
     return mProcVar0.m34D0;
+}
+
+// QoL "Botón de salto" (pc_qol.h, COS_QOL_JUMP_BUTTON): Link may jump from the button only on the ground, standing,
+// idling or moving under the player's control, with nothing else going on: no event or demo, not swimming,
+// climbing, hanging, sidling, crawling, crouching, carrying, pushing, on the boat, in first person, targeting, in
+// iron boots, nor on ground the game will not auto jump off either (m357C 3, changeAutoJumpProc).
+bool daPy_lk_c::pcCanJumpFromButton() {
+    if (mCurProc != daPyProc_WAIT_e && mCurProc != daPyProc_FREE_WAIT_e && mCurProc != daPyProc_MOVE_e) {
+        return false;
+    }
+    if (dComIfGp_event_runCheck() || mDemo.getDemoType() != 0 || mDemo.getDemoMode() != 0) {
+        return false;
+    }
+    if (checkModeFlg(ModeFlg_MIDAIR | ModeFlg_DAMAGE | ModeFlg_WHIDE | ModeFlg_HANG | ModeFlg_HOOKSHOT |
+                     ModeFlg_ROPE | ModeFlg_IN_SHIP | ModeFlg_CLIMB | ModeFlg_SWIM | ModeFlg_GRAB |
+                     ModeFlg_PUSHPULL | ModeFlg_LADDER | ModeFlg_CROUCH | ModeFlg_CRAWL | ModeFlg_CAUGHT |
+                     ModeFlg_SUBJECT | ModeFlg_PARRY))
+    {
+        return false;
+    }
+    if (!mAcch.ChkGroundHit() || mActorKeepGrab.getActor() != NULL || checkGrabWear() ||
+        getHeavyStateAndBoots() || m357C == 3 || m3580 == 3)
+    {
+        return false;
+    }
+    // L held (targeting, or the camera behind Link) or a lock-on
+    return mpAttention->mLockOnState == 0 && !mpAttention->chkFlag(AttnFlag_10000000 | AttnFlag_20000000);
+}
+
+// QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): once a frame, the stamina wheel (pc_climb.cpp) drains
+// while Link climbs and refills on the ground; it is drawn by his shoulder.
+void daPy_lk_c::pcClimbFrame() {
+    const bool climbing = mCurProc >= daPyProc_CLIMB_UP_START_e && mCurProc <= daPyProc_CLIMB_MOVE_SIDE_e;
+    const float shoulder[3] = {current.pos.x, current.pos.y + 90.0f, current.pos.z};
+    pc_qol_climb_frame(climbing, !checkModeFlg(ModeFlg_MIDAIR | ModeFlg_SWIM), mStickDistance <= 0.05f, shoulder);
 }
 
 /* 80115EA4-8011602C       .text procAutoJump_init__9daPy_lk_cFv */
@@ -11430,12 +11506,37 @@ BOOL daPy_lk_c::execute() {
         onNoResetFlg0(daPyFlg0_UNK10000000);
     }
     
-    if (mCurProcFunc != NULL) {
+    // QoL "Botón de salto" (pc_qol.h, COS_QOL_JUMP_BUTTON): a press of the jump button is spent on this frame,
+    // jump or not. When Link stands, idles or moves under the player's control, the game's own jump off a
+    // ledge (procAutoJump_init) runs in place of this frame's proc, as changeAutoJumpProc would start it:
+    // procAutoJump flies and lands it from the next frame, with its ledge grabs and glides.
+    if (pc_qol_jump_take() && pcCanJumpFromButton()) {
+        procAutoJump_init();
+    } else if (mCurProcFunc != NULL) {
         (this->*mCurProcFunc)();
     }
+    pcClimbFrame();
+    // Sprint with A button: hold A while moving on ground to drain stamina wheel
+    extern int pc_sprint_a_held(void);
+    extern void pc_sprint_frame(int sprinting, int ground, float deltaSeconds);
+    extern float pc_sprint_speed_multiplier(void);
+    const int onGround = !checkModeFlg(ModeFlg_MIDAIR | ModeFlg_SWIM | ModeFlg_HANG | ModeFlg_ROPE | ModeFlg_CLIMB | ModeFlg_LADDER);
+    const int movingForward = mStickDistance > 0.1f;
+    const int sprinting = pc_sprint_a_held() && onGround && movingForward;
+    pc_sprint_frame(sprinting, onGround, 1.0f / 30.0f);  // Use per-second rates, 1/30 for 30fps baseline
+    // Randomizer+: house decor found about the world, and the cabana's pieces (pc_rplus_decor.cpp)
+    pc_rplus_decor_frame();
     
     playTextureAnime();
     cXyz sp14 = current.pos;
+
+    // Apply sprint speed boost before movement
+    float sprintMult = pc_sprint_speed_multiplier();
+    if (sprintMult != 1.0f) {
+        speed.x *= sprintMult;
+        speed.z *= sprintMult;
+    }
+
     posMove();
     mOldSpeed = speed;
     cXyz sp8 = current.pos;
@@ -12522,6 +12623,10 @@ cPhs_State daPy_lk_c::makeBgWait() {
     }
 #endif
 
+#if TARGET_PC
+    // Randomizer+: the original island's spawn point may be inside the generated land.
+    pc_rplus_spawn_lift(&current.pos);
+#endif
     mAcch.CrrPos(*dComIfG_Bgsp());
 
     if (

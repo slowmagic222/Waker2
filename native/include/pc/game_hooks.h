@@ -284,4 +284,98 @@ bool pc_mail_sort_throw();
 /* J3DDrawBuffer::entryMatSort: `joined` is about to be drawn with `into`'s list. */
 void pc_mail_sort_merged(J3DMatPacket* into, J3DMatPacket* joined);
 
+/* ---- Randomizer+ terrain (pc/pc_rplus.h, docs/RANDOMIZER_PLUS.md), native/src/pc/game_hooks/
+   pc_rplus_terrain.cpp ---------------------------------------------------------------------------- */
+
+class dBgW;
+struct PcRplusTerrain;
+
+/* daBg_c::createHeap: in a sea room the Randomizer+ world generates, the room's land made from the world
+   (allocated in the current heap) in place of its island; *bgw gets its collision (land and sea bed).
+   NULL elsewhere: the room loads its own model and room.dzb. */
+PcRplusTerrain* pc_rplus_terrain_create(int roomNo, dBgW** bgw);
+/* daBg_c::draw: draws it (the BG list is set). */
+void pc_rplus_terrain_draw(PcRplusTerrain* terrain);
+/* daSea_Draw: once a frame, the land of the generated rooms not drawn by their own (roomNo unused). */
+void pc_rplus_far_draw(int roomNo);
+/* d_a_sea get_wave_max: room roomNo's wave height (the stage's MULT); a generated sea room gets open sea's where
+   its island drew its own water (0). */
+int pc_rplus_wave_max(int roomNo, int wave);
+/* dStage_RoomCheck: over a generated square, its room is the stay room and is loaded (with room 0, its room table
+   entry), by Link's position; 1. -1 elsewhere (the game's own check, from the ground's groups). */
+int pc_rplus_room_check(void);
+/* dStage_dt_c_roomReLoader: 1 when the room's own actors stay out (a generated sea room). */
+int pc_rplus_room_actors_off(int roomNo);
+/* 1 for an actor of a generated sea room that is still made (by its stage name: the ship, the sea). */
+int pc_rplus_keep_room_actor(const char* name);
+/* dGrass/dFlower/dTree_packet_c calc: on generated land, the farthest a prop of that kind (0 grass, 1 flowers,
+   2 trees) is drawn, so a dense square stays inside Aurora's per-frame vertex buffer; 0 elsewhere (no limit). */
+float pc_rplus_prop_far(int kind);
+/* daLodbg create: 1 when the far islands of the original sea stay out. */
+int pc_rplus_lod_off(void);
+/* daPy_lk_c::makeBgWait: a spawn point of the original island under the generated land is lifted onto it
+   (Link would wait for ground under him forever). */
+void pc_rplus_spawn_lift(class cXyz* pos);
+/* dStage_Create / dStage_playerInit: the start cell's room while Link's first spawn at sea is still to be moved
+   there (the room the stage loads first), else -1. */
+int pc_rplus_start_room(void);
+/* dStage_playerInit: the first time Link enters the sea his spawn moves to the world's start cell (and on coming
+   out of a moved door, to that door), and the spawn's room (which the stage loads first) to that cell's room. */
+void pc_rplus_start_point(u32* params, class cXyz* pos, s16* angleY);
+/* dStage_changeSceneExitId: 1 when exit id exitId is a generated door's (it set the next stage). */
+/* Randomizer+: 1 when Link may start at a stage's first spawn point when the one asked for isn't there. */
+int pc_rplus_any_point(const char* stage, int point);
+int pc_rplus_exit(int exitId, f32 speed, u32 mode);
+/* dComIfGp_setNextStage: when the next stage (stage, point, room) is an interior's way back to a door that the
+   generated world moved, it becomes the door's room (Link in front of the door) and this returns 1. */
+int pc_rplus_next_stage(const char** stage, s16* point, s8* room);
+/* dMenu_Fmap(2)_c::readFmapTexture: the sea chart's island close-up of a generated square (20000 units round its
+   land's middle), made into buf (size bytes); the bytes written (0: no land, hide it), or -1 for the disc's file. */
+int pc_rplus_fmap_texture(const char* name, void* buf, u32 size);
+/* The sea chart's whole square grid (0..48) of a generated world, an IA4 100x100 ResTIMG in a buffer of its own
+   (*size 0: no land); nullptr for the disc's square. */
+const void* pc_rplus_fmap_whole(int grid, u32* size);
+/* dMap_c::getFmapChkPntPrm: the generated square's land middle (units from the square's centre); 0 for the disc's. */
+int pc_rplus_fmap_centre(int grid, s16* x, s16* y);
+/* daKnob00_c::CreateInit: 1 when a locked door is Link's home's (the cabana, Abesso, needs no deed). */
+int pc_rplus_home_unlocked(void);
+/* dStage_dt_c_roomReLoader of room roomNo: the generated world's actors there (Link's home's door). */
+void pc_rplus_room_actors(int roomNo);
+/* dStage_setShipPos: in a generated sea room, the boat's spot moved to the nearest open water (from the start cell
+   in the start room, else from the room's own spot), facing away from the land. */
+void pc_rplus_ship_pos(int roomNo, class cXyz* pos, s16* angle);
+// Randomizer+: the Wind's Requiem played on land calls the boat to the shore nearest `from`; true if it came.
+bool pc_rplus_call_ship(const class cXyz& from);
+// Randomizer+: in Link's home (the cabana), the stage's dishes and pots are left out (1: don't make it; its spot is
+// a hint for the decor's floor), and carried things there don't break.
+int pc_rplus_home_actor(const char* name, const class cXyz& pos);
+int pc_rplus_home_unbreakable(void);
+// Randomizer+ house decor (pc_rplus_decor.cpp): what Link finds about the world and keeps in his home.
+// dSv_info_c::init: a new game's (the starting pieces); card_to_memory / memory_to_card of file slot: its decor file
+// read / written.
+void pc_rplus_decor_reset(void);
+void pc_rplus_decor_load(int slot);
+void pc_rplus_decor_save(int slot);
+// fopAcM_createItemForTrBoxDemo (a chest, sunken treasure, a demo pickup): a check of filler itemNo also gives the
+// next decor piece Link lacks; 1 if it did.
+int pc_rplus_decor_check(int itemNo);
+// pc_rplus_home_actor: where a dish or pot of the cabana stood.
+void pc_rplus_decor_home_slot(const class cXyz& pos);
+// daPy_lk_c::execute, once a frame: pieces found, the cabana's pieces made and where they were set down.
+void pc_rplus_decor_frame(void);
+// 1 when the actor procId is a decor piece (in the world or the cabana) / one in the cabana.
+int pc_rplus_decor_owns(unsigned int procId);
+int pc_rplus_decor_in_home(unsigned int procId);
+// The notice of the piece just found ("Found decor: Barrel ..."), NULL if none now.
+const char* pc_rplus_decor_notice(void);
+/* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
+   start cell's room is loaded (once a game). */
+void pc_rplus_place_player(int roomNo);
+/* setInitEventBit (d_save_init.cpp): mark story events as complete for randomizer+ mode (Forest of Fairies,
+   etc.) so skipped sequences don't crash. */
+void pc_rplus_init_story_events(void);
+/* dScnRoom_Delete: clear camera lock-on targets when they're from the room being deleted, to prevent
+   dangling pointers when streamed rooms unload. */
+void pc_rplus_clear_camera_lock_on_room(int roomNo);
+
 #endif /* PC_GAME_HOOKS_H */

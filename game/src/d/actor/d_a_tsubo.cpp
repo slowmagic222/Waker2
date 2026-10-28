@@ -9,6 +9,9 @@
 #include "d/actor/d_a_player.h"
 #include "d/actor/d_a_sea.h"
 #include "d/actor/d_a_obj_eff.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 #include "res/Object/Always.h"
 #include "res/Object/Kmtub_00.h"
 #include "res/Object/Ktaru_01.h"
@@ -2328,6 +2331,14 @@ bool Act_c::damage_tg_acc() {
 /* 00004384-00004768       .text damage_cc_proc__Q27daTsubo5Act_cFv */
 bool Act_c::damage_cc_proc() {
     bool bVar1 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, a sword or a bomb doesn't break the decor either.
+    if (pc_rplus_home_unbreakable()) {
+        mCyl.ClrAtHit();
+        mCyl.ClrTgHit();
+        return false;
+    }
+#endif
     if (mCyl.ChkAtHit()) {
         if (mType != 7) {
             damaged(3, NULL);
@@ -2472,6 +2483,17 @@ bool Act_c::damage_bg_proc_directly() {
     bool uVar11 = mAcch.ChkGroundHit();
     bool uVar8 = mAcch.ChkGroundLanding();
     bool iVar10 = false;
+#if TARGET_PC
+    // Randomizer+: in Link's home, thrown things land and stay whole.
+    if (pc_rplus_home_unbreakable()) {
+        if (m678 == 5 && uVar11) {
+            cam_lockoff();
+            mode_wait_init();
+        }
+        m6FC = current.pos.y;
+        return false;
+    }
+#endif
 
     if (m678 == 2 || m678 == 3) {
         bool uVar7 = mAcch.ChkRoofHit();
@@ -2560,6 +2582,12 @@ bool Act_c::damage_bg_proc_directly() {
 /* 00004D04-00004D58       .text damage_kill_proc__Q27daTsubo5Act_cFv */
 bool Act_c::damage_kill_proc() {
     bool bVar1 = false;
+#if TARGET_PC
+    // Randomizer+: a spiky seed that is house decor (pc_rplus_decor.cpp) doesn't wither away.
+    if (pc_rplus_decor_owns(fopAcM_GetID(this))) {
+        return false;
+    }
+#endif
     if (m800 > 0) {
         m800--;
         if (m800 == 0) {
@@ -3413,7 +3441,7 @@ void Act_c::se_fall_water() {
 #if VERSION > VERSION_DEMO
             polyInfoArr[i] != NULL &&
 #endif
-            polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < 0x100)
+            polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < BG_ID_MAX)
         {
             materialSoundId = dComIfG_Bgsp()->GetMtrlSndId(*polyInfoArr[i]);
             break;
@@ -3433,7 +3461,7 @@ void Act_c::se_fall_lava() {
 
     u32 materialSoundId = 0x17;
     for (s32 i = 0; i < ARRAY_SSIZE(polyInfoArr); i++) {
-        if (polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < 0x100) {
+        if (polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < BG_ID_MAX) {
             materialSoundId = dComIfG_Bgsp()->GetMtrlSndId(*polyInfoArr[i]);
             break;
         }
@@ -3452,7 +3480,7 @@ void Act_c::se_break(cBgS_PolyInfo* arg1) {
 
     u32 materialSoundId = 0;
     for (s32 i = 0; i < ARRAY_SSIZE(polyInfoArr); i++) {
-        if (polyInfoArr[i] != NULL && polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < 0x100) {
+        if (polyInfoArr[i] != NULL && polyInfoArr[i]->GetBgIndex() >= 0 && polyInfoArr[i]->GetBgIndex() < BG_ID_MAX) {
             materialSoundId = dComIfG_Bgsp()->GetMtrlSndId(*polyInfoArr[i]);
             break;
         }

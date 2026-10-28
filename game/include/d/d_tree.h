@@ -113,7 +113,13 @@ public:
 
 private:
     /* 0x0010 */ u16 mNextIdx;
+#if TARGET_PC
+    // Randomizer+ scatters far more of these on generated land than any original room had (its forests take up
+    // to 420 a room, with up to four rooms loaded).
+    /* 0x0014 */ dTree_data_c mData[2048];
+#else
     /* 0x0014 */ dTree_data_c mData[64];
+#endif
     /* 0x4114 */ dTree_anm_c mAnm[72];
     /* 0x6634 */ dTree_room_c mRoom[64];
     /* 0x6734 */ bool mPlayerCutFlg;

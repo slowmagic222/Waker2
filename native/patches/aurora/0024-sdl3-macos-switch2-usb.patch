@@ -1,0 +1,150 @@
+SDL3: Switch 2 controllers over USB on macOS
+
+The NSO GameCube controller (057E:2073) showed up with driver = NONE on macOS: SDL opens Switch 2
+controllers only through libusb, and macOS's HID driver holds their HID interface, which libusb can't
+detach without root. apply-sdl3-macos-switch2-usb.cmake (run in the vendored SDL's patch step) reads
+them through IOKit on macOS and gives the Switch 2 driver its own libusb handle for the bulk interface.
+
+diff --git a/cmake/AuroraSDL3Provider.cmake b/cmake/AuroraSDL3Provider.cmake
+index 0f148b0..ae0f635 100644
+--- a/cmake/AuroraSDL3Provider.cmake
++++ b/cmake/AuroraSDL3Provider.cmake
+@@ -148,6 +148,9 @@ elseif (_aurora_sdl3_provider STREQUAL "vendor")
+       COMMAND ${CMAKE_COMMAND}
+         -DSDL_SOURCE_DIR=<SOURCE_DIR>
+         -P "${CMAKE_CURRENT_LIST_DIR}/patches/apply-sdl3-android-security-exception.cmake"
++      COMMAND ${CMAKE_COMMAND}
++        -DSDL_SOURCE_DIR=<SOURCE_DIR>
++        -P "${CMAKE_CURRENT_LIST_DIR}/patches/apply-sdl3-macos-switch2-usb.cmake"
+       EXCLUDE_FROM_ALL
+     )
+     FetchContent_MakeAvailable(SDL)
+diff --git a/cmake/patches/apply-sdl3-macos-switch2-usb.cmake b/cmake/patches/apply-sdl3-macos-switch2-usb.cmake
+new file mode 100644
+index 0000000..a8e9267
+--- /dev/null
++++ b/cmake/patches/apply-sdl3-macos-switch2-usb.cmake
+@@ -0,0 +1,123 @@
++# Waker2: Switch 2 controllers (the NSO GameCube controller, Pro, Joy-Con 2) over USB on macOS.
++# macOS's own HID driver holds their HID interface, and libusb can't detach it without root, so SDL's
++# libusb-only path for them never opens (driver = NONE). Here macOS keeps the HID interface (input is
++# read through IOKit), and the Switch 2 driver opens its own libusb handle for the bulk interface
++# (its start-up and rumble commands), which a normal user can claim.
++if (NOT DEFINED SDL_SOURCE_DIR)
++  message(FATAL_ERROR "SDL_SOURCE_DIR is required")
++endif ()
++
++function(_waker2_sdl_replace file old new marker)
++  file(READ "${file}" _contents)
++  string(FIND "${_contents}" "${marker}" _done)
++  if (_done GREATER_EQUAL 0)
++    return()
++  endif ()
++  string(FIND "${_contents}" "${old}" _at)
++  if (_at LESS 0)
++    message(FATAL_ERROR "apply-sdl3-macos-switch2-usb: ${file} doesn't have the expected code")
++  endif ()
++  string(REPLACE "${old}" "${new}" _contents "${_contents}")
++  file(WRITE "${file}" "${_contents}")
++endfunction()
++
++# 1. On macOS these devices aren't libusb-only: the IOKit HID device is used.
++_waker2_sdl_replace("${SDL_SOURCE_DIR}/src/hidapi/SDL_hidapi.c"
++[=[static bool RequiresLibUSB(Uint16 vendor, Uint16 product)
++{
++]=]
++[=[static bool RequiresLibUSB(Uint16 vendor, Uint16 product)
++{
++#ifdef SDL_PLATFORM_MACOS
++    // Waker2: macOS's HID driver holds a Switch 2 controller's HID interface; read it through IOKit
++    if (vendor == USB_VENDOR_NINTENDO &&
++        (product == USB_PRODUCT_NINTENDO_SWITCH2_GAMECUBE_CONTROLLER ||
++         product == USB_PRODUCT_NINTENDO_SWITCH2_JOYCON_LEFT ||
++         product == USB_PRODUCT_NINTENDO_SWITCH2_JOYCON_RIGHT ||
++         product == USB_PRODUCT_NINTENDO_SWITCH2_PRO)) {
++        return false;
++    }
++#endif
++]=]
++"Waker2: macOS's HID driver holds")
++
++set(_sw2 "${SDL_SOURCE_DIR}/src/joystick/hidapi/SDL_hidapi_switch2.c")
++
++# 2. The driver's own libusb context and handle, when the HID device has none.
++_waker2_sdl_replace("${_sw2}"
++[=[    Uint8 in_endpoint;
++
++    Uint64 rumble_timestamp;]=]
++[=[    Uint8 in_endpoint;
++    libusb_context *own_usb; // Waker2: the handle below is the driver's own (macOS)
++    bool own_handle;
++
++    Uint64 rumble_timestamp;]=]
++"libusb_context *own_usb;")
++
++_waker2_sdl_replace("${_sw2}"
++[=[static bool HIDAPI_DriverSwitch2_InitUSB(SDL_HIDAPI_Device *device)
++{]=]
++[=[// Waker2: a libusb handle of the driver's own for the device, for its bulk interface only (macOS keeps the
++// HID interface, which SDL reads through IOKit).
++static libusb_device_handle *OpenOwnUSBHandle(SDL_DriverSwitch2_Context *ctx, SDL_HIDAPI_Device *device)
++{
++    libusb_device **list = NULL;
++    libusb_device_handle *handle = NULL;
++
++    if (ctx->libusb->init(&ctx->own_usb) < 0) {
++        ctx->own_usb = NULL;
++        return NULL;
++    }
++    ssize_t count = ctx->libusb->get_device_list(ctx->own_usb, &list);
++    for (ssize_t i = 0; i < count && !handle; ++i) {
++        struct libusb_device_descriptor desc;
++        if (ctx->libusb->get_device_descriptor(list[i], &desc) == 0 &&
++            desc.idVendor == device->vendor_id && desc.idProduct == device->product_id) {
++            if (ctx->libusb->open(list[i], &handle) < 0) {
++                handle = NULL;
++            }
++        }
++    }
++    if (list) {
++        ctx->libusb->free_device_list(list, 1);
++    }
++    if (!handle) {
++        ctx->libusb->exit(ctx->own_usb);
++        ctx->own_usb = NULL;
++    }
++    return handle;
++}
++
++static bool HIDAPI_DriverSwitch2_InitUSB(SDL_HIDAPI_Device *device)
++{]=]
++"OpenOwnUSBHandle(SDL_DriverSwitch2_Context")
++
++_waker2_sdl_replace("${_sw2}"
++[=[    if (!ctx->device_handle) {
++        return SDL_SetError("Couldn't get libusb device handle");
++    }]=]
++[=[    if (!ctx->device_handle) {
++        ctx->device_handle = OpenOwnUSBHandle(ctx, device);
++        ctx->own_handle = (ctx->device_handle != NULL);
++    }
++    if (!ctx->device_handle) {
++        return SDL_SetError("Couldn't get libusb device handle");
++    }]=]
++"ctx->own_handle = (ctx->device_handle != NULL);")
++
++_waker2_sdl_replace("${_sw2}"
++[=[            ctx->interface_claimed = false;
++        }
++        if (ctx->libusb) {]=]
++[=[            ctx->interface_claimed = false;
++        }
++        if (ctx->own_handle) {
++            ctx->libusb->close(ctx->device_handle);
++            ctx->libusb->exit(ctx->own_usb);
++            ctx->device_handle = NULL;
++            ctx->own_usb = NULL;
++            ctx->own_handle = false;
++        }
++        if (ctx->libusb) {]=]
++"if (ctx->own_handle) {")

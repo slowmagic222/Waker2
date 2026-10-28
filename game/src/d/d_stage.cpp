@@ -23,6 +23,7 @@
 #include "d/actor/d_a_sea.h"
 #if TARGET_PC
 #include "pc/pc_harness.h"
+#include "pc/game_hooks.h"
 #endif
 
 /* 80040900-80040938       .text set__18dStage_nextStage_cFPCcScsScSc */
@@ -1311,7 +1312,26 @@ const char* dStage_getName2(s16 i_procName, s8 i_argument) {
 }
 
 /* 80041628-8004169C       .text dStage_actorCreate__FP22stage_actor_data_classP16fopAcM_prm_class */
+#if TARGET_PC
+// Randomizer+: set while a generated sea room's actors are made (dStage_dt_c_roomReLoader).
+static bool l_rplusRoomActors = false;
+#endif
+
 void dStage_actorCreate(stage_actor_data_class* i_actorData, fopAcM_prm_class* i_actorPrm) {
+#if TARGET_PC
+    // Randomizer+: of a generated sea room's actors only the ones not tied to its island are made (the ship).
+    if (l_rplusRoomActors && !pc_rplus_keep_room_actor(i_actorData->name)) {
+        JKRHeap::free(i_actorPrm, NULL);
+        return;
+    }
+    // Randomizer+: Link's home emptied of its dishes and pots, for the decor Link finds.
+    char pcName[9] = {};
+    memcpy(pcName, i_actorData->name, 8);
+    if (pc_rplus_home_actor(pcName, i_actorPrm->base.position)) {
+        JKRHeap::free(i_actorPrm, NULL);
+        return;
+    }
+#endif
     dStage_objectNameInf* nameinf_p = dStage_searchName(i_actorData->name);
 
     if (nameinf_p == NULL) {
@@ -1474,6 +1494,14 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
             player_data++;
         }
 
+#if TARGET_PC
+        // Randomizer+: the start cell's room may not have the spawn point; any of its points will do (moved below).
+        // An interior entered by a generated door may not have the point either (the door's table is a guess).
+        if (i == num && num > 0 && (pc_rplus_start_room() >= 0 || pc_rplus_any_point(dComIfGp_getStartStageName(), point))) {
+            player_data = player->m_entries;
+            i = 0;
+        }
+#endif
         JUT_ASSERT(DEMO_SELECT(1757, 1787), i != num);
 
         appen->base.parameters = player_data->base.parameters;
@@ -1484,6 +1512,10 @@ int dStage_playerInit(dStage_dt_c* i_stage, void* i_data, int num, void* i_file)
         if (roomParam != 0 && daPy_lk_c::getStartModeFromParam(appen->base.parameters) != 2) {
             appen->base.parameters = (roomParam & 0xFFFFFFC0) | (appen->base.parameters & 0x3F);
         }
+#if TARGET_PC
+        // Randomizer+: Link starts on the generated world's start cell, in its room.
+        pc_rplus_start_point(&appen->base.parameters, &appen->base.position, &appen->base.angle.y);
+#endif
     }
 
     dComIfGs_setRestartRoomParam(0);
@@ -1948,7 +1980,10 @@ bool dStage_setShipPos(int param_0, int i_roomNo) {
 #if TARGET_PC
                 // SHIP entries are big-endian in the room data: take the position in host order.
                 cXyz ship_pos = ship_data_p->m_pos;
-                ship_p->initStartPos(&ship_pos, ship_data_p->m_angle);
+                s16 ship_angle = ship_data_p->m_angle;
+                // Randomizer+: the island's boat spot may be on the generated land: the nearest open water instead.
+                pc_rplus_ship_pos(roomNo, &ship_pos, &ship_angle);
+                ship_p->initStartPos(&ship_pos, ship_angle);
 #else
                 ship_p->initStartPos(&ship_data_p->m_pos, ship_data_p->m_angle);
 #endif
@@ -2262,8 +2297,17 @@ void dStage_dt_c_roomReLoader(void* i_data, dStage_dt_c* i_stage, int param_2) {
         {"TGDR", dStage_roomDrtgInfoInit},
     };
 
+#if TARGET_PC
+    // Randomizer+: a generated sea room has none of its island's actors.
+    l_rplusRoomActors = pc_rplus_room_actors_off(param_2) != 0;
+#endif
     dStage_dt_c_decode(i_data, i_stage, l_funcTable, ARRAY_SIZE(l_funcTable));
     layerLoader(i_data, i_stage, param_2);
+#if TARGET_PC
+    l_rplusRoomActors = false;
+    // Randomizer+: the generated world's own actors in this room (Link's home's door).
+    pc_rplus_room_actors(param_2);
+#endif
 }
 
 /* 8004324C-800432EC       .text dStage_infoCreate__Fv */
@@ -2284,6 +2328,14 @@ void dStage_Create() {
     dComIfGp_roomControl_init();
     dStage_dt_c_stageLoader(stageRsrc, &dComIfGp_getStage());
 
+#if TARGET_PC
+    // Randomizer+: the start cell's room loads first (Link is made there, dStage_playerInit).
+    int rplusRoom = pc_rplus_start_room();
+    if (rplusRoom >= 0) {
+        dComIfGp_getStartStage()->set(dComIfGp_getStartStageName(), rplusRoom, dComIfGp_getStartStagePoint(),
+                                      dComIfGp_getStartStageLayer());
+    }
+#endif
     if (dComIfGp_getStartStageRoomNo() >= 0) {
         int status = dStage_roomInit(dComIfGp_getStartStageRoomNo());
         JUT_ASSERT(DEMO_SELECT(3845, 3873), status);
@@ -2325,6 +2377,13 @@ void dStage_Delete() {
 
 /* 80043514-80043604       .text dStage_RoomCheck__FP11cBgS_GndChk */
 int dStage_RoomCheck(cBgS_GndChk* i_gndChk) {
+#if TARGET_PC
+    // Randomizer+: over a generated square, the square under Link (his position, not the sea floor's groups).
+    int rplus = pc_rplus_room_check();
+    if (rplus >= 0) {
+        return rplus;
+    }
+#endif
     int roomReadId = dComIfG_Bgsp()->GetRoomId(*i_gndChk);
 
     if (roomReadId < 0) {
@@ -2360,6 +2419,12 @@ void dStage_roomControl_c::SetTimePass(int i_timepass) {
 /* 8004360C-80043900       .text dStage_changeSceneExitId__FR13cBgS_PolyInfofUlSc */
 int dStage_changeSceneExitId(cBgS_PolyInfo& i_poly, f32 i_speed, u32 i_mode, s8 i_roomNo) {
     int exit_id = dComIfG_Bgsp()->GetExitId(i_poly);
+#if TARGET_PC
+    // Randomizer+: a door of the generated world (its own exit id; the sea room's SCLS doesn't have it).
+    if (pc_rplus_exit(exit_id, i_speed, i_mode)) {
+        return 1;
+    }
+#endif
     if (exit_id == 0x3E || exit_id == 0x3B) {
         fopAc_ac_c* actor_p = dComIfG_Bgsp()->GetActorPointer(i_poly);
         int arg0 = IkadaGetRoomNoArg0(actor_p);
@@ -2421,7 +2486,6 @@ int dStage_changeScene(int i_exitId, f32 speed, u32 mode, s8 room_no) {
 
     stage_scls_info_class* scls_info = &scls->m_entries[i_exitId];
     s32 wipe = dStage_sclsInfo_getWipe(scls_info);
-
     dComIfGp_setNextStage(scls_info->mStage, scls_info->mStart, scls_info->mRoom, -1, speed, mode,
                           TRUE, wipe == 15 ? 0 : wipe);
     return 1;
@@ -2458,6 +2522,10 @@ void dStage_turnRestart() {
 #if VERSION > VERSION_DEMO
 /* 80043BD0-80043C84       .text dStage_escapeRestart__Fv */
 void dStage_escapeRestart() {
+#if TARGET_PC
+    fprintf(stderr, "[cos] stage: escape restart of %s (a room could not load) at frame %u\n",
+            dComIfGp_getStartStageName(), pc_frame_count());
+#endif
     daPy_lk_c* player_p = daPy_getPlayerLinkActorClass();
     dComIfGs_setTurnRestart(player_p->current.pos, player_p->shape_angle.y, fopAcM_GetRoomNo(player_p), player_p->getDayNightParamData());
 

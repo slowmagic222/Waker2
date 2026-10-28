@@ -10,6 +10,9 @@
 #include "SSystem/SComponent/c_phase.h"
 #include "d/actor/d_a_player_main.h"
 #include "d/d_com_lib_game.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 #include "d/d_demo.h"
 #include "d/d_flower.h"
 #include "d/d_grass.h"
@@ -688,6 +691,10 @@ stage_arrow_class* dComIfGp_getRoomArrow(int i_roomNo) {
 /* 800537C8-8005388C       .text dComIfGp_setNextStage__FPCcsScScfUliSc */
 void dComIfGp_setNextStage(const char* i_stageName, s16 i_point, s8 i_roomNo, s8 i_layer,
                            f32 i_lastSpeed, u32 i_lastMode, BOOL i_setPoint, s8 i_wipe) {
+#if TARGET_PC
+    // Randomizer+: an interior's way back to its original island goes to its door in the generated world.
+    pc_rplus_next_stage(&i_stageName, &i_point, &i_roomNo);
+#endif
     g_dComIfG_gameInfo.play.setNextStage(i_stageName, i_roomNo, i_point, i_layer, i_wipe);
 
     if (daPy_getPlayerLinkActorClass() != NULL) {

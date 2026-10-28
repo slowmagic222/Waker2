@@ -520,7 +520,7 @@ void daObjBarrel::Act_c::se_fall_water() {
     u32 mtrlSndId = 0x13;
     for (int i = 0; i < ARRAY_SIZE(temp); i++) {
         int bg_index = temp[i]->GetBgIndex();
-        if (bg_index >= 0 && bg_index < 0x100) {
+        if (bg_index >= 0 && bg_index < BG_ID_MAX) {
             mtrlSndId = dComIfG_Bgsp()->GetMtrlSndId(*temp[i]);
             break;
         }

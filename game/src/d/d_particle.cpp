@@ -778,6 +778,15 @@ bool dPa_control_c::readScene(u8 i_no, mDoDvdThd_toMainRam_c** param_2) {
     if (i_no == 0xff) {
         return false;
     }
+#if TARGET_PC
+    // One room particle scene is loaded at a time. Randomizer+ loads several sea rooms at once (the squares near
+    // Link), whose scenes may differ: a room asking for the same scene shares it; asking for another goes without.
+    if (mCount != 0) {
+        if (i_no != mSceneNo) return false;  // another scene: go without
+        mCount++;                             // same scene: share it
+        return true;
+    }
+#endif
     if (mCount++) {
         JUT_ASSERT(VERSION_SELECT(1404, 1404, 1415, 1416), i_no != mSceneNo);
         return true;

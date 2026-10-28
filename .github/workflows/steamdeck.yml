@@ -1,0 +1,124 @@
+# A Linux x86_64 test build for the Steam Deck (SteamOS), WITHOUT the game disc.
+#
+# Same build as ci.yml's "Build the game" step, USA disc only (GZLE01, the one wwrando randomizes):
+# runtime-assets mode (docs/RUNTIME_ASSETS.md), so the player's disc supplies the data at start-up.
+# The artifact is a .tar.gz (kept inside the Actions zip so the executable bit survives) holding
+#   waker2/switchwaker                  the game
+#   waker2/waker2.sh                    launcher: COS_DISC / COS_RANDO_DISC from the .isos next to it
+#   waker2/initial_pipeline_cache.db    the pipeline list (as in the Switch download)
+#   waker2/tracker-logic/               the tracker's logic and art for the tracker screen in the game
+#   waker2/seedgen/                     the in-game seed generator: Python 3.12 + wwrando
+#                                       (scripts/seedgen/bundle.sh, docs/SEEDGEN.md)
+#                                       (L3+R3, docs/TRACKER.md)
+# Steps for the Deck: docs/STEAM_DECK.md.
+#
+# Runs by hand (Actions tab, "Run workflow") or on a push to a claude/* test branch that touches the
+# game, to keep the private repository's Actions minutes.
+name: steamdeck
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths:
+      - '.github/workflows/steamdeck.yml'
+      - 'scripts/steamdeck/**'
+      - 'scripts/tracker/**'
+      - 'native/src/pc/features/pc_tracker*'
+      - 'scripts/seedgen/**'
+      - 'native/src/pc/features/pc_seedgen*'
+      - 'native/cmake/quickjs.cmake'
+      - 'native/src/pc/features/pc_qol*'
+      - 'native/src/pc/features/pc_sea_map*'
+      - 'native/src/pc/features/pc_climb*'
+      - 'native/src/pc/features/pc_rplus*'
+      - 'native/src/pc/game_hooks/pc_rplus*'
+      - 'scripts/rplus/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steamdeck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: scripts/docker
+          file: scripts/docker/Containerfile.linux
+          tags: centollos-linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-ubuntu-24.04
+          cache-to: type=gha,mode=max,scope=linux-ubuntu-24.04
+      - name: Cache downloads
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/deck/_deps/*-src
+            build/deck/_deps/*-subbuild
+            ref/recompcore
+            build/decomp-ci
+          key: deck-deps-${{ hashFiles('native/cmake/Aurora.cmake', 'native/patches/aurora/*.patch', 'native/tools/fetch_recompcore.sh', 'game/UPSTREAM') }}
+          restore-keys: deck-deps-
+      - name: Drop a stale Aurora tree
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: rm -rf build/deck/_deps/aurora-src build/deck/_deps/aurora-subbuild
+      - name: Build the game (runtime assets, no disc, USA)
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work \
+              centollos-linux-build:ci bash -c '
+            set -e
+            native/tools/fetch_recompcore.sh /work/ref/recompcore
+            native/tools/gen_assets.sh --version GZLE01 --stubs --decomp /work/build/decomp-ci \
+                --out /work/build/ci-stubs/GZLE01
+            # libstdc++ and libgcc linked in: SteamOS can ship an older libstdc++ than Debian 13 builds
+            # against (GLIBCXX_3.4.33), and then the game would not start at all.
+            cmake -S native -B build/deck -G Ninja -DCOS_RUNTIME_ASSETS=ON \
+                -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" \
+                -DCOS_VERSION=2 -DCOS_ASSETS_DIR=/work/build/ci-stubs/GZLE01
+            ninja -C build/deck switchwaker
+            echo "== shared libraries"; ldd build/deck/switchwaker || true
+            echo "== newest glibc symbol version needed (SteamOS 3.7 has 2.41)"
+            objdump -T build/deck/switchwaker | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1
+            if objdump -T build/deck/switchwaker | grep -q GLIBCXX_; then
+              echo "libstdc++ is still linked dynamically"; exit 1
+            fi'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build the tracker's logic for the game
+        run: scripts/tracker/build_logic.sh out/tracker-logic build/tww-rando-tracker
+      - name: Package
+        run: |
+          sha=$(git rev-parse --short HEAD)
+          mkdir -p out/waker2
+          cp build/deck/switchwaker scripts/steamdeck/waker2.sh native/data/initial_pipeline_cache.db out/waker2/
+          cp docs/STEAM_DECK.md out/waker2/README.md
+          cp -R out/tracker-logic out/waker2/tracker-logic
+          chmod +x out/waker2/switchwaker out/waker2/waker2.sh
+          strip out/waker2/switchwaker || true
+          # The in-game seed generator (docs/SEEDGEN.md): Python 3.12 + wwrando, about 190 MB.
+          scripts/seedgen/bundle.sh out/waker2/seedgen build/seedgen-work
+          # Randomizer+ (docs/RANDOMIZER_PLUS.md): a test world, seed 7, from wwrando's logic in the bundle.
+          WWRANDO_DIR=out/waker2/seedgen/wwrando python3 scripts/rplus/worldgen.py --seed 7 --out out/waker2/rplus
+          mv out/waker2/rplus/world.rpw out/waker2/rplus/world-seed7.rpw
+          tar -C out -czf "out/waker2-steamdeck-$sha.tar.gz" waker2
+          echo "NAME=waker2-steamdeck-$sha" >> "$GITHUB_ENV"
+          ls -la out out/waker2
+      - name: Check nothing from the disc is in the package
+        run: |
+          # (wwrando's own two custom actor RELs, seedgen/wwrando/asm/*.rel, are its code, not the game's)
+          if tar -tzf "out/$NAME.tar.gz" | grep -v '^waker2/seedgen/wwrando/asm/' | grep -Ei '\.(iso|gcm|rvz|dol|rel|gci)$'; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: out/${{ env.NAME }}.tar.gz
+          retention-days: 30

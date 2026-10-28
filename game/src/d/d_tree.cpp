@@ -4,6 +4,9 @@
 #include "dolphin/gf/GF.h"
 #include "SSystem/SComponent/c_counter.h"
 #include "m_Do/m_Do_lib.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 #include "f_op/f_op_overlap_mng.h"
 
 #include "assets/l_Txa_swood_aTEX.h"
@@ -581,6 +584,12 @@ void dTree_packet_c::update() {
 
     s32 numPerFrame = 0;
     mDoLib_clipper::changeFar(mDoLib_clipper::getFar() * 1.8181819f);
+#if TARGET_PC
+    // Randomizer+ land holds far more of these; past this distance they aren't drawn.
+    if (f32 propFar = pc_rplus_prop_far(2); propFar > 0.0f && mDoLib_clipper::getFar() > propFar) {
+        mDoLib_clipper::changeFar(propFar);
+    }
+#endif
 
     for (int i = 0; i < (s32)ARRAY_SIZE(mData); i++) {
         if (cLib_checkBit<u8>(data->mState, 2)) {

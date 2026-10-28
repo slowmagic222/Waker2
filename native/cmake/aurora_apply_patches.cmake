@@ -28,12 +28,38 @@ if (COS_AURORA_PATCH_HASH AND EXISTS "${_stamp}")
         message(STATUS "cos_native: Aurora patch set already applied (${_stamp})")
         return()
     endif ()
-    message(FATAL_ERROR "cos_native: ${COS_AURORA_SRC} has another Aurora patch set applied; "
-            "delete _deps/aurora-src and _deps/aurora-subbuild in the build directory and configure again")
 endif ()
 
 file(GLOB _patches LIST_DIRECTORIES false "${COS_AURORA_PATCH_DIR}/*.patch")
 list(SORT _patches)
+
+# A tree stamped with an earlier set that the current one only adds to (new patches after the old
+# ones, the key built as Aurora.cmake builds COS_AURORA_PATCH_HASH) gets just the added patches.
+if (DEFINED _old_hash)
+    set(_key "")
+    set(_prefix_hash "")
+    set(_added "")
+    set(_matched FALSE)
+    foreach (_patch IN LISTS _patches)
+        if (_matched)
+            list(APPEND _added "${_patch}")
+            continue()
+        endif ()
+        file(SHA256 "${_patch}" _hash)
+        get_filename_component(_name "${_patch}" NAME)
+        string(APPEND _key "${_name}=${_hash};")
+        string(SHA256 _prefix_hash "${_key}")
+        if (_prefix_hash STREQUAL _old_hash)
+            set(_matched TRUE)
+        endif ()
+    endforeach ()
+    if (NOT _matched)
+        message(FATAL_ERROR "cos_native: ${COS_AURORA_SRC} has another Aurora patch set applied; "
+                "delete _deps/aurora-src and _deps/aurora-subbuild in the build directory and configure again")
+    endif ()
+    set(_patches "${_added}")
+endif ()
+
 foreach (_patch IN LISTS _patches)
     get_filename_component(_name "${_patch}" NAME)
     execute_process(COMMAND "${COS_GIT}" apply --reverse --check "${_patch}"

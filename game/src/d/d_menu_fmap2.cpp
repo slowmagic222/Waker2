@@ -17,6 +17,7 @@
 #include "m_Do/m_Do_controller_pad.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/game_hooks.h"
 // QoL "Carta náutica completa" (pc_qol.h; BetterWW reveal_sea_chart.asm, which sets every sector's
 // charted bit in a new game's save): while the option is on, this menu reads every sector as charted.
 // Nothing is written to the save; sectors reached are still recorded (dComIfGs_onSaveArriveGrid).
@@ -3246,6 +3247,11 @@ u32 dMenu_Fmap2_c::readPaneCmapTexture(const ResTIMG* param_1, int i_cmapIdx) {
 
 /* 801C7474-801C74B4       .text readFmapTexture__13dMenu_Fmap2_cFPCc */
 u32 dMenu_Fmap2_c::readFmapTexture(const char* name) {
+#if TARGET_PC
+    if (int made = pc_rplus_fmap_texture(name, mChkPntTxt_p, 0x2c00); made >= 0) {
+        return (u32)made;
+    }
+#endif
     return JKRReadTypeResource(mChkPntTxt_p, 0x2c00, 'FM  ', name, dComIfGp_getFmapArchive());
 }
 

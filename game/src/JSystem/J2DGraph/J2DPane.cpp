@@ -148,11 +148,25 @@ bool J2DPane::insertChild(J2DPane* pPrev, J2DPane* pChild) {
 }
 
 /* 802D0078-802D054C       .text draw__7J2DPaneFffPC14J2DGrafContextb */
+#if TARGET_PC
+f32 J2DPane::sPcHudScale = 1.0f;
+f32 J2DPane::sPcHudLeft = 0.0f;
+f32 J2DPane::sPcHudRight = 640.0f;
+f32 J2DPane::sPcHudTop = 0.0f;
+f32 J2DPane::sPcHudBottom = 480.0f;
+bool J2DPane::sPcHudInScaled = false;
+#endif
+
 void J2DPane::draw(f32 x, f32 y, const J2DGrafContext* pCtx, bool clip) {
     J2DGrafContext ctx = *pCtx;
 
     if (pCtx->getGrafType() != 1)
         clip = false;
+#if TARGET_PC
+    if (sPcHudScale != 1.0f)
+        clip = false;
+    bool pcHudScaled = false; // this pane is the one scaled (its children inherit it)
+#endif
 
     JSUTree<J2DPane> * pParent = mPaneTree.getParent();
     J2DPane * pParentPane = NULL;
@@ -167,6 +181,27 @@ void J2DPane::draw(f32 x, f32 y, const J2DGrafContext* pCtx, bool clip) {
             JGeometry::TBox2<f32> globalBounds = pParentPane->mGlobalBounds;
             mGlobalBounds.addPos(globalBounds.i.x, globalBounds.i.y);
             MTXConcat(pParentPane->mDrawMtx, mMtx, mDrawMtx);
+#if TARGET_PC
+            // QoL HUD scale (sPcHudScale): the outermost pane smaller than half the 2D area (a part of the HUD,
+            // not a group spanning the screen) scaled with its children about the nearest corner, edge or centre
+            const f32 w = sPcHudRight - sPcHudLeft, h = sPcHudBottom - sPcHudTop;
+            if (sPcHudScale != 1.0f && !sPcHudInScaled && mGlobalBounds.getWidth() < w * 0.5f &&
+                mGlobalBounds.getHeight() < h * 0.5f) {
+                pcHudScaled = true;
+                sPcHudInScaled = true;
+                const f32 cx = (mGlobalBounds.i.x + mGlobalBounds.f.x) * 0.5f;
+                const f32 cy = (mGlobalBounds.i.y + mGlobalBounds.f.y) * 0.5f;
+                const f32 ax = cx < sPcHudLeft + w / 3.0f ? sPcHudLeft
+                             : cx > sPcHudRight - w / 3.0f ? sPcHudRight : (sPcHudLeft + sPcHudRight) * 0.5f;
+                const f32 ay = cy < sPcHudTop + h / 3.0f ? sPcHudTop
+                             : cy > sPcHudBottom - h / 3.0f ? sPcHudBottom : (sPcHudTop + sPcHudBottom) * 0.5f;
+                Mtx scale;
+                MTXScale(scale, sPcHudScale, sPcHudScale, 1.0f);
+                scale[0][3] = ax * (1.0f - sPcHudScale);
+                scale[1][3] = ay * (1.0f - sPcHudScale);
+                MTXConcat(scale, mDrawMtx, mDrawMtx);
+            }
+#endif
 
             if (clip) {
                 JGeometry::TBox2<f32> globalBounds = pParentPane->mGlobalBounds;
@@ -202,6 +237,10 @@ void J2DPane::draw(f32 x, f32 y, const J2DGrafContext* pCtx, bool clip) {
                 iter->draw(0.0f, 0.0f, pCtx, clip);
         }
     }
+#if TARGET_PC
+    if (pcHudScaled)
+        sPcHudInScaled = false;
+#endif
 }
 
 /* 802D054C-802D05C8       .text move__7J2DPaneFff */

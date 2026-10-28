@@ -791,7 +791,7 @@ void Act_c::se_fall_water() {
     polys[1] = &mAcch.m_gnd;
     int material = 19;
     for (int i = 0; i < 2; i++) {
-        if (polys[i]->GetBgIndex() >= 0 && polys[i]->GetBgIndex() < 0x100) {
+        if (polys[i]->GetBgIndex() >= 0 && polys[i]->GetBgIndex() < BG_ID_MAX) {
             material = dComIfG_Bgsp()->GetMtrlSndId(*polys[i]);
             break;
         }

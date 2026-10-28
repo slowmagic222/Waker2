@@ -658,11 +658,26 @@ BOOL daPy_lk_c::procTactPlay() {
                 if (dKy_daynighttact_stop_chk()) {
                     m3624 = 0x14A7;
                 } else {
-                    dStage_FileList_dt_c* fili_p = dComIfGp_roomControl_getStatusRoomDt(fopAcM_GetRoomNo(this))->getFileListInfo();
-                    if (dStage_FileList_dt_GetSongOk(fili_p)) {
-                        m3624 = 0x14AA;
+                    // In generated worlds (Randomizer+), room data or FILI chunk may not exist,
+                    // or Link's room number may be invalid (-1). Treat missing song data as allowed
+                    // (like open sea in vanilla), not forbidden.
+                    int roomNo = fopAcM_GetRoomNo(this);
+                    if (roomNo < 0) {
+                        m3624 = 0x14AA;  // Allow on invalid room (generated world)
                     } else {
-                        return procTactPlayEnd_init(mProcVar6.mTactPlayMelodyNum);
+                        dStage_roomDt_c* roomDt = dComIfGp_roomControl_getStatusRoomDt(roomNo);
+                        if (roomDt != NULL) {
+                            dStage_FileList_dt_c* fili_p = roomDt->getFileListInfo();
+                            if (fili_p != NULL && dStage_FileList_dt_GetSongOk(fili_p)) {
+                                m3624 = 0x14AA;
+                            } else if (fili_p == NULL) {
+                                m3624 = 0x14AA;  // No FILI chunk: allow on generated worlds
+                            } else {
+                                return procTactPlayEnd_init(mProcVar6.mTactPlayMelodyNum);
+                            }
+                        } else {
+                            m3624 = 0x14AA;  // No room data: allow on generated worlds
+                        }
                     }
                 }
             } else {
@@ -706,6 +721,12 @@ BOOL daPy_lk_c::procTactPlayEnd_init(int i_melodyNum) {
     } else if (i_melodyNum == mDoAud_MELODY_WINDS_REQUIEM_e) {
         dCam_getBody()->EndEventCamera(fopAcM_GetID(this));
         fopAcM_create(fpcNm_WBIRD_e, NULL, &current.pos, dComIfGp_roomControl_getStayNo());
+#if TARGET_PC
+        // Randomizer+: on an island, far from the boat, the Wind's Requiem also calls it to the nearest shore.
+        if (r28 == 0 && !checkModeFlg(ModeFlg_SWIM) && mAcch.ChkGroundHit()) {
+            pc_rplus_call_ship(current.pos);
+        }
+#endif
     } else if (i_melodyNum == mDoAud_MELODY_COMMAND_MELODY_e) {
         dCam_getBody()->EndEventCamera(fopAcM_GetID(this));
         dComIfGp_event_setTalkPartner(dComIfGp_getCb1Player());

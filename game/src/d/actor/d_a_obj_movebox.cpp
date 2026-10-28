@@ -1781,7 +1781,7 @@ void Act_c::sound_slip() {
     s32 mtrlSndId = 0;
     if (mBgc.mMaxGroundIdx >= 0) {
         dBgS_ObjGndChk& gndChk = mBgc.M_gnd_work[mBgc.mMaxGroundIdx];
-        if (gndChk.GetBgIndex() >= 0 && gndChk.GetBgIndex() < 0x100) {
+        if (gndChk.GetBgIndex() >= 0 && gndChk.GetBgIndex() < BG_ID_MAX) {
             mtrlSndId = dComIfG_Bgsp()->GetMtrlSndId(gndChk);
         }
     }
@@ -1794,7 +1794,7 @@ void Act_c::sound_limit() {
     s32 mtrlSndId = 0;
     if (mBgc.mWallIdx >= 0) {
         dBgS_ObjLinChk& linChk = mBgc.M_wall_work[mBgc.mWallIdx];
-        if (linChk.GetBgIndex() >= 0 && linChk.GetBgIndex() < 0x100) {
+        if (linChk.GetBgIndex() >= 0 && linChk.GetBgIndex() < BG_ID_MAX) {
             mtrlSndId = dComIfG_Bgsp()->GetMtrlSndId(linChk);
         }
     }
@@ -1807,7 +1807,7 @@ void Act_c::sound_land() {
     s32 mtrlSndId = 0;
     if (mBgc.mMaxGroundIdx >= 0) {
         dBgS_ObjGndChk& gndChk = mBgc.M_gnd_work[mBgc.mMaxGroundIdx];
-        if (gndChk.GetBgIndex() >= 0 && gndChk.GetBgIndex() < 0x100) {
+        if (gndChk.GetBgIndex() >= 0 && gndChk.GetBgIndex() < BG_ID_MAX) {
             mtrlSndId = dComIfG_Bgsp()->GetMtrlSndId(gndChk);
         }
     }

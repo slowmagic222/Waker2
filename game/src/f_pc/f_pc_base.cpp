@@ -13,6 +13,58 @@
 #include "f_pc/f_pc_profile.h"
 #include "dolphin/types.h"
 
+#if TARGET_PC
+#include "pc/pc_harness.h"
+#include <stdio.h>
+
+// Process watch (PC only): a process whose create keeps returning "not yet", or whose IsDelete or Delete
+// keeps refusing, holds up its whole layer. A room or scene then never finishes deleting: no other sea
+// island loads and a stage change stays on a black screen, with nothing in the log. Each such process is
+// named after 600 tries (and every 3600 after). A small fixed table: no allocation from the game's heaps.
+namespace {
+struct PcProcWatch {
+    base_process_class* proc;
+    u32 tries[3]; // create, IsDelete, Delete
+};
+PcProcWatch l_pcProcWatch[64];
+const char* const l_pcProcWatchWhat[3] = {"create waits", "IsDelete refuses", "Delete refuses"};
+
+void pcProcWatchTry(base_process_class* i_proc, int what) {
+    PcProcWatch* slot = NULL;
+    for (int i = 0; i < 64; i++) {
+        if (l_pcProcWatch[i].proc == i_proc) {
+            slot = &l_pcProcWatch[i];
+            break;
+        }
+        if (slot == NULL && l_pcProcWatch[i].proc == NULL) {
+            slot = &l_pcProcWatch[i];
+        }
+    }
+    if (slot == NULL) {
+        return;
+    }
+    if (slot->proc != i_proc) {
+        slot->proc = i_proc;
+        slot->tries[0] = slot->tries[1] = slot->tries[2] = 0;
+    }
+    const u32 n = ++slot->tries[what];
+    if (n == 600 || (n > 600 && (n - 600) % 3600 == 0)) {
+        fprintf(stderr, "[cos] proc-watch: frame %u: process id %u profile %d (subtype %d, params 0x%08x): %s, %u tries\n",
+                pc_frame_count(), (unsigned)i_proc->mBsPcId, (int)i_proc->mProfName, i_proc->mSubType,
+                (unsigned)i_proc->mParameters, l_pcProcWatchWhat[what], n);
+    }
+}
+
+void pcProcWatchDone(base_process_class* i_proc) {
+    for (int i = 0; i < 64; i++) {
+        if (l_pcProcWatch[i].proc == i_proc) {
+            l_pcProcWatch[i].proc = NULL;
+        }
+    }
+}
+} // namespace
+#endif
+
 /* 8003C88C-8003C89C       .text fpcBs_Is_JustOfType__Fii */
 BOOL fpcBs_Is_JustOfType(int i_typeA, int i_typeB) {
     if (i_typeB == i_typeA) {
@@ -66,6 +118,11 @@ BOOL fpcBs_IsDelete(base_process_class* i_proc) {
     fpcLy_SetCurrentLayer(i_proc->mLyTg.mpLayer);
     result = fpcMtd_IsDelete(i_proc->mpPcMtd, i_proc);
     fpcLy_SetCurrentLayer(savedLayer);
+#if TARGET_PC
+    if (result != TRUE) {
+        pcProcWatchTry(i_proc, 1);
+    }
+#endif
     return result;
 }
 
@@ -74,6 +131,13 @@ BOOL fpcBs_Delete(base_process_class* i_proc) {
     BOOL result = TRUE;
     if (result == TRUE) {
         result = fpcMtd_Delete(i_proc->mpPcMtd, i_proc);
+#if TARGET_PC
+        if (result == TRUE) {
+            pcProcWatchDone(i_proc);
+        } else {
+            pcProcWatchTry(i_proc, 2);
+        }
+#endif
         if (result == TRUE) {
             fpcBs_DeleteAppend(i_proc);
             i_proc->mBsType = 0;
@@ -131,7 +195,15 @@ base_process_class* fpcBs_Create(s16 i_profName, fpc_ProcID i_procID, void* i_da
 
 /* 8003CB5C-8003CC08       .text fpcBs_SubCreate__FP18base_process_class */
 cPhs_State fpcBs_SubCreate(base_process_class* i_proc) {
+#if TARGET_PC
+    const int created = fpcMtd_Create(i_proc->mpPcMtd, i_proc);
+    if (created != cPhs_INIT_e && created != cPhs_LOADING_e) {
+        pcProcWatchDone(i_proc);
+    }
+    switch (created) {
+#else
     switch (fpcMtd_Create(i_proc->mpPcMtd, i_proc)) {
+#endif
     case cPhs_NEXT_e:
     case cPhs_COMPLEATE_e:
         fpcBs_DeleteAppend(i_proc);
@@ -139,6 +211,9 @@ cPhs_State fpcBs_SubCreate(base_process_class* i_proc) {
         return cPhs_NEXT_e;
     case cPhs_INIT_e:
     case cPhs_LOADING_e:
+#if TARGET_PC
+        pcProcWatchTry(i_proc, 0);
+#endif
         i_proc->mInitState = 1;
         i_proc->mCreateResult = cPhs_INIT_e;
         return cPhs_INIT_e;

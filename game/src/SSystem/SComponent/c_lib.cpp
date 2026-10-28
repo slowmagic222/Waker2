@@ -8,6 +8,16 @@
 #include "SSystem/SComponent/c_math.h"
 #include "dolphin/mtx/mtxvec.h"
 
+#if TARGET_PC
+// A scale of 0 reaches the cLib_addCalcAngle* functions: Gohma (d_a_btd) turns with m5E92 as the
+// scale, which is still 0 on its first turn as Link enters the Dragon Roost Cavern boss room. The
+// PowerPC's divw does not trap on a zero divisor and ARM64's sdiv gives 0; x86-64's idiv raises
+// SIGFPE. A zero quotient, as on the Switch.
+#define CLIB_DIV(a, b) ((b) != 0 ? (a) / (b) : 0)
+#else
+#define CLIB_DIV(a, b) ((a) / (b))
+#endif
+
 /* 802528A4-802528C4       .text cLib_memCpy__FPvPCvUl */
 void cLib_memCpy(void* dst, const void* src, unsigned long size) {
     memcpy(dst, src, size);
@@ -160,7 +170,7 @@ void cLib_addCalcPosXZ2(cXyz* pValue, cXyz const& target, f32 scale, f32 maxStep
 s16 cLib_addCalcAngleS(s16* pValue, s16 target, s16 scale, s16 maxStep, s16 minStep) {
     s16 diff = target - *pValue;
     if (*pValue != target) {
-        s16 step = (diff) / scale;
+        s16 step = CLIB_DIV(diff, scale);
         if (step > minStep || step < -minStep) {
             if (step > maxStep) {
                 step = maxStep;
@@ -191,7 +201,7 @@ s16 cLib_addCalcAngleS(s16* pValue, s16 target, s16 scale, s16 maxStep, s16 minS
 /* 80253270-802532C4       .text cLib_addCalcAngleS2__FPssss */
 void cLib_addCalcAngleS2(s16* pValue, s16 target, s16 scale, s16 maxStep) {
     s16 diff = target - *pValue;
-    s16 step = diff / scale;
+    s16 step = CLIB_DIV(diff, scale);
     if (step > maxStep) {
         *pValue += maxStep;
     } else if (step < -maxStep) {
@@ -205,7 +215,7 @@ void cLib_addCalcAngleS2(s16* pValue, s16 target, s16 scale, s16 maxStep) {
 s32 cLib_addCalcAngleL(s32* pValue, s32 target, s32 scale, s32 maxStep, s32 minStep) {
     s32 diff = target - *pValue;
     if (*pValue != target) {
-        scale = (diff) / scale;
+        scale = CLIB_DIV(diff, scale);
         if (scale > minStep || scale < -minStep) {
             if (scale > maxStep) {
                 scale = maxStep;

@@ -32,6 +32,7 @@
 
 #include <aurora/aurora.h>
 #include <aurora/dvd.h>
+#include <dolphin/card.h>
 #include <dolphin/dvd.h>
 #include <dolphin/gx/GXAurora.h>
 #include <dolphin/os.h>
@@ -312,6 +313,14 @@ void pc_aurora_init(int argc, char* argv[]) {
         mDoAud_zelAudio_c::onInitFlag();
     }
 
+    // COS_SAVE_DIR (pc_rplus_boot, "Save files: own for each seed"): the card of slot A in that folder.
+    // Before mDoMch_Create's CARDInit; the test cards below win over it.
+    if (const char* saves = getenv("COS_SAVE_DIR"); saves != nullptr && saves[0] != '\0') {
+        static char base[PATH_MAX];
+        snprintf(base, sizeof(base), "%s/", saves); // a trailing slash: the base directory itself
+        CARDSetBasePath(base, 0);
+        writef(STDERR_FILENO, "[cos] memory card A is the folder %s\n", base);
+    }
     // COS_SMOKE=save writes its own card: the path must be set before mDoMch_Create's CARDInit.
     if (gConfig.smoke != nullptr && strcmp(gConfig.smoke, "save") == 0) {
         prepareSaveSmoke();

@@ -92,7 +92,12 @@ int get_wave_max(int roomNo) {
     dStage_Mult_info* entry = multi->m_entries;
     for (int i = 0; i < multi->num; i++, entry++)
         if (roomNo == entry->mRoomNo)
+#if TARGET_PC
+            // Randomizer+: a generated sea room has open sea where an island drew its own water.
+            return pc_rplus_wave_max(roomNo, entry->mWaveMax);
+#else
             return entry->mWaveMax;
+#endif
 
     return 10;
 }
@@ -1167,6 +1172,11 @@ void daSea_packet_c::draw() {
 static BOOL daSea_Draw(sea_class* i_this) {
     dComIfGd_setListSky();
     j3dSys.getDrawBuffer(J3DSysDrawBuf_Xlu)->entryImm(&l_cloth, 31);
+#if TARGET_PC
+    // Randomizer+: the far islands, drawn from the sea (a stage actor) so that they stay whatever rooms load.
+    dComIfGd_setListBG();
+    pc_rplus_far_draw(-1);
+#endif
     dComIfGd_setList();
     return TRUE;
 }

@@ -7,6 +7,9 @@
 #include "d/d_flower.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "m_Do/m_Do_lib.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#endif
 #include "SSystem/SComponent/c_counter.h"
 #include "d/actor/d_a_player.h"
 
@@ -477,6 +480,15 @@ void dFlower_packet_c::update() {
 
     dFlower_data_c* pData = getData();
     pAnm = getAnm();
+#if TARGET_PC
+    // Randomizer+ land holds far more of these; past this distance they aren't drawn.
+    f32 propFar = pc_rplus_prop_far(1);
+    if (propFar > 0.0f && mDoLib_clipper::getFar() > propFar) {
+        mDoLib_clipper::changeFar(propFar);
+    } else {
+        propFar = 0.0f;
+    }
+#endif
     int j = 0;
     for(int i = 0; i < ARRAY_SSIZE(mData); i++, pData++) {
         if(cLib_checkBit<u8>(pData->field_0x00, 0x2)) {
@@ -502,6 +514,11 @@ void dFlower_packet_c::update() {
             }
         }
     }
+#if TARGET_PC
+    if (propFar > 0.0f) {
+        mDoLib_clipper::resetFar();
+    }
+#endif
 
     j3dSys.getDrawBuffer(J3DSysDrawBuf_Opa)->entryImm(this, 0);
 }

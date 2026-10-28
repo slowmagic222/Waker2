@@ -15,6 +15,7 @@
 #include "m_Do/m_Do_mtx.h"
 #include "m_Do/m_Do_controller_pad.h"
 #if TARGET_PC
+#include "pc/pc_qol.h"
 #include "pc/pc_rando.h"
 #endif
 
@@ -846,6 +847,17 @@ BOOL daItem_c::checkItemDisappear() {
         disappearing = FALSE;
         show();
     }
+#if TARGET_PC
+    // QoL "Los objetos soltados no desaparecen" (pc_qol.h; the "items don't disappear" Gecko code BetterWW
+    // ships, without its build-up): near the player the drop neither flashes nor goes. The timers still
+    // run (timeCount), so once the player is 3000 units away a drop whose time is up goes at once.
+    if (disappearing && pc_qol(PC_QOL_ITEMS_STAY) && fopAcM_searchPlayerDistance(this) < 3000.0f) {
+        disappearing = FALSE;
+        if (mWaitTimer == 0) {
+            show(); // it may have been in a flash's hidden half when the option was turned on
+        }
+    }
+#endif
     return disappearing;
 }
 
