@@ -324,7 +324,7 @@ float forestAt(char b, float x, float z, float y) {
         return 0.0f;
     }
     const float grove = fbm(x * 0.00030f, z * 0.00030f, 163, 3);
-    const float f = b == 'f' ? smooth01(0.36f, 0.50f, grove) : smooth01(0.58f, 0.68f, grove);
+    const float f = b == 'f' ? smooth01(0.30f, 0.44f, grove) : smooth01(0.54f, 0.64f, grove);
     return f * (1.0f - smooth01(2200.0f, 3400.0f, y)) * smooth01(LAND_BASE + 70.0f, LAND_BASE + 220.0f, y);
 }
 
@@ -3008,9 +3008,12 @@ const PropKind kProps[P_COUNT] = {
     {"Ebrock", 0xF27FFF3F, 0, 3, 500.0f},   {"Ebrock2", 0xF47FFF3A, 0, 3, 500.0f},
     {"BFlower", 0x0000FF0F, 0, 3, 320.0f},
 };
-// What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 512 trees,
+// What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 2048 trees,
 // shared by the rooms loaded at once; up to four rooms) and how many plain actors it makes.
-const int kPoolBudget[4] = {3000, 320, 420, 170};
+// Trees: 4 x 480 stays under the 2048 the packet holds; at ~80 triangles a tree (leaves, trunk, shadow) even all
+// of them drawn at once is ~150k, and the view cone and the 16000 draw distance (pc_rplus_prop_far) keep it to a
+// fraction of that.
+const int kPoolBudget[4] = {3600, 360, 480, 200};
 constexpr float PROP_STEP = 420.0f;  // the candidate spots' spacing
 
 // The drawn land's height.
@@ -3044,13 +3047,15 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
     if (edge == 2 && green) {
         return r < 240 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 560 ? P_GRASS7 : P_COUNT;
     }
+    // Deep forest: big and small trees with thick undergrowth between them, no bare spots.
     if (forest > 0.55f && !beach && !pathSide) {
-        return r < 110 ? P_LWOOD : r < 430 ? P_SWOOD5 : r < 620 ? P_SWOOD3 : r < 700 ? P_SWOOD : r < 900 ? P_GRASS7
-                                                                                                     : P_COUNT;
+        return r < 130 ? P_LWOOD : r < 460 ? P_SWOOD5 : r < 660 ? P_SWOOD3 : r < 740 ? P_SWOOD : r < 880 ? P_GRASS7
+               : r < 950 ? P_GRASS21 : P_FLWR7;
     }
+    // The forest's edge: more trees than open land, grass and flowers in the gaps.
     if (forest > 0.25f && !beach) {
-        return r < 40 ? P_LWOOD : r < 220 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 600 ? P_GRASS7 : r < 680 ? P_FLWR7
-               : r < 740 ? P_FLOWER : P_COUNT;
+        return r < 60 ? P_LWOOD : r < 300 ? P_SWOOD3 : r < 360 ? P_SWOOD5 : r < 450 ? P_SWOOD : r < 700 ? P_GRASS7
+               : r < 780 ? P_FLWR7 : r < 840 ? P_FLOWER : r < 900 ? P_GRASS1 : P_COUNT;
     }
     if (lawn > 0.6f && (green || b == 'd') && !beach) {
         return r < 620 ? P_GRASS21 : r < 860 ? P_GRASS7 : r < 910 && green ? P_FLWR7 : P_COUNT;
@@ -3075,9 +3080,9 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
         return r < 50 ? P_GRASS1 : r < 70 ? P_GRASS7 : r < 85 ? P_SWOOD : r < 95 ? P_PEBBLE : P_COUNT;
     case 'f':
         if (grove > 0.4f) {
-            return r < 260 ? P_SWOOD5 : r < 430 ? P_SWOOD3 : r < 460 ? P_LWOOD : r < 700 ? P_GRASS7 : P_COUNT;
+            return r < 280 ? P_SWOOD5 : r < 460 ? P_SWOOD3 : r < 500 ? P_LWOOD : r < 760 ? P_GRASS7 : P_COUNT;
         }
-        return r < 120 ? P_GRASS7 : r < 220 ? P_SWOOD3 : r < 260 ? P_GRASS1 : P_COUNT;
+        return r < 180 ? P_GRASS7 : r < 300 ? P_SWOOD3 : r < 340 ? P_SWOOD : r < 400 ? P_GRASS1 : P_COUNT;
     case 'd':
         return r < 30 ? P_PALM : r < 120 ? P_GRASS1 : r < 160 ? P_GRASS7 : r < 175 ? P_PEBBLE : P_COUNT;
     case 'r':
@@ -3154,9 +3159,11 @@ void scatterProps(int roomNo) {
                 continue;  // in the surf
             }
             pushSpot(x, z, y, h);
-            // In a forest, three more spots in this one's square: the trees stand closer.
-            if (forestAt(biomeNear(gx, gy), x, z, y) > 0.25f) {
-                for (int k = 1; k <= 3; k++) {
+            // In a forest, more spots in this one's square (five more, seven deep in it): the trees stand closer.
+            const float fo = forestAt(biomeNear(gx, gy), x, z, y);
+            if (fo > 0.25f) {
+                const int extra = fo > 0.55f ? 7 : 5;
+                for (int k = 1; k <= extra; k++) {
                     const u32 hk = hash2((int)h + k * 0x3D, k * 0x91 + 0x4F);
                     const float sx = bx + (i + ((hk >> 4) & 0xFF) / 256.0f) * PROP_STEP;
                     const float sz = bz + (j + ((hk >> 12) & 0xFF) / 256.0f) * PROP_STEP;
@@ -3252,8 +3259,13 @@ void scatterProps(int roomNo) {
             continue;
         }
         const PropKind& kind = kProps[id];
-        // Trees in a forest stand about half as far apart as in the open.
-        const float clearance = kind.clearance * (forest > 0.25f && (kind.pool == 2 || id == P_LWOOD) ? 0.55f : 1.0f);
+        // Trees in a forest stand about half as far apart as in the open (closer still deep in it), and the
+        // undergrowth fills in between them.
+        const bool inForest = forest > 0.25f;
+        const float treeClear = forest > 0.55f ? 0.45f : 0.55f;
+        const float clearance = kind.clearance * (inForest && (kind.pool == 2 || id == P_LWOOD) ? treeClear
+                                                  : inForest && kind.pool <= 1                ? 0.7f
+                                                                                              : 1.0f);
         const int cost = kind.pool == 3 ? 1 : kind.cost;
         if (used[kind.pool] + cost > (sp.key < 1.0f ? kPoolBudget[kind.pool] / 2 : kPoolBudget[kind.pool])) {
             continue;
