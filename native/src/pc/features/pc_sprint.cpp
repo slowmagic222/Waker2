@@ -1,6 +1,6 @@
-// Sprint with B button (QoL feature): Hold B while moving on ground to run faster,
-// drains the climbing stamina wheel. Refills when not sprinting.
-// Shares stamina with climbing (COS_QOL_CLIMB) since climbing is a prerequisite.
+// Sprint with A button (QoL feature): Hold A while moving on ground to run faster,
+// drains stamina. Tap A rolls or acts as normal. Refills when not sprinting.
+// Requires climbing (COS_QOL_CLIMB) to be enabled since they share stamina.
 #include "d/dolzel.h" // IWYU pragma: keep
 #include "pc_internal.h"
 
@@ -22,9 +22,10 @@ constexpr float kDrainRate = 1.0f;            // stamina drain per second while 
 constexpr float kFrameSeconds = 1.0f / 30.0f; // default game frame rate
 
 float sSprintStamina = 1.0f;  // shared with climbing (0..1)
-int sGroundFrames = 0;
+int sGroundFrames = 0;        // frames on ground (for stamina refill delay)
+int sAButtonHeldFrames = 0;   // frames A button held (for hold vs tap detection)
 unsigned sFrame = 0;
-int sIsSprinting = 0;  // current sprint state (suppress attacks while true)
+int sIsSprinting = 0;         // current sprint state (suppress attacks while true)
 
 float staminaSeconds() {
     const float s = (float)atof(pc_settings_get("COS_QOL_CLIMB_STAMINA"));
@@ -33,13 +34,20 @@ float staminaSeconds() {
 
 } // namespace
 
-// Check if B button is held
-int pc_sprint_b_held(void) {
-    return CPad_CHECK_HOLD_B(0) ? 1 : 0;
+// Check if A button is held long enough to sprint (not just a tap for roll)
+// Sprint activates after holding A for ~0.3s (9 frames at 30fps) while moving
+int pc_sprint_a_held(void) {
+    if (!CPad_CHECK_HOLD_A(0)) {
+        sAButtonHeldFrames = 0;  // reset hold counter if A is released
+        return 0;
+    }
+    // Count frames holding A; sprint starts after ~9 frames (0.3s at 30fps)
+    sAButtonHeldFrames++;
+    return sAButtonHeldFrames > 9 ? 1 : 0;
 }
 
 // Update sprint stamina state each frame
-// Called from player frame update with: sprinting (B held + moving on ground), ground state
+// Called from player frame update with: sprinting (A held long enough + moving on ground), ground state
 void pc_sprint_frame(int sprinting, int ground, float deltaSeconds) {
     if (!pc_qol(PC_QOL_CLIMB)) {
         sSprintStamina = 1.0f;
@@ -90,4 +98,12 @@ void pc_sprint_set_stamina(float value) {
 // Check if currently sprinting (used to suppress sword attacks)
 int pc_sprint_is_active(void) {
     return sIsSprinting;
+}
+
+// Get sprint speed multiplier (1.0 for normal, 1.6 for sprinting with stamina)
+float pc_sprint_speed_multiplier(void) {
+    if (!sIsSprinting || sSprintStamina <= 0.0f) {
+        return 1.0f;
+    }
+    return 1.6f;  // 1.6x speed boost while sprinting with stamina
 }
