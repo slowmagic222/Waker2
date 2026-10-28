@@ -792,9 +792,10 @@ void dEvDtStaff_c::specialProcPackage() {
                     demo_data = dComIfG_getObjectRes(demo_arc, filename);
                 if (demo_data == NULL)
                     demo_data = dComIfG_getStageRes("Stage", filename);
-                JUT_ASSERT(0x42e, demo_data);
-                dComIfGp_demo_create((const u8*)demo_data, pOffsetPos, offsetAngY);
-                dComIfGp_event_setCullRate(10.0f);
+                if (demo_data != NULL) {
+                    dComIfGp_demo_create((const u8*)demo_data, pOffsetPos, offsetAngY);
+                    dComIfGp_event_setCullRate(10.0f);
+                }
                 int* eventFlag = dComIfGp_evmng_getMyIntegerP(staffIdx, "EventFlag");
                 if (eventFlag != NULL)
                     dComIfGs_onEventBit(*eventFlag);

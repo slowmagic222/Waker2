@@ -353,5 +353,8 @@ int pc_rplus_home_unbreakable(void);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);
+/* setInitEventBit (d_save_init.cpp): mark story events as complete for randomizer+ mode (Forest of Fairies,
+   etc.) so skipped sequences don't crash. */
+void pc_rplus_init_story_events(void);
 
 #endif /* PC_GAME_HOOKS_H */
