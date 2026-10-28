@@ -3358,7 +3358,6 @@ void pc_rplus_room_actors(int roomNo) {
     if (pc_rplus_sea_room_generated(roomNo)) {
         scatterProps(roomNo);
         pc_rplus_life_room(roomNo);
-        pc_rplus_decor_room(roomNo);
     }
     for (const GenDoor& gd : genDoors()) {
         if (gd.seaRoom != roomNo) {

@@ -356,8 +356,9 @@ int pc_rplus_home_unbreakable(void);
 void pc_rplus_decor_reset(void);
 void pc_rplus_decor_load(int slot);
 void pc_rplus_decor_save(int slot);
-// pc_rplus_room_actors of a generated sea room: the pieces still to find there.
-void pc_rplus_decor_room(int roomNo);
+// fopAcM_createItemForTrBoxDemo (a chest, sunken treasure, a demo pickup): a check of filler itemNo also gives the
+// next decor piece Link lacks; 1 if it did.
+int pc_rplus_decor_check(int itemNo);
 // pc_rplus_home_actor: where a dish or pot of the cabana stood.
 void pc_rplus_decor_home_slot(const class cXyz& pos);
 // daPy_lk_c::execute, once a frame: pieces found, the cabana's pieces made and where they were set down.

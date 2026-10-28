@@ -29,6 +29,7 @@
 #include "SSystem/SComponent/c_malloc.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "pc/game_hooks.h"
 #endif
 
 #define MAKE_ITEM_PARAMS(itemNo, itemBitNo, switchNo2, type, action)                               \
@@ -819,6 +820,10 @@ fpc_ProcID fopAcM_createItemForTrBoxDemo(cXyz* pos, int i_itemNo, int roomNo, in
         return fpcM_ERROR_PROCESS_ID_e;
     }
 
+#if TARGET_PC
+    // Randomizer+: a check of filler also gives a house decor piece (pc_rplus_decor.cpp).
+    pc_rplus_decor_check(i_itemNo);
+#endif
     return fopAcM_createDemoItem(pos, i_itemNo, roomNo, angle, param_5, scale, 0x00);
 }
 

@@ -6,9 +6,10 @@
 // enemies' weapons) and the Nintendo Gallery's figurines, each on its own pedestal. The bomb flowers, stunned enemies,
 // Medli, Makar and the Command Melody's statue are not decor (they blow up, or are people).
 //
-// The world: each piece but the starting ones has a spot of its own on open land (the seed and the piece), and stands
-// there while its room is loaded until Link lifts it or walks up to it; then it is his ("Found: Barrel"), and a
-// figurine goes home at once. In the cabana every piece he has stands where he last set it down, or on the next free
+// The checks (Dillon, 2026-10-28): decor is a non-progress check reward, not something standing about. A check that
+// holds only filler (rupees, hearts, refills: a chest, sunken treasure, a demo pickup, all through
+// fopAcM_createItemForTrBoxDemo) also gives the next piece Link lacks, in an order the seed shuffles; the filler
+// still comes with it ("Found decor: Barrel"). In the cabana every piece he has stands where he last set it down, or on the next free
 // spot of a ring round the room's middle; there nothing breaks (d_a_tsubo, d_a_stone, d_a_stone2) and the figurines
 // can be carried too (d_a_obj_figure).
 //
@@ -16,12 +17,11 @@
 // the file is loaded (dSv_info_c::card_to_memory) and written when the game saves (memory_to_card), so what is found
 // and moved after the last save is gone again after a reset, as the game's own items are.
 //
-// COS_RPLUS_DECOR=0 leaves the world's pickups out; COS_RPLUS_DECOR_FIGURES=<n> is how many figurines stand in the
+// COS_RPLUS_DECOR=0 gives no decor from checks; COS_RPLUS_DECOR_FIGURES=<n> is how many figurines stand in the
 // cabana at once (the last n found, 48 by default: each loads its gallery room's archive and a heap of its own).
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
 #include "pc/pc_seedgen.h"
-#include "pc_rplus_world.h"
 #include "pc_internal.h"
 #include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_com_inf_game.h"
@@ -168,91 +168,12 @@ u32 mix(u32 a, u32 b) {
     return h ^ (h >> 13);
 }
 
-// ---- The world's pickups
-
-struct WorldSpot {
-    float x = 0, z = 0;
-    int room = 0;  // 0: none found
-};
-
-// Each piece's spot, where Link goes: the first eight round the start (700 to 3500 units off), then in turn round a
-// town (its houses' ring to 2500 units beyond), round an anchor (a door, a person, a puzzle: up to 2000 units off) and
-// on any land cell. Always open, gentle land in a generated room, 600 units from the start's door and 300 from
-// another piece; the seed and the piece pick it.
-const std::vector<WorldSpot>& worldSpots() {
-    static std::vector<WorldSpot> spots;
-    if (!spots.empty()) {
-        return spots;
-    }
-    Host host;
-    spots.resize(catalog().size());
-    const int n = pc_rplus_squares() * pc_rplus_cells();
-    float sx, sz;
-    rplus::startXZ(&sx, &sz);
-    const std::vector<rplus::TownInfo> towns = rplus::towns();
-    const int anchors = pc_rplus_anchor_count();
-    int placed = 0, k = 0;
-    for (size_t i = 0; i < spots.size(); i++) {
-        if (catalog()[i].starter) {
-            continue;
-        }
-        const int mode = k < 8 ? 3 : k % 3;
-        k++;
-        for (int t = 0; t < 400; t++) {
-            const u32 h = mix((u32)(i * 977 + t), pc_rplus_seed() ^ 0xDEC0u);
-            const float a = (h & 0xFFFF) / 65536.0f * 6.2831853f;
-            const float f = ((h >> 16) & 0xFF) / 255.0f;
-            float x, z;
-            const int m = t < 200 ? mode : 2;  // round its place first, then anywhere
-            if (m == 3) {
-                x = sx + (700.0f + 2800.0f * f) * sinf(a), z = sz + (700.0f + 2800.0f * f) * cosf(a);
-            } else if (m == 0 && !towns.empty()) {
-                const rplus::TownInfo& tw = towns[(h >> 24) % towns.size()];
-                x = tw.x + (tw.r + 200.0f + 2300.0f * f) * sinf(a), z = tw.z + (tw.r + 200.0f + 2300.0f * f) * cosf(a);
-            } else if (m == 1 && anchors > 0) {
-                const char *id, *kind, *stage;
-                int cx, cy;
-                if (!pc_rplus_anchor((int)((h >> 24) % (u32)anchors), &id, &kind, &stage, &cx, &cy)) {
-                    continue;
-                }
-                rplus::cellSpot(cx, cy, &x, &z);
-                x += (300.0f + 1700.0f * f) * sinf(a), z += (300.0f + 1700.0f * f) * cosf(a);
-            } else {
-                const int cx = (int)(h % (u32)n), cy = (int)((h >> 12) % (u32)n);
-                if (pc_rplus_cell_height(cx, cy) <= 0) {
-                    continue;
-                }
-                rplus::cellSpot(cx, cy, &x, &z);
-            }
-            const int room = rplus::roomAt(x, z);
-            if (room == 0 || !pc_rplus_sea_room_generated(room) || rplus::biomeAt(x, z) == '.' ||
-                rplus::groundY(x, z) < 20.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 250.0f) ||
-                hypotf(x - sx, z - sz) < 600.0f) {
-                continue;
-            }
-            bool crowded = false;
-            for (size_t j = 0; j < i && !crowded; j++) {
-                crowded = spots[j].room != 0 && hypotf(spots[j].x - x, spots[j].z - z) < 300.0f;
-            }
-            if (crowded) {
-                continue;
-            }
-            spots[i] = {x, z, room};
-            placed++;
-            break;
-        }
-    }
-    fprintf(stderr, "[rplus] decor: %d of %d pieces have a spot in the world\n", placed, (int)spots.size());
-    return spots;
-}
-
 struct Live {
     fpc_ProcID id;
     int decor;
     int missing;  // frames not found (still being made, or its room went)
 };
 
-std::vector<Live> sWorld;  // the pickups standing in the world
 std::vector<Live> sHome;   // the pieces standing in the cabana
 
 fpc_ProcID spawn(int decor, const cXyz& at, s16 ay, int roomNo) {
@@ -293,39 +214,8 @@ void found(int decor) {
         Host host;
         sNotice = line;
     }
-    sNoticeEnd = std::chrono::steady_clock::now() + std::chrono::seconds(4);
-    mDoAud_seStart(JA_SE_SPOILS_GET);
+    sNoticeEnd = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     fprintf(stderr, "[rplus] decor: found %s\n", catalog()[decor].key.c_str());
-}
-
-void worldFrame(fopAc_ac_c* link) {
-    for (size_t i = 0; i < sWorld.size();) {
-        Live& w = sWorld[i];
-        fopAc_ac_c* a = fopAcM_SearchByID(w.id);
-        if (a == nullptr) {
-            if (++w.missing > 600) {
-                sWorld.erase(sWorld.begin() + i);
-                continue;
-            }
-            i++;
-            continue;
-        }
-        w.missing = 0;
-        const Decor& d = catalog()[w.decor];
-        const float reach = d.kind == K_FIGURE ? 130.0f : 90.0f;
-        const bool near = hypotf(a->current.pos.x - link->current.pos.x, a->current.pos.z - link->current.pos.z) < reach &&
-                          fabsf(a->current.pos.y - link->current.pos.y) < 150.0f;
-        if (sLive.p[w.decor].order == 0 && (fopAcM_checkCarryNow(a) || near)) {
-            found(w.decor);
-            if (d.kind == K_FIGURE) {
-                fopAcM_delete(a);
-            }
-            // the rest stay (carried, thrown, broken: it is Link's now)
-            sWorld.erase(sWorld.begin() + i);
-            continue;
-        }
-        i++;
-    }
 }
 
 // ---- The cabana
@@ -536,34 +426,41 @@ void pc_rplus_decor_save(int slot) {
     fclose(f);
 }
 
-void pc_rplus_decor_room(int roomNo) {
+int pc_rplus_decor_check(int itemNo) {
     if (!pc_rplus_active() || !enabled()) {
-        return;
+        return 0;
+    }
+    // filler: a heart, rupees, magic, bombs, arrows, a fairy, three hearts
+    static const u8 kFiller[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09, 0x0A, 0x0B,
+                                 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x16, 0x1E};
+    bool filler = false;
+    for (u8 f : kFiller) {
+        filler = filler || itemNo == f;
+    }
+    if (!filler) {
+        return 0;
     }
     if (sLive.p.empty()) {
         Host host;
         sLive = fresh();
     }
-    const std::vector<WorldSpot>& spots = worldSpots();
-    int n = 0;
-    for (size_t i = 0; i < spots.size(); i++) {
-        if (spots[i].room != roomNo || sLive.p[i].order > 0) {
+    // the pieces Link lacks, the seed's order: the lowest key mix(piece, seed) first
+    int best = -1;
+    u32 bestKey = 0;
+    for (size_t i = 0; i < sLive.p.size(); i++) {
+        if (sLive.p[i].order > 0) {
             continue;
         }
-        const float x = spots[i].x, z = spots[i].z;
-        const fpc_ProcID id = spawn((int)i, cXyz(x, rplus::groundY(x, z) + 5.0f, z),
-                                    (s16)(mix((u32)i, pc_rplus_seed()) & 0xFFFF), roomNo);
-        if (id != fpcM_ERROR_PROCESS_ID_e) {
-            fprintf(stderr, "[rplus] decor: %s at %.0f %.0f %.0f\n", catalog()[i].key.c_str(), x,
-                    rplus::groundY(x, z), z);
-            Host host;
-            sWorld.push_back({id, (int)i, 0});
-            n++;
+        const u32 key = mix((u32)i, pc_rplus_seed() ^ 0xDEC0u);
+        if (best < 0 || key < bestKey) {
+            best = (int)i, bestKey = key;
         }
     }
-    if (n > 0) {
-        fprintf(stderr, "[rplus] room %d: %d decor pieces to find\n", roomNo, n);
+    if (best < 0) {
+        return 0;
     }
+    found(best);
+    return 1;
 }
 
 void pc_rplus_decor_home_slot(const cXyz& pos) {
@@ -592,10 +489,8 @@ void pc_rplus_decor_frame(void) {
         }
         sHomeSpawned = false;
         sHomeFrames = 0;
-        worldFrame(link);
         return;
     }
-    sWorld.clear();
     // in the cabana: its pieces once Link stands in it (its floor's collision is there), the door's wipe and event over
     if (!sHomeSpawned) {
         sHomeFrames++;
@@ -610,17 +505,7 @@ void pc_rplus_decor_frame(void) {
 }
 
 int pc_rplus_decor_owns(unsigned int procId) {
-    for (const Live& l : sWorld) {
-        if (l.id == procId) {
-            return 1;
-        }
-    }
-    for (const Live& l : sHome) {
-        if (l.id == procId) {
-            return 1;
-        }
-    }
-    return 0;
+    return pc_rplus_decor_in_home(procId);
 }
 
 int pc_rplus_decor_in_home(unsigned int procId) {
