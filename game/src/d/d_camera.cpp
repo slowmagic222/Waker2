@@ -982,7 +982,7 @@ bool dCamera_c::Run() {
     next = mNextMode;
 
     // Validate mCurType before accessing types array (generated rooms may have invalid types)
-    if (mCurType < 0 || mCurType >= (s32)ARRAY_SIZE(types)) {
+    if (mCurType < 0 || mCurType >= 65) {  // 65 types in dCamera_c::types[]
         mCurType = 0;  // Fall back to first type (typically field camera)
     }
 

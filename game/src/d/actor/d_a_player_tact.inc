@@ -665,7 +665,7 @@ BOOL daPy_lk_c::procTactPlay() {
                     if (roomNo < 0) {
                         m3624 = 0x14AA;  // Allow on invalid room (generated world)
                     } else {
-                        dStage_roomControl_dt* roomDt = dComIfGp_roomControl_getStatusRoomDt(roomNo);
+                        dStage_roomDt_c* roomDt = dComIfGp_roomControl_getStatusRoomDt(roomNo);
                         if (roomDt != NULL) {
                             dStage_FileList_dt_c* fili_p = roomDt->getFileListInfo();
                             if (fili_p != NULL && dStage_FileList_dt_GetSongOk(fili_p)) {

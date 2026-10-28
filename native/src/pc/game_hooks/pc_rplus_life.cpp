@@ -13,6 +13,7 @@
 #include "pc_internal.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_stage.h"
+#include "d/d_camera.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_pc/f_pc_name.h"
 #include <algorithm>
