@@ -23,6 +23,7 @@
 #include "d/actor/d_a_sea.h"
 #if TARGET_PC
 #include "pc/pc_harness.h"
+#include "pc/game_hooks.h"
 #endif
 
 /* 80040900-80040938       .text set__18dStage_nextStage_cFPCcScsScSc */
@@ -1311,7 +1312,19 @@ const char* dStage_getName2(s16 i_procName, s8 i_argument) {
 }
 
 /* 80041628-8004169C       .text dStage_actorCreate__FP22stage_actor_data_classP16fopAcM_prm_class */
+#if TARGET_PC
+// Randomizer+: set while a generated sea room's actors are made (dStage_dt_c_roomReLoader).
+static bool l_rplusRoomActors = false;
+#endif
+
 void dStage_actorCreate(stage_actor_data_class* i_actorData, fopAcM_prm_class* i_actorPrm) {
+#if TARGET_PC
+    // Randomizer+: of a generated sea room's actors only the ones not tied to its island are made (the ship).
+    if (l_rplusRoomActors && !pc_rplus_keep_room_actor(i_actorData->name)) {
+        JKRHeap::free(i_actorPrm, NULL);
+        return;
+    }
+#endif
     dStage_objectNameInf* nameinf_p = dStage_searchName(i_actorData->name);
 
     if (nameinf_p == NULL) {
@@ -2262,8 +2275,15 @@ void dStage_dt_c_roomReLoader(void* i_data, dStage_dt_c* i_stage, int param_2) {
         {"TGDR", dStage_roomDrtgInfoInit},
     };
 
+#if TARGET_PC
+    // Randomizer+: a generated sea room has none of its island's actors.
+    l_rplusRoomActors = pc_rplus_room_actors_off(param_2) != 0;
+#endif
     dStage_dt_c_decode(i_data, i_stage, l_funcTable, ARRAY_SIZE(l_funcTable));
     layerLoader(i_data, i_stage, param_2);
+#if TARGET_PC
+    l_rplusRoomActors = false;
+#endif
 }
 
 /* 8004324C-800432EC       .text dStage_infoCreate__Fv */
@@ -2458,6 +2478,10 @@ void dStage_turnRestart() {
 #if VERSION > VERSION_DEMO
 /* 80043BD0-80043C84       .text dStage_escapeRestart__Fv */
 void dStage_escapeRestart() {
+#if TARGET_PC
+    fprintf(stderr, "[cos] stage: escape restart of %s (a room could not load) at frame %u\n",
+            dComIfGp_getStartStageName(), pc_frame_count());
+#endif
     daPy_lk_c* player_p = daPy_getPlayerLinkActorClass();
     dComIfGs_setTurnRestart(player_p->current.pos, player_p->shape_angle.y, fopAcM_GetRoomNo(player_p), player_p->getDayNightParamData());
 

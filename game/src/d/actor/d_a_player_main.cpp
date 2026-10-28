@@ -4643,6 +4643,13 @@ void daPy_lk_c::setFrontWallType() {
     if (wall_code == 2 || current.pos.y - m35D4 < 125.0f) {
         return;
     }
+    // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): a plain wall (code 0) is a candidate for ivy; the
+    // wall it hit is kept, as the checks below reuse the line check
+    const bool climbCandidate = wall_code == 0 && pc_qol_climb_can_grab();
+    cBgS_PolyInfo climbPoly;
+    if (climbCandidate) {
+        climbPoly = mLinkLinChk;
+    }
     if (checkNoResetFlg0(daPyFlg0_UNK100)) {
         if ((wall_code == 3 && !checkModeFlg(ModeFlg_SWIM)) && !checkModeFlg(ModeFlg_MIDAIR)) {
             onResetFlg0(daPyRFlg0_UNK8);
@@ -4731,6 +4738,15 @@ void daPy_lk_c::setFrontWallType() {
     end.set(start.x + (sin * (50.0f + radius)), start.y, start.z + (cos * (50.0f + radius)));
     mLinkLinChk.Set(&start, &end, this);
     BOOL cVar8 = dComIfG_Bgsp()->LineCross(&mLinkLinChk);
+    // QoL "Trepar cualquier pared": a plain wall that goes on above where Link grabs ledges (so not a ledge to
+    // pull himself onto) becomes ivy, under the game's own conditions for ivy (above), not just after letting
+    // go of a wall, and in the air only while he is steered at it. A wall to sidle along still wins below.
+    if (cVar8 && climbCandidate && mFrontWallType == 1 && !checkNoResetFlg1(daPyFlg1_VINE_CATCH) &&
+        checkNoResetFlg0(daPyFlg0_UNK100) && (!checkModeFlg(ModeFlg_MIDAIR) || mStickDistance > 0.05f))
+    {
+        mPolyInfo = climbPoly;
+        mFrontWallType = 3;
+    }
     if (!cVar8) {
         mRoofChk.SetPos(current.pos);
         if ((dComIfG_Bgsp()->RoofChk(&mRoofChk) - current.pos.y) > 10.0f + m_HIO->mWallCatch.m.field_0x18) {
@@ -7132,6 +7148,41 @@ int daPy_lk_c::checkAutoJumpFlying() const {
         return -1;
     }
     return mProcVar0.m34D0;
+}
+
+// QoL "Botón de salto" (pc_qol.h, COS_QOL_JUMP_BUTTON): Link may jump from the button only on the ground, standing,
+// idling or moving under the player's control, with nothing else going on: no event or demo, not swimming,
+// climbing, hanging, sidling, crawling, crouching, carrying, pushing, on the boat, in first person, targeting, in
+// iron boots, nor on ground the game will not auto jump off either (m357C 3, changeAutoJumpProc).
+bool daPy_lk_c::pcCanJumpFromButton() {
+    if (mCurProc != daPyProc_WAIT_e && mCurProc != daPyProc_FREE_WAIT_e && mCurProc != daPyProc_MOVE_e) {
+        return false;
+    }
+    if (dComIfGp_event_runCheck() || mDemo.getDemoType() != 0 || mDemo.getDemoMode() != 0) {
+        return false;
+    }
+    if (checkModeFlg(ModeFlg_MIDAIR | ModeFlg_DAMAGE | ModeFlg_WHIDE | ModeFlg_HANG | ModeFlg_HOOKSHOT |
+                     ModeFlg_ROPE | ModeFlg_IN_SHIP | ModeFlg_CLIMB | ModeFlg_SWIM | ModeFlg_GRAB |
+                     ModeFlg_PUSHPULL | ModeFlg_LADDER | ModeFlg_CROUCH | ModeFlg_CRAWL | ModeFlg_CAUGHT |
+                     ModeFlg_SUBJECT | ModeFlg_PARRY))
+    {
+        return false;
+    }
+    if (!mAcch.ChkGroundHit() || mActorKeepGrab.getActor() != NULL || checkGrabWear() ||
+        getHeavyStateAndBoots() || m357C == 3 || m3580 == 3)
+    {
+        return false;
+    }
+    // L held (targeting, or the camera behind Link) or a lock-on
+    return mpAttention->mLockOnState == 0 && !mpAttention->chkFlag(AttnFlag_10000000 | AttnFlag_20000000);
+}
+
+// QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): once a frame, the stamina wheel (pc_climb.cpp) drains
+// while Link climbs and refills on the ground; it is drawn by his shoulder.
+void daPy_lk_c::pcClimbFrame() {
+    const bool climbing = mCurProc >= daPyProc_CLIMB_UP_START_e && mCurProc <= daPyProc_CLIMB_MOVE_SIDE_e;
+    const float shoulder[3] = {current.pos.x, current.pos.y + 90.0f, current.pos.z};
+    pc_qol_climb_frame(climbing, !checkModeFlg(ModeFlg_MIDAIR | ModeFlg_SWIM), mStickDistance <= 0.05f, shoulder);
 }
 
 /* 80115EA4-8011602C       .text procAutoJump_init__9daPy_lk_cFv */
@@ -11430,9 +11481,16 @@ BOOL daPy_lk_c::execute() {
         onNoResetFlg0(daPyFlg0_UNK10000000);
     }
     
-    if (mCurProcFunc != NULL) {
+    // QoL "Botón de salto" (pc_qol.h, COS_QOL_JUMP_BUTTON): a press of the jump button is spent on this frame,
+    // jump or not. When Link stands, idles or moves under the player's control, the game's own jump off a
+    // ledge (procAutoJump_init) runs in place of this frame's proc, as changeAutoJumpProc would start it:
+    // procAutoJump flies and lands it from the next frame, with its ledge grabs and glides.
+    if (pc_qol_jump_take() && pcCanJumpFromButton()) {
+        procAutoJump_init();
+    } else if (mCurProcFunc != NULL) {
         (this->*mCurProcFunc)();
     }
+    pcClimbFrame();
     
     playTextureAnime();
     cXyz sp14 = current.pos;

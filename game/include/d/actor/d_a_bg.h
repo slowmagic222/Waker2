@@ -57,6 +57,9 @@ public:
     } bg[4];
     /* 0x2D8 */ dBgW * bgw;
     /* 0x2DC */ u8 mUnloadTimer;
+#if TARGET_PC
+    struct PcRplusTerrain* mpRplusTerrain; // Randomizer+: the generated room's land (pc/game_hooks.h)
+#endif
 };
 
 // inline void searchRoomMemory(int) {}

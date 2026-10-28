@@ -21,6 +21,37 @@
 #include "JSystem/JKernel/JKRExpHeap.h"
 #include "stdio.h"
 
+#if TARGET_PC
+#include "pc/pc_harness.h"
+
+// Room loading watch (PC only): a room scene that waits in one of its phases (a sea island that never
+// loads; loadRoom starts no other room while one is loading) says where, after 300 frames and then
+// every 1800, and each room says when it is ready, with its memory block's use. Diagnostics only.
+static u32 l_pcRoomWait[64];
+static u32 l_pcRoomStart[64];
+
+static void pcRoomWait(room_of_scene_class* i_this, int phase, const char* what, s32 detail) {
+    const int roomNo = fopScnM_GetParam(i_this) & 63;
+    const u32 n = ++l_pcRoomWait[roomNo];
+    if (n != 300 && (n < 300 || (n - 300) % 1800 != 0)) {
+        return;
+    }
+    JKRExpHeap* heap = dStage_roomControl_c::getMemoryBlock(fopScnM_GetParam(i_this));
+    fprintf(stderr, "[cos] room-watch: frame %u: %s room %d waits in phase %d for %u frames: %s (%d); memory block %d: %s\n",
+            pc_frame_count(), dComIfGp_getStartStageName(), fopScnM_GetParam(i_this), phase, n, what, (int)detail,
+            dStage_roomControl_c::getMemoryBlockID(fopScnM_GetParam(i_this)), heap == NULL ? "none" : "");
+    if (heap != NULL) {
+        fprintf(stderr, "[cos] room-watch:   block size 0x%x, used 0x%x, free 0x%x\n", (unsigned)heap->getHeapSize(),
+                (unsigned)heap->getTotalUsedSize(), (unsigned)heap->getFreeSize());
+    }
+}
+
+static void pcRoomFailed(room_of_scene_class* i_this, int phase, const char* what, s32 detail) {
+    fprintf(stderr, "[cos] room-watch: frame %u: %s room %d failed in phase %d: %s (%d); the game restarts the stage\n",
+            pc_frame_count(), dComIfGp_getStartStageName(), fopScnM_GetParam(i_this), phase, what, (int)detail);
+}
+#endif
+
 // Fake inline: An inline like this seems necessary for setMapImage to match, but it isn't in the debug maps.
 // TODO: Try to find a way to match setMapImage with real inlines.
 inline f32 getActorPositionY(fopAc_ac_c* actor) {
@@ -150,6 +181,10 @@ static BOOL dScnRoom_Delete(room_of_scene_class* i_this) {
 cPhs_State phase_0(room_of_scene_class* i_this) {
     s32 roomNo = fopScnM_GetParam(i_this);
     dStage_roomControl_c::setStatusProcID(roomNo, fopScnM_GetID(i_this));
+#if TARGET_PC
+    l_pcRoomWait[roomNo & 63] = 0;
+    l_pcRoomStart[roomNo & 63] = pc_frame_count();
+#endif
     return cPhs_NEXT_e;
 }
 
@@ -157,8 +192,12 @@ cPhs_State phase_0(room_of_scene_class* i_this) {
 cPhs_State phase_1(room_of_scene_class* i_this) {
     s32 roomNo = fopScnM_GetParam(i_this);
     JKRExpHeap * pHeap = dStage_roomControl_c::getMemoryBlock(roomNo);
-    if (pHeap != NULL && pHeap->getTotalUsedSize() != 0)
+    if (pHeap != NULL && pHeap->getTotalUsedSize() != 0) {
+#if TARGET_PC
+        pcRoomWait(i_this, 1, "its memory block still holds another room", pHeap->getTotalUsedSize());
+#endif
         return cPhs_INIT_e;
+    }
 
     const char * arcName = setArcName(i_this);
     BOOL rt = dComIfG_setStageRes(arcName, pHeap);
@@ -166,6 +205,9 @@ cPhs_State phase_1(room_of_scene_class* i_this) {
     JUT_ASSERT(380, rt == TRUE);
 #else
     if (!rt) {
+#if TARGET_PC
+        pcRoomFailed(i_this, 1, "dComIfG_setStageRes", rt);
+#endif
         dStage_escapeRestart();
         return cPhs_ERROR_e;
     }
@@ -180,14 +222,21 @@ cPhs_State phase_2(room_of_scene_class* i_this) {
     s32 rt = dComIfG_syncStageRes(arcName);
 #if VERSION > VERSION_DEMO
     if (rt < 0) {
+#if TARGET_PC
+        pcRoomFailed(i_this, 2, "the room archive did not load", rt);
+#endif
         dStage_escapeRestart();
         return cPhs_ERROR_e;
     }
 #endif
 
     JUT_ASSERT(DEMO_SELECT(394, 448), rt >= 0);
-    if (rt != 0)
+    if (rt != 0) {
+#if TARGET_PC
+        pcRoomWait(i_this, 2, "the room archive is still loading", rt);
+#endif
         return cPhs_INIT_e;
+    }
 
     int roomNo = fopScnM_GetParam(i_this);
     s32 zoneNo = dComIfGp_roomControl_getZoneNo(roomNo);
@@ -234,18 +283,28 @@ cPhs_State phase_3(room_of_scene_class* i_this) {
     if (dStage_roomControl_c::getDemoArcName()[0] != '\0') {
         s32 rt = dComIfG_syncObjectRes(dStage_roomControl_c::getDemoArcName());
         if (rt < 0) {
+#if TARGET_PC
+            pcRoomFailed(i_this, 3, dStage_roomControl_c::getDemoArcName(), rt);
+#endif
 #if VERSION > VERSION_DEMO
             dStage_escapeRestart();
 #endif
             return cPhs_ERROR_e;
         } else if (rt > 0) {
+#if TARGET_PC
+            pcRoomWait(i_this, 3, dStage_roomControl_c::getDemoArcName(), rt);
+#endif
             return cPhs_INIT_e;
         }
     }
 
     if (i_this->sceneCommand != NULL) {
-        if (i_this->sceneCommand->sync() == 0)
+        if (i_this->sceneCommand->sync() == 0) {
+#if TARGET_PC
+            pcRoomWait(i_this, 3, "the room's particle data is still loading", 0);
+#endif
             return cPhs_INIT_e;
+        }
 
         JUT_ASSERT(DEMO_SELECT(477, 533), i_this->sceneCommand->getMemAddress() != NULL);
         dComIfGp_particle_createRoomScene(i_this->sceneCommand->getMemAddress());
@@ -258,10 +317,23 @@ cPhs_State phase_3(room_of_scene_class* i_this) {
 
 /* 802371D0-802372C4       .text phase_4__FP19room_of_scene_class */
 cPhs_State phase_4(room_of_scene_class* i_this) {
-    if (dComIfGp_getPlayer(0) == NULL)
+    if (dComIfGp_getPlayer(0) == NULL) {
+#if TARGET_PC
+        pcRoomWait(i_this, 4, "no player yet", 0);
+#endif
         return cPhs_INIT_e;
+    }
 
     s32 roomNo = fopScnM_GetParam(i_this);
+#if TARGET_PC
+    {
+        JKRExpHeap* heap = dStage_roomControl_c::getMemoryBlock(roomNo);
+        fprintf(stderr, "[cos] room: %s room %d ready at frame %u, after %u frames; memory block %d used 0x%x of 0x%x\n",
+                dComIfGp_getStartStageName(), roomNo, pc_frame_count(), pc_frame_count() - l_pcRoomStart[roomNo & 63],
+                dStage_roomControl_c::getMemoryBlockID(roomNo), heap != NULL ? (unsigned)heap->getTotalUsedSize() : 0u,
+                heap != NULL ? (unsigned)heap->getHeapSize() : 0u);
+    }
+#endif
 
     setMapImage(i_this);
 

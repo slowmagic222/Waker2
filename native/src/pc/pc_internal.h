@@ -471,6 +471,11 @@ bool menuSmokeWantsRunCard();
 bool menuBuiltinSetting(const char* key);
 void menuFrame();
 bool menuOpen();
+// pc_sea_map.cpp: COS_QOL_SEA_MAP's corner chart and COS_QOL_AUTOSAVE's notice, in this frame's ImGui frame
+// (pc_frame_end, after the menu).
+void seaMapFrame();
+// pc_climb.cpp: COS_QOL_CLIMB's stamina wheel beside Link, in this frame's ImGui frame (next to seaMapFrame).
+void climbWheelFrame();
 // pc_menu.cpp, for COS_SMOKE=button-remap: the menu's tab (PcSettingTab), the selected row of that
 // tab and the action being captured on the Controles tab (pc::remap::Action; -1: none).
 void menuSmokeState(int* tab, int* row, int* captureAction);
