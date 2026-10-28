@@ -154,10 +154,13 @@ bool daTagvolcano::Act_c::_execute() {
             }
 #if VERSION > VERSION_JPN
         } else {
-            mDoAud_seStart(JA_SE_ISLE_TIMER_0);
-            dComIfGp_getVibration().StartShock(6, -33, cXyz(0.0f, 1.0f, 0.0f));
-            field_0x2a4 = 1;
-            fopAcM_orderOtherEvent(this, "TAG_VOLCANO");
+            u16 timer = prm_get_timer() * 10;
+            if (current.roomNo == dIsleRoom_FireMountain_e) {
+                dTimer_createTimer(3, timer, 1, 0, 221.0f, 439.0f, 32.0f, 419.0f);
+            } else {
+                dTimer_createTimer(3, timer, 1, 0, 221.0f, 439.0f, 32.0f, 419.0f);
+            }
+            field_0x2a4 = 0;
 #endif
         }
 
