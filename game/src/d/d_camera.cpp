@@ -981,6 +981,11 @@ bool dCamera_c::Run() {
     mNextMode = nextMode(mCurMode);
     next = mNextMode;
 
+    // Validate mCurType before accessing types array (generated rooms may have invalid types)
+    if (mCurType < 0 || mCurType >= (s32)ARRAY_SIZE(types)) {
+        mCurType = 0;  // Fall back to first type (typically field camera)
+    }
+
     if (next != mCurMode) {
         if (types[mCurType].mStyles[next] >= 0 && onModeChange(mCurMode, next)) {
             mCurMode = mNextMode;
@@ -1030,8 +1035,21 @@ bool dCamera_c::Run() {
         res = demoCamera(0);
     }
     else {
-        // Issues here
-        res = (this->*engine_tbl[mCamParam.Algorythmn(mCurStyle)])(mCurStyle);
+        // Validate camera style before calling engine function. On generated worlds,
+        // rooms may lack proper camera data, causing invalid style indices.
+        s32 algorithmIdx = mCamParam.Algorythmn(mCurStyle);
+        if (algorithmIdx >= 0 && algorithmIdx < (s32)ARRAY_SIZE(engine_tbl) && engine_tbl[algorithmIdx] != NULL) {
+            res = (this->*engine_tbl[algorithmIdx])(mCurStyle);
+        } else {
+            // Fall back to field camera if the requested style is invalid
+#if TARGET_PC
+            fprintf(stderr, "[camera] invalid camera style: type=%d mode=%d curStyle=%d algo=%d, falling back to field\n",
+                    mCurType, mCurMode, mCurStyle, algorithmIdx);
+#endif
+            mCurStyle = 0;  // Reset to field camera (default)
+            mCamParam.Change(0);
+            res = (this->*engine_tbl[mCamParam.Algorythmn(0)])(0);
+        }
         m07C++;
         m080++;
         m118++;
