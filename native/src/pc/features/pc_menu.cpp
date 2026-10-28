@@ -795,6 +795,12 @@ const PcSettingDesc kBuiltins[] = {
     {"COS_QOL_CLIMB_STAMINA", "Trepar: resistencia", "Cuánto tiempo puede trepar Link con la rueda llena.",
      PC_SETTING_TAB_QOL, 0, CHOICES(kClimbStamina), "12", nullptr, nullptr, 221,
      "Climbing: stamina", "How long Link can climb on a full wheel."},
+    {"COS_QOL_SPRINT", "Correr",
+     "Link corre hacia adelante mientras mantiene presionado A y se mueve en el suelo, consumiendo resistencia. "
+     "Tocar A sigue permitiendo rodar o actuar normalmente. La resistencia se recarga cuando está quieto en el suelo.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", applyQol, nullptr, 222,
+     "Sprint",
+     "Link sprints forward while holding A and moving on the ground, consuming stamina. Tapping A still rolls or acts normally. Stamina refills when standing still."},
     // Depuración
     {"COS_PERF_EVERY", "Intervalo del registro perf",
      "Cada cuántos cuadros se escribe una línea [cos] perf en el registro (native/logs/).",
@@ -1116,7 +1122,7 @@ const QolPresetValue kQolPreset[] = {
     // are (nullptr), the original values turn them off
     {PC_QOL_HUD_BUTTON, nullptr}, {PC_QOL_ITEMS_STAY, nullptr}, {PC_QOL_ITEM_SETS, nullptr},
     {PC_QOL_SEA_MAP, nullptr},  {PC_QOL_AUTOSAVE, nullptr},  {PC_QOL_JUMP_BUTTON, nullptr},
-    {PC_QOL_CLIMB, nullptr},
+    {PC_QOL_CLIMB, nullptr}, {PC_QOL_SPRINT, nullptr},
 };
 static_assert(sizeof(kQolPreset) / sizeof(kQolPreset[0]) == PC_QOLS, "a QoL option without a preset value");
 
