@@ -33,8 +33,6 @@ float staminaSeconds() {
 
 } // namespace
 
-extern "C" {
-
 // Check if B button is held
 int pc_sprint_b_held(void) {
     return CPad_CHECK_HOLD_B(0) ? 1 : 0;
@@ -93,5 +91,3 @@ void pc_sprint_set_stamina(float value) {
 int pc_sprint_is_active(void) {
     return sIsSprinting;
 }
-
-} // extern "C"
