@@ -670,3 +670,19 @@ void pc_rplus_life_room(int roomNo) {
         placeWeather(roomNo);
     }
 }
+
+extern "C" void pc_rplus_init_story_events() {
+    if (!pc_rplus_active()) {
+        return;
+    }
+    // Mark the Forest of Fairies opening event (Tetra capture) and related events as complete so
+    // skipped story sequences don't crash when they try to play their demo files. The Forest of
+    // Fairies room (A_mori) would try to play a cutscene about 4 seconds after entering, but
+    // since the randomizer skips that story arc, the demo file isn't loaded.
+    //
+    // Event bits:
+    // 0x2A80 (bit 10 of flag 0x540): Tetra found / captured (triggers Forest of Fairies sequence)
+    // 0x2A81 (bit 11 of flag 0x540): Forest of Fairies cleared
+    dComIfGs_setEventReg(0x2A80, 1);
+    dComIfGs_setEventReg(0x2A81, 1);
+}
