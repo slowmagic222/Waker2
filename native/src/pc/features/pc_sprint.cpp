@@ -35,9 +35,8 @@ extern "C" {
 
 // Check if B button is held
 int pc_sprint_b_held(void) {
-    // This will be called from player code; return true if B is pressed
-    // TODO: integrate with controller input system
-    return 0;
+    extern mDoCPd_cpadInfo_c g_mDoCPd_cpadInfo[4];
+    return g_mDoCPd_cpadInfo[0].mButtonHold.b ? 1 : 0;
 }
 
 // Update sprint stamina state each frame

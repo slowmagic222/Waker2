@@ -11516,6 +11516,13 @@ BOOL daPy_lk_c::execute() {
         (this->*mCurProcFunc)();
     }
     pcClimbFrame();
+    // Sprint with B button: hold B while moving on ground to drain stamina wheel
+    extern int pc_sprint_b_held(void);
+    extern void pc_sprint_frame(int sprinting, int ground, float deltaSeconds);
+    const int onGround = !checkModeFlg(ModeFlg_MIDAIR | ModeFlg_SWIM | ModeFlg_HANG | ModeFlg_ROPE | ModeFlg_CLIMB | ModeFlg_LADDER);
+    const int movingForward = mStickDistance > 0.1f;
+    const int sprinting = pc_sprint_b_held() && onGround && movingForward;
+    pc_sprint_frame(sprinting, onGround, 0.0f);  // 0 = use default 1/30 frame rate
     // Randomizer+: house decor found about the world, and the cabana's pieces (pc_rplus_decor.cpp)
     pc_rplus_decor_frame();
     
