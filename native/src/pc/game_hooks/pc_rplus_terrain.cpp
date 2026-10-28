@@ -3022,11 +3022,22 @@ float meshY(float gx, float gy) {
 // on rugged land, palms on beaches; P_COUNT for nothing. h is a hash of the spot.
 // edge: 1 at a cliff's foot (rocks), 2 along a shelf's top edge (a line of trees); lawn: thick grass in clumps
 // where it is high; pathSide: just off a path (grass and flowers along it); forest: forestAt (deep forest is thick
-// with big and small trees over grass, its edge thinner with flowers).
+// with big and small trees over grass, its edge thinner with flowers). y: altitude for snowy peaks (no vegetation above threshold).
 PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, float lawn, bool pathSide,
-              float forest) {
+              float forest, float y) {
     const u32 r = h % 1000;
     const bool green = b == 'g' || b == 'f';
+    constexpr float PEAK_THRESHOLD = LAND_BASE + 600.0f;  // no grass/palms above this altitude (snowy peaks)
+    const bool isPeak = y >= PEAK_THRESHOLD && !beach;
+
+    // Snowy peaks: only rocks and pebbles above threshold
+    if (isPeak) {
+        if (edge == 1 || r < 200) {
+            return b == 's' ? P_ROCK2 : P_ROCK;
+        }
+        return r < 350 ? P_PEBBLE : P_COUNT;
+    }
+
     if (edge == 1 && !beach) {
         return r < 200 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 420 ? P_PEBBLE : r < 560 && green ? P_GRASS7 : P_COUNT;
     }
@@ -3236,7 +3247,7 @@ void scatterProps(int roomNo) {
         const float lawn = fbm(x * 0.0007f, z * 0.0007f, 171, 2) + (meadow - 0.5f) * 0.6f;
         const char biome = biomeNear(gx, gy);
         const float forest = forestAt(biome, x, z, y);
-        const PropId id = propAt(biome, beach, meadow, grove, sp.h >> 3, edge, lawn, pathSide, forest);
+        const PropId id = propAt(biome, beach, meadow, grove, sp.h >> 3, edge, lawn, pathSide, forest, y);
         if (id == P_COUNT) {
             continue;
         }
