@@ -671,7 +671,7 @@ void pc_rplus_life_room(int roomNo) {
     }
 }
 
-extern "C" void pc_rplus_init_story_events() {
+void pc_rplus_init_story_events() {
     if (!pc_rplus_active()) {
         return;
     }
