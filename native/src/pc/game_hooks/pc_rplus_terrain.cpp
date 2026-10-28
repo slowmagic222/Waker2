@@ -25,6 +25,7 @@
 #include "d/actor/d_a_ship.h"
 #include "m_Do/m_Do_audio.h"
 #include "f_op/f_op_actor_mng.h"
+#include "f_op/f_op_view.h"
 #include "SSystem/SComponent/c_math.h"
 #include "SSystem/SComponent/c_counter.h"
 #include "SSystem/SComponent/c_bg_s.h"
@@ -459,7 +460,13 @@ public:
 struct PcRplusTerrain {
     PcRplusPacket packet;
     u8* dzb = nullptr;
+    int ownRoom = -1;  // the room whose daBg draws it (-1: a far room's land, pc_rplus_far_draw)
 };
+
+namespace {
+// The frame (g_Counter.mCounter0) each room's own land was last drawn, for pc_rplus_far_draw's hand-over.
+u32 sOwnDrawnAt[64];
+} // namespace
 
 namespace {
 
@@ -597,13 +604,34 @@ void PcRplusPacket::draw() {
     GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
 
     // Every vertex goes through Aurora's per-frame buffers (48 MiB, patch 0025; past them it aborts): chunks
-    // behind the camera or outside a wide cone round its view are left out, and the frame's land stops at a
-    // budget (the rooms' own land is drawn before the far rooms').
+    // outside the camera's view are left out, and the frame's land stops at a budget.
+    //
+    // The view is the camera's own frustum (its projection's x and y spreads, so a wide window or the sailing
+    // camera's wider fovy is followed), opened by a load-ahead margin: VIEW_MARGIN more spread on each side and
+    // PAD_UNITS more on each chunk's radius. Without it the edge chunks came in only once their bounding sphere
+    // touched the screen, and the 60 fps paint between two game frames (pc_fps60_camera.cpp) shows the view
+    // half a step turned from the one culled here, so turning or sailing along a coast showed land popping in
+    // at the screen's edge. The far land only gets the budget's first FAR_SHARE: the near chunks (anything
+    // within NEAR_UNITS) can always use the rest, so a busy horizon never leaves out the ground beside Link.
     MtxP vm = j3dSys.getViewMtx();
     const float camX = -(vm[0][0] * vm[0][3] + vm[1][0] * vm[1][3] + vm[2][0] * vm[2][3]);
     const float camY = -(vm[0][1] * vm[0][3] + vm[1][1] * vm[1][3] + vm[2][1] * vm[2][3]);
     const float camZ = -(vm[0][2] * vm[0][3] + vm[1][2] * vm[1][3] + vm[2][2] * vm[2][3]);
-    const float fx = -vm[2][0], fy = -vm[2][1], fz = -vm[2][2];  // the view's forward, in the world
+    constexpr float VIEW_MARGIN = 1.25f, PAD_UNITS = 1500.0f, NEAR_UNITS = 30000.0f;
+    // tan of the half spreads, from the projection (P[0][0] = cot(fovy / 2) / aspect, P[1][1] = cot(fovy / 2));
+    // with no view, the old wide cone (1.5 each way).
+    float tanX = 1.5f, tanY = 1.5f;
+    if (view_class* view = dComIfGd_getView()) {
+        if (view->mProjMtx[0][0] > 0.01f && view->mProjMtx[1][1] > 0.01f) {
+            tanX = 1.0f / view->mProjMtx[0][0];
+            tanY = 1.0f / view->mProjMtx[1][1];
+        }
+    }
+    tanX *= VIEW_MARGIN;
+    tanY *= VIEW_MARGIN;
+    // A side plane through the eye at spread t is t * depth - |side| = 0; a point's distance to it is that over
+    // sqrt(1 + t^2).
+    const float normX = sqrtf(1.0f + tanX * tanX), normY = sqrtf(1.0f + tanY * tanY);
     static u32 sFrame = ~0u;
     static int sDrawn = 0;
     static bool sWarned = false;
@@ -612,7 +640,7 @@ void PcRplusPacket::draw() {
         sDrawn = 0;
     }
     // 400k triangles is 1.2M vertices of 16 bytes, 19 MiB: under half the buffer, the rest for the game's own.
-    constexpr int FRAME_TRIS = 400000;
+    constexpr int FRAME_TRIS = 400000, FAR_TRIS = FRAME_TRIS * 3 / 4;
     GXTexObj rockTex;
     GXInitTexObj(&rockTex, (void*)rockTexture(), TEX_N, TEX_N, GX_TF_I8, GX_REPEAT, GX_REPEAT, GX_FALSE);
     GXInitTexObjLOD(&rockTex, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
@@ -621,17 +649,18 @@ void PcRplusPacket::draw() {
         if (c.tris == 0) {
             continue;
         }
+        // The chunk's centre in view space (looking down -z).
+        const float sx = vm[0][0] * c.cx + vm[0][1] * c.cy + vm[0][2] * c.cz + vm[0][3];
+        const float sy = vm[1][0] * c.cx + vm[1][1] * c.cy + vm[1][2] * c.cz + vm[1][3];
+        const float depth = -(vm[2][0] * c.cx + vm[2][1] * c.cy + vm[2][2] * c.cz + vm[2][3]);
+        const float r = c.rad + PAD_UNITS;
+        if (depth < -r || fabsf(sx) - tanX * depth > r * normX || fabsf(sy) - tanY * depth > r * normY) {
+            continue;
+        }
         const float vx = c.cx - camX, vy = c.cy - camY, vz = c.cz - camZ;
-        const float d = vx * fx + vy * fy + vz * fz;
-        if (d < -c.rad) {
-            continue;
-        }
-        const float ax = vx - d * fx, ay = vy - d * fy, az = vz - d * fz;
-        if (sqrtf(ax * ax + ay * ay + az * az) > std::max(d, 0.0f) * 1.5f + c.rad) {
-            continue;
-        }
-        if (sDrawn + c.tris > FRAME_TRIS) {
-            if (!sWarned) {
+        const bool nearChunk = sqrtf(vx * vx + vy * vy + vz * vz) - c.rad < NEAR_UNITS;
+        if (sDrawn + c.tris > (nearChunk ? FRAME_TRIS : FAR_TRIS)) {
+            if (!sWarned && nearChunk) {
                 sWarned = true;
                 fprintf(stderr, "[rplus] land: over %d triangles in a frame, the rest left out\n", FRAME_TRIS);
             }
@@ -1029,6 +1058,7 @@ PcRplusTerrain* buildTerrain(int roomNo, dBgW** o_bgw) {
         delete[] ys;
         return nullptr;
     }
+    t->ownRoom = far ? -1 : roomNo;
     // ---- Drawing: triangles by sample row (the land and the shallows; the sea bed is not drawn).
     PcRplusPacket& pk = t->packet;
     std::vector<HouseQuad> house;
@@ -1758,8 +1788,13 @@ void pc_rplus_far_draw(int roomNo) {
     static PcRplusTerrain* sFar[64] = {};
     const int rooms = pc_rplus_squares() * pc_rplus_squares();
     for (int r = 1; r <= rooms && r < 64; r++) {
+        // Left to the room only once the room's own land is drawing: its status flag is up a few frames before
+        // its daBg is made and builds the land, and in those frames neither drew it (the land blinked out at
+        // the edge of the screen as a square loaded). Drawn this frame or the last (the sea may draw first).
+        const u32 own = sOwnDrawnAt[r];
+        const bool ownDrawing = own != 0 && g_Counter.mCounter0 - own <= 1;
         if (!pc_rplus_sea_room_generated(r) ||
-            (dComIfGp_roomControl_checkStatusFlag(r, 0x01) && dComIfGp_roomControl_checkRoomDisp(r))) {
+            (dComIfGp_roomControl_checkStatusFlag(r, 0x01) && dComIfGp_roomControl_checkRoomDisp(r) && ownDrawing)) {
             continue;
         }
         if (sFar[r] == nullptr) {
@@ -1772,6 +1807,9 @@ void pc_rplus_far_draw(int roomNo) {
 void pc_rplus_terrain_draw(PcRplusTerrain* t) {
     if (t == nullptr || t->packet.mTriCount == 0) {
         return;
+    }
+    if (t->ownRoom > 0 && t->ownRoom < 64) {
+        sOwnDrawnAt[t->ownRoom] = g_Counter.mCounter0 == 0 ? 1 : g_Counter.mCounter0;
     }
     j3dSys.getDrawBuffer(J3DSysDrawBuf_Opa)->entryImm(&t->packet, 0);
 }
@@ -1828,6 +1866,32 @@ void requestRoomLoad(int roomNo) {
         float x0, z0;
         worldOrigin(&x0, &z0);
         const float px = player->current.pos.x, pz = player->current.pos.z;
+        // Load ahead: also where Link (or the boat under him) will be in LOOK_FRAMES at the pace he is going, so a
+        // square he is sailing into is in well before its edge is on screen. The pace is from his last position
+        // (a jump of over 2000 units is a warp, not a pace), at most LOOK_MAX ahead.
+        constexpr float LOOK_FRAMES = 90.0f, LOOK_MAX = 9000.0f;
+        static float sLastX = 0.0f, sLastZ = 0.0f;
+        static u32 sLastAt = ~0u;
+        float ax = px, az = pz;
+        if (sLastAt != ~0u && g_Counter.mCounter0 != sLastAt) {
+            const float steps = (float)(g_Counter.mCounter0 - sLastAt);
+            const float vx = (px - sLastX) / steps, vz = (pz - sLastZ) / steps;
+            if (steps <= 4.0f && vx * vx + vz * vz < 2000.0f * 2000.0f) {
+                float lx = vx * LOOK_FRAMES, lz = vz * LOOK_FRAMES;
+                const float l = sqrtf(lx * lx + lz * lz);
+                if (l > LOOK_MAX) {
+                    lx *= LOOK_MAX / l;
+                    lz *= LOOK_MAX / l;
+                }
+                ax = px + lx;
+                az = pz + lz;
+            }
+        }
+        if (g_Counter.mCounter0 != sLastAt) {
+            sLastX = px;
+            sLastZ = pz;
+            sLastAt = g_Counter.mCounter0;
+        }
         const int rx = (roomNo - 1) % sq, ry = (roomNo - 1) / sq;
         int added = 0;
         for (int dy = -1; dy <= 1; dy++) {
@@ -1840,11 +1904,14 @@ void requestRoomLoad(int roomNo) {
                 if (!pc_rplus_sea_room_generated(nr)) {
                     continue;
                 }
-                // Link's distance to the square (0 inside it).
+                // Link's distance to the square (0 inside it), or his load-ahead point's if nearer.
                 const float sx0 = x0 + nx * ROOM_UNITS, sz0 = z0 + ny * ROOM_UNITS;
-                const float ddx = std::max(0.0f, std::max(sx0 - px, px - (sx0 + ROOM_UNITS)));
-                const float ddz = std::max(0.0f, std::max(sz0 - pz, pz - (sz0 + ROOM_UNITS)));
-                const float dist = sqrtf(ddx * ddx + ddz * ddz);
+                auto distTo = [&](float qx, float qz) {
+                    const float ddx = std::max(0.0f, std::max(sx0 - qx, qx - (sx0 + ROOM_UNITS)));
+                    const float ddz = std::max(0.0f, std::max(sz0 - qz, qz - (sz0 + ROOM_UNITS)));
+                    return sqrtf(ddx * ddx + ddz * ddz);
+                };
+                const float dist = std::min(distTo(px, pz), distTo(ax, az));
                 const bool in = dComIfGp_roomControl_checkStatusFlag(nr, 0x01);
                 if (dist < NEAR || (in && dist < FAR)) {
                     list[count++] = (u8)((selfByte & ~0x3F) | nr);
