@@ -2,8 +2,8 @@
 // keeps in his home (the cabana, Abesso), where he can carry them about and set them down where he likes.
 //
 // The catalog: what Link can lift or hold that is not an item (pots, jugs, barrels, stools, skulls, buckets, crates,
-// seeds, stone figures, rocks, boulders, the pigs, the Tingle statues, the Tower of the Gods' stones and statues, the
-// enemies' weapons) and the Nintendo Gallery's figurines, each on its own pedestal. The bomb flowers, stunned enemies,
+// seeds, stone figures, rocks, boulders, the pigs, the Tingle statues, the Tower of the Gods' stones and statues) and
+// the Nintendo Gallery's figurines, each on its own pedestal. The bomb flowers, stunned enemies,
 // Medli, Makar and the Command Melody's statue are not decor (they blow up, or are people).
 //
 // The checks (Dillon, 2026-10-28): decor is a non-progress check reward, not something standing about. A check that
@@ -108,12 +108,7 @@ const std::vector<Decor>& catalog() {
         for (const auto& t : kTry) {
             v.push_back({"tower" + std::to_string(t.type), t.label, "Hseki1", 0x0000FF00u | (u32)t.type, K_TRY, false});
         }
-        // d_a_boko: the weapon is the params
-        static const char* const kBoko[6] = {"Boko stick", "Machete", "Stalfos mace", "Darknut sword", "Moblin spear",
-                                             "Phantom Ganon's sword"};
-        for (int i = 0; i < 6; i++) {
-            v.push_back({"weapon" + std::to_string(i), kBoko[i], "Boko", (u32)i, K_BOKO, false});
-        }
+        // the enemies' weapons (d_a_boko) are Link's own, not decor (pc_weapon_unlocks.cpp)
         for (int i = 0; i < FIGURES; i++) {
             v.push_back({"figure" + std::to_string(i), "Figurine " + std::to_string(i + 1), "Figure", (u32)i,
                          K_FIGURE, false});

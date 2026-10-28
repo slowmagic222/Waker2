@@ -1605,8 +1605,9 @@ void dSv_info_c::init() {
     daNpc_Sarace_c::ship_race_rupee = 0;
     daNpc_Sarace_c::ship_race_result = 0;
 #if TARGET_PC
-    // Randomizer+: a new game's house decor (the starting pieces), until a file's is read
+    // Randomizer+: a new game's house decor (the starting pieces) and weapons (none), until a file's is read
     pc_rplus_decor_reset();
+    pc_rplus_weapon_reset();
 #endif
 }
 
@@ -2084,8 +2085,9 @@ int dSv_info_c::memory_to_card(char* i_cardPtr, int i_dataNum) {
     } else {
         printf("SAVE size:%d\n", save_size);
 #if TARGET_PC
-        // Randomizer+: the house decor's file with the save
+        // Randomizer+: the house decor's and the weapons' files with the save
         pc_rplus_decor_save(i_dataNum);
+        pc_rplus_weapon_save(i_dataNum);
 #endif
         return 0;
     }
@@ -2175,8 +2177,9 @@ int dSv_info_c::card_to_memory(char* i_cardPtr, int i_dataNum) {
     } else {
         printf("LOAD size:%d\n", load_size);
 #if TARGET_PC
-        // Randomizer+: the house decor the file had
+        // Randomizer+: the house decor and the weapons the file had
         pc_rplus_decor_load(i_dataNum);
+        pc_rplus_weapon_load(i_dataNum);
 #endif
         return 0;
     }
