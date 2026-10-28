@@ -23,6 +23,7 @@ constexpr float kFrameSeconds = 1.0f / 30.0f; // default game frame rate
 float sSprintStamina = 1.0f;  // shared with climbing (0..1)
 int sGroundFrames = 0;
 unsigned sFrame = 0;
+int sIsSprinting = 0;  // current sprint state (suppress attacks while true)
 
 float staminaSeconds() {
     const float s = (float)atof(pc_settings_get("COS_QOL_CLIMB_STAMINA"));
@@ -44,6 +45,7 @@ int pc_sprint_b_held(void) {
 void pc_sprint_frame(int sprinting, int ground, float deltaSeconds) {
     if (!pc_qol(PC_QOL_CLIMB)) {
         sSprintStamina = 1.0f;
+        sIsSprinting = 0;
         return;
     }
 
@@ -52,23 +54,28 @@ void pc_sprint_frame(int sprinting, int ground, float deltaSeconds) {
     // Use real delta time if available, otherwise use frame-based estimate
     float dt = deltaSeconds > 0.0f ? deltaSeconds : kFrameSeconds;
 
-    if (sprinting && ground) {
+    if (sprinting && ground && sSprintStamina > 0.0f) {
         // Drain stamina while sprinting
         sSprintStamina -= kDrainRate * dt / staminaSeconds();
         sGroundFrames = 0;
+        sIsSprinting = 1;  // actively sprinting
         if (sSprintStamina < 0.0f) {
             sSprintStamina = 0.0f;
-        }
-    } else if (!sprinting && ground) {
-        // Refill stamina on ground
-        if (++sGroundFrames > kRefillDelayFrames && sSprintStamina < 1.0f) {
-            sSprintStamina += dt / kRefillSeconds;
-            if (sSprintStamina > 1.0f) {
-                sSprintStamina = 1.0f;
-            }
+            sIsSprinting = 0;  // out of stamina, stop sprinting
         }
     } else {
-        sGroundFrames = 0;
+        sIsSprinting = 0;
+        if (!sprinting && ground) {
+            // Refill stamina on ground
+            if (++sGroundFrames > kRefillDelayFrames && sSprintStamina < 1.0f) {
+                sSprintStamina += dt / kRefillSeconds;
+                if (sSprintStamina > 1.0f) {
+                    sSprintStamina = 1.0f;
+                }
+            }
+        } else {
+            sGroundFrames = 0;
+        }
     }
 }
 
@@ -80,6 +87,11 @@ float pc_sprint_get_stamina(void) {
 // Shared stamina setter (used by climbing and sprint)
 void pc_sprint_set_stamina(float value) {
     sSprintStamina = (value >= 0.0f && value <= 1.0f) ? value : sSprintStamina;
+}
+
+// Check if currently sprinting (used to suppress sword attacks)
+int pc_sprint_is_active(void) {
+    return sIsSprinting;
 }
 
 } // extern "C"
