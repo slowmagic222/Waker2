@@ -9,6 +9,7 @@
 #include "d/d_com_inf_game.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_pc/f_pc_manager.h"
+#include "m_Do/m_Do_controller_pad.h"
 
 #include <cmath>
 #include <unistd.h>
@@ -36,8 +37,7 @@ extern "C" {
 
 // Check if B button is held
 int pc_sprint_b_held(void) {
-    extern mDoCPd_cpadInfo_c g_mDoCPd_cpadInfo[4];
-    return g_mDoCPd_cpadInfo[0].mButtonHold.b ? 1 : 0;
+    return CPad_CHECK_HOLD_B(0) ? 1 : 0;
 }
 
 // Update sprint stamina state each frame
