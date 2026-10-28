@@ -2802,11 +2802,24 @@ int pc_rplus_next_stage(const char** stage, s16* point, s8* room) {
     }
     // Out of an interior with a generated door, back to its island's room: out of that door instead. Whatever
     // sends Link out (an exit floor, a cave mouth's actor, a warp, an event), so this sits on the next stage itself.
-    const GenDoor* door = doorOfStage(dComIfGp_getStartStageName());
+    const char* stageName = dComIfGp_getStartStageName();
+    const GenDoor* door = doorOfStage(stageName);
     if (door == nullptr || (door->exitId != HOME_EXIT && !pc_rplus_sea_room_generated(*room)) ||
         (door->exitId == HOME_EXIT && (*room != CABANA_ROOM || *point != CABANA_OUT_POINT))) {
         return 0;
     }
+
+    // MiniKaz (Fire Mountain) and MiniHyo (Ice Ring Isle) require special handling:
+    // In vanilla, you must freeze Fire Mountain with Ice Arrows before entering, and melt Ice Ring Isle with Fire.
+    // When entering through a generated door, set these states so the room doesn't kick you out.
+    if (strcmp(stageName, "MiniKaz") == 0) {
+        dComIfGs_onEventBit(dSv_event_flag_c::UNK_1902);  // Fire Mountain frozen
+        fprintf(stderr, "[rplus] entering MiniKaz through generated door, set frozen state\n");
+    } else if (strcmp(stageName, "MiniHyo") == 0) {
+        dComIfGs_onEventBit(dSv_event_flag_c::UNK_1901);  // Ice Ring Isle melted
+        fprintf(stderr, "[rplus] entering MiniHyo through generated door, set melted state\n");
+    }
+
     // In front of the door, facing away from it.
     sArrival.on = true;
     sArrival.room = door->seaRoom;
@@ -2814,7 +2827,7 @@ int pc_rplus_next_stage(const char** stage, s16* point, s8* room) {
                      door->pos.z + cM_scos(door->angle) * 250.0f);
     sArrival.angleY = door->angle;
     fprintf(stderr, "[rplus] out of %s (to sea room %d point %d) by door %s to room %d\n",
-            dComIfGp_getStartStageName(), *room, *point, door->id, door->seaRoom);
+            stageName, *room, *point, door->id, door->seaRoom);
     // A point the room has (dStage_playerInit falls back to its first one; the position is ours).
     *point = 0;
     *room = (s8)door->seaRoom;
