@@ -60,6 +60,19 @@ JPAEmitterManager::JPAEmitterManager(JPAResourceManager* resMgr, u32 ptclNum, u3
 JPABaseEmitter* JPAEmitterManager::createSimpleEmitterID(const JGeometry::TVec3<f32>& pos, u16 userID, u8 groupID, u8 rmID, JPACallBackBase<JPABaseEmitter*>* pEmtrCallBack, JPACallBackBase2<JPABaseEmitter*, JPABaseParticle*>* pPtclCallBack) {
     JUT_ASSERT(86, groupID < 16);
     JUT_ASSERT(87, rmID < 8);
+#if TARGET_PC
+    // Randomizer+ can spawn actors from a room whose particle scene is not
+    // loaded. Match the existing missing-effect return path instead of
+    // terminating the game before callers can handle the absent emitter.
+    if (pResMgrArray[rmID] == NULL) {
+        static unsigned warnings = 0;
+        if (warnings++ < 8) {
+            JUT_WARN(88, "Missing particle resource manager: effect=%u group=%u manager=%u",
+                     userID, groupID, rmID);
+        }
+        return NULL;
+    }
+#endif
     JUT_ASSERT(88, pResMgrArray[rmID] != NULL);
 
     JPABaseEmitter* emtr;
