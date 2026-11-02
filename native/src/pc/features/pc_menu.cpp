@@ -519,6 +519,10 @@ const PcSettingChoice kSeaMapWhen[] = {{"always", "Siempre", "Always"},
                                        {"sea", "En el mar", "On the sea"},
                                        {"boat", "Solo en el barco", "Only in the boat"}};
 const PcSettingChoice kSeaMapOpacity[] = {{"100", "100%"}, {"75", "75%"}, {"50", "50%"}, {"25", "25%"}};
+const PcSettingChoice kCompassFlip[] = {{"0", "Desactivado", "Off"},
+                                        {"v", "Arriba y abajo", "Top to bottom"},
+                                        {"h", "Izquierda y derecha", "Left to right"},
+                                        {"hv", "Ambos", "Both"}};
 const PcSettingChoice kQolAutosave[] = {{"0", "Desactivado", "Off"},
                                         {"items", "Al conseguir objetos", "After new items"},
                                         {"10", "Cada 10 minutos", "Every 10 minutes"},
@@ -759,6 +763,10 @@ const PcSettingDesc kBuiltins[] = {
     {"COS_QOL_SEA_MAP_OPACITY", "Mapa del mar: opacidad", "Menos opacidad deja ver el juego a través del mapa.",
      PC_SETTING_TAB_QOL, 0, CHOICES(kSeaMapOpacity), "100", nullptr, nullptr, 173,
      "Sea map: opacity", "Less opacity lets the game show through the map."},
+    {"COS_QOL_COMPASS_FLIP", "Invertir la brújula del mar",
+     "Refleja la aguja de la brújula al navegar; la cámara no cambia.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kCompassFlip), "0", nullptr, nullptr, 184,
+     "Flip the sea compass", "Mirrors the compass needle while sailing; the camera does not change."},
     {"COS_QOL_NO_MUSIC", "Sin música", "Quita la música de fondo; los efectos de sonido siguen.",
      PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", nullptr, nullptr, 185,
      "Music off", "Turns the background music off; the sound effects keep playing."},

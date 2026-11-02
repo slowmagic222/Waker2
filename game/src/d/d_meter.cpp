@@ -10,6 +10,7 @@
 #include "pc/pc_qol.h"
 #include "pc/pc_settings.h"
 #include <stdlib.h>
+#include <string.h>
 #endif
 #include "d/d_meter.h"
 #include "JSystem/J2DGraph/J2DOrthoGraph.h"
@@ -5624,8 +5625,15 @@ void dMeter_compassGetOnProc(sub_meter_class* i_Meter) {
     }
     s16 angle = fopAcM_SearchByName(fpcNm_SHIP_e)->shape_angle.y + 0x8000;
 #if TARGET_PC
-    // Rando (wwrando invert_sea_compass_x_axis.asm, 0x801FD37C): with the option, the angle is not negated
-    f32 dVar3 = ((pc_rando_option(PC_RANDO_INVERT_COMPASS) ? angle : -angle) * 180.0f) / 0x8000;
+    // Rando (wwrando invert_sea_compass_x_axis.asm, 0x801FD37C): with the option, the angle is not negated.
+    // QoL COS_QOL_COMPASS_FLIP ("h", "v", "hv"): the needle mirrored left to right (as the rando option; both
+    // cancel out) and/or top to bottom (180 degrees minus the angle).
+    const char* flip = pc_settings_get("COS_QOL_COMPASS_FLIP");
+    const bool flipX = pc_rando_option(PC_RANDO_INVERT_COMPASS) != (strchr(flip, 'h') != NULL);
+    f32 dVar3 = ((flipX ? angle : -angle) * 180.0f) / 0x8000;
+    if (strchr(flip, 'v') != NULL) {
+        dVar3 = 180.0f - dVar3;
+    }
 #else
     f32 dVar3 = (-angle * 180.0f) / 0x8000;
 #endif
