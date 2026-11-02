@@ -366,6 +366,19 @@ void pc_rplus_decor_frame(void);
 // 1 when the actor procId is a decor piece (in the world or the cabana) / one in the cabana.
 int pc_rplus_decor_owns(unsigned int procId);
 int pc_rplus_decor_in_home(unsigned int procId);
+// Randomizer+ camp chests (pc_rplus_life.cpp): a beaten enemy camp's chest by its fire.
+// dSv_info_c::init / card_to_memory / memory_to_card, as the decor's.
+void pc_rplus_camps_reset(void);
+void pc_rplus_camps_load(int slot);
+void pc_rplus_camps_save(int slot);
+// dScnRoom_Delete: the room's camps aren't watched any more. daPy_lk_c::execute: camps beaten, their chests made.
+void pc_rplus_camps_room_gone(int roomNo);
+void pc_rplus_camps_frame(void);
+// daTbox_c: the camp a chest (its params and home angle x) is the chest of, -1 if none; whether it was opened;
+// it opened (instead of the stage's chest bit).
+int pc_rplus_camp_chest_key(unsigned int params, int angleX);
+int pc_rplus_camp_chest_opened(int key);
+void pc_rplus_camp_chest_open(int key);
 // The notice of the piece just found ("Found decor: Barrel ..."), NULL if none now.
 const char* pc_rplus_decor_notice(void);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the

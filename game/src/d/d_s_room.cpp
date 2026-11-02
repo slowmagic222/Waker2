@@ -150,6 +150,8 @@ static BOOL dScnRoom_Delete(room_of_scene_class* i_this) {
 #ifdef TARGET_PC
     extern void pc_rplus_clear_camera_lock_on_room(int roomNo);
     pc_rplus_clear_camera_lock_on_room(roomNo);
+    extern void pc_rplus_camps_room_gone(int roomNo);
+    pc_rplus_camps_room_gone(roomNo);
 #endif
     dComIfG_deleteStageRes(arcName);
     dStage_roomControl_c::mStatus[roomNo].mFlags = 0;

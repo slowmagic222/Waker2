@@ -11526,6 +11526,8 @@ BOOL daPy_lk_c::execute() {
     pc_sprint_frame(sprinting, onGround, 1.0f / 30.0f);  // Use per-second rates, 1/30 for 30fps baseline
     // Randomizer+: house decor found about the world, and the cabana's pieces (pc_rplus_decor.cpp)
     pc_rplus_decor_frame();
+    // Randomizer+: enemy camps beaten get a chest by the fire (pc_rplus_life.cpp)
+    pc_rplus_camps_frame();
     
     playTextureAnime();
     cXyz sp14 = current.pos;

@@ -1607,6 +1607,7 @@ void dSv_info_c::init() {
 #if TARGET_PC
     // Randomizer+: a new game's house decor (the starting pieces), until a file's is read
     pc_rplus_decor_reset();
+    pc_rplus_camps_reset();
 #endif
 }
 
@@ -2086,6 +2087,7 @@ int dSv_info_c::memory_to_card(char* i_cardPtr, int i_dataNum) {
 #if TARGET_PC
         // Randomizer+: the house decor's file with the save
         pc_rplus_decor_save(i_dataNum);
+        pc_rplus_camps_save(i_dataNum);
 #endif
         return 0;
     }
@@ -2177,6 +2179,7 @@ int dSv_info_c::card_to_memory(char* i_cardPtr, int i_dataNum) {
 #if TARGET_PC
         // Randomizer+: the house decor the file had
         pc_rplus_decor_load(i_dataNum);
+        pc_rplus_camps_load(i_dataNum);
 #endif
         return 0;
     }

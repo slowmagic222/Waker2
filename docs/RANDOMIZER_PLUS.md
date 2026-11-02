@@ -116,6 +116,18 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   (`Fire`, no switch), three to five Bokoblins round it facing in, sometimes a Moblin, two pots. The Bokoblins
   stand (type 0) instead of sitting by the fire, so they see Link and fight; camps and enemy groups need gentle
   ground round them.
+- **Camp chests** (`pc_rplus_camps_frame`): when every Bokoblin and Moblin of a camp is gone (with Link within
+  12000 units, so a room unloading doesn't count), the puzzle-solved jingle plays and a small wooden chest appears
+  300 units from the fire. It holds filler the seed picks for that camp (mostly rupees, sometimes a silver rupee or
+  three hearts), so it also brings the next house decor piece. Camp chests keep their own opened flag
+  (`daTbox_c::checkOpen` / `OpenInit_com` ask `pc_rplus_camp_chest_key`), saved in `rplus-camps-<seed>-<slot>.txt`
+  with the game's save. A beaten camp's chest stands there at once the next time its room loads; once opened it
+  stays an open, empty chest. The enemies come back, as the game's own do.
+- **Lookout towers** (`placeTower`, `COS_RPLUS_TOWERS=0` to leave out): the sea's lookout platform (`Aygr`, with
+  its ladder) standing on a rise of open land, in three rooms of five. Its deck is found with a ground check once
+  the tower's collision is in; one to three enemies the seed picks stand on it (Bokoblins, ChuChus, now and then a
+  Moblin) and up to two Keese fly round it. Half the towers have a chest on the deck from the start; the rest get one
+  when their deck's enemies are beaten. Same chest, item and save as the camps'.
 - **Forests** (`forestAt`): broad patches of grassland and most of the forest biome, thinning up the mountains and
   gone at the beach. Four candidate spots per prop square there, trees half as far apart, big trees (`lwood`) among
   clusters of small ones over grass, flowers at the edges, a darker floor. The tree packet holds 2048 (420 a room).

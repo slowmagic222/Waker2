@@ -9,13 +9,18 @@
 // COS_RPLUS_NPCS=0 or COS_RPLUS_ENEMIES=0 leaves them out.
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
+#include "pc/pc_seedgen.h"
 #include "pc_rplus_world.h"
 #include "pc_internal.h"
+#include "d/d_item_data.h"
+#include "d/d_bg_s_gnd_chk.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_stage.h"
 #include "d/d_camera.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_pc/f_pc_name.h"
+#include "m_Do/m_Do_audio.h"
+#include <string>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -244,7 +249,8 @@ u32 mix(u32 a, u32 b) {
     return h ^ (h >> 13);
 }
 
-void spawn(const Entry& e, float x, float z, s16 ay, int roomNo, u32 params) {
+// At (x, y, z): y below -1e8 is the ground's there.
+fpc_ProcID spawnAt(const Entry& e, float x, float y, float z, s16 ay, int roomNo, u32 params) {
     if (strcmp(e.name, "Bk") == 0) {
         // A Bokoblin's type (bits 0-3, d_a_bk jyunkai): sitting by a fire (4, 10), asleep until a switch (6), on a
         // path (9) or in an event (8) only wake in their own scenes; here they all stand and look out (0).
@@ -253,12 +259,16 @@ void spawn(const Entry& e, float x, float z, s16 ay, int roomNo, u32 params) {
             params &= ~0xFu;
         }
     }
-    cXyz pos(x, rplus::groundY(x, z) + 5.0f, z);
+    cXyz pos(x, y < -1e8f ? rplus::groundY(x, z) + 5.0f : y, z);
     csXyz angle(e.ax, ay, e.az);
     // By name, so the profile's argument (a ChuChu's colour, a person's look) comes with it.
     char name[9];
     memcpy(name, e.name, sizeof(name));
-    fopAcM_create(name, params, &pos, roomNo, &angle, nullptr);
+    return fopAcM_create(name, params, &pos, roomNo, &angle, nullptr);
+}
+
+fpc_ProcID spawn(const Entry& e, float x, float z, s16 ay, int roomNo, u32 params) {
+    return spawnAt(e, x, -1e9f, z, ay, roomNo, params);
 }
 
 // The townsfolk and anchored NPCs whose new place is in roomNo.
@@ -360,9 +370,122 @@ const Entry* findEntry(const std::vector<Entry>& v, const char* name) {
     return nullptr;
 }
 
+// ---- Camp chests: a camp whose Bokoblins and Moblin are all beaten gets a chest by its fire.
+//
+// Each camp has a number (its room's, two a room: room * CAMPS_PER_ROOM + its index), and the chest a small wooden
+// one (d_a_tbox shape 0, a plain chest) holding filler the seed picks for that camp, given through
+// fopAcM_createItemForTrBoxDemo like any chest, so it also brings the next house decor piece (pc_rplus_decor_check).
+// The chest is marked as a camp's (params bits 24-31 0xC4, angle x bit 14, the camp in bits 6-13) and keeps its own
+// opened flag here instead of the sea's chest bits (pc_rplus_camp_chest_key, daTbox_c::checkOpen / OpenInit_com).
+//
+// Lookout towers (Dillon, 2026-11-02): the sea's lookout platform (d_a_obj_aygr, "Aygr", with its ladder) standing on
+// land, at most one a room. Its deck is found once the tower's collision is in (a ground check from above,
+// pc_rplus_camps_frame), and enemies the seed picks stand on it (Bokoblins, ChuChus, now and then a Moblin; Keese
+// about it). Half the towers have a chest on the deck from the start, as some of the sea's do; the rest get one there
+// when their enemies are beaten, as a camp does. A tower's number is TOWER_KEY0 + its room.
+//
+// The save: rplus-camps-<seed>-<slot>.txt next to the memory card, like the house decor's: read when the file is
+// loaded and written when the game saves. A camp beaten but its chest not opened has the chest standing at once the
+// next time its room loads; an opened one an open, empty chest. The enemies come back, as the game's own do.
+constexpr int CAMPS_PER_ROOM = 2;
+constexpr int TOWER_KEY0 = 50 * CAMPS_PER_ROOM;
+constexpr int CAMP_KEYS = TOWER_KEY0 + 50;
+constexpr int CAMP_ENEMIES = 8;
+constexpr int CAMPS_LIVE = 16;
+constexpr u32 CAMP_CHEST_PARAMS = 0xC4000000u | 0xFFu << 12 | 0x1Fu << 7;  // no switch, no chest bit, type 0, shape 0
+enum CampState : u8 { CAMP_NEW, CAMP_BEATEN, CAMP_OPENED };
+
+// Fixed arrays, not host lists: nothing here is taken from the game's heaps (pc_rplus_decor.cpp, Host).
+u8 sCampState[CAMP_KEYS];
+
+// A camp of a loaded room whose enemies are being watched.
+struct CampLive {
+    bool used;
+    int key, room;
+    float x, z;  // the fire, or the tower
+    float y;     // a tower's deck (-1e9: a camp, its chest on the ground)
+    int n;
+    fpc_ProcID ids[CAMP_ENEMIES];
+    bool seen[CAMP_ENEMIES];  // made: one that never was (its spot failed) doesn't count
+};
+CampLive sCamps[CAMPS_LIVE];
+
+// The camp's filler: rupees mostly, now and then a silver rupee or three hearts.
+u8 campItem(int key) {
+    static const struct { u8 item, weight; } kItems[] = {
+        {dItemNo_BLUE_RUPEE_e, 10},  {dItemNo_RED_RUPEE_e, 30},    {dItemNo_PURPLE_RUPEE_e, 30},
+        {dItemNo_ORANGE_RUPEE_e, 18}, {dItemNo_SILVER_RUPEE_e, 4}, {dItemNo_TRIPLE_HEART_e, 8},
+    };
+    int total = 0;
+    for (const auto& it : kItems) {
+        total += it.weight;
+    }
+    int pick = (int)(mix((u32)key, pc_rplus_seed() ^ 0xC4E5u) % (u32)total);
+    for (const auto& it : kItems) {
+        if (pick < it.weight) {
+            return it.item;
+        }
+        pick -= it.weight;
+    }
+    return dItemNo_RED_RUPEE_e;
+}
+
+void spawnCampChest(int key, int roomNo, float fx, float fz, float deckY) {
+    const u32 h = mix((u32)key, pc_rplus_seed() ^ 0x7B0Fu);
+    if (deckY > -1e8f) {
+        // A tower's: in the deck's middle.
+        cXyz pos(fx, deckY, fz);
+        csXyz angle((s16)(0x4000 | key << 6 | roomNo), (s16)(h >> 8), (s16)(campItem(key) << 8 | 0xFF));
+        fopAcM_create((char*)"takara", CAMP_CHEST_PARAMS, &pos, roomNo, &angle, nullptr);
+        fprintf(stderr, "[rplus] room %d: tower %d's chest (item 0x%02X%s)\n", roomNo, key, campItem(key),
+                sCampState[key] == CAMP_OPENED ? ", opened" : "");
+        return;
+    }
+    // Beside the fire, facing away from it (Link opens it coming from outside the camp).
+    float x = fx, z = fz;
+    for (int k = 0; k < 8; k++) {
+        const float a = ((h & 7) + k) * 0.785398f;
+        const float cx = fx + sinf(a) * 300.0f, cz = fz + cosf(a) * 300.0f;
+        if (rplus::roomAt(cx, cz) == roomNo && !rplus::steep(cx, cz)) {
+            x = cx, z = cz;
+            break;
+        }
+    }
+    cXyz pos(x, rplus::groundY(x, z), z);
+    csXyz angle((s16)(0x4000 | key << 6 | roomNo), cM_atan2s(x - fx, z - fz), (s16)(campItem(key) << 8 | 0xFF));
+    fopAcM_create((char*)"takara", CAMP_CHEST_PARAMS, &pos, roomNo, &angle, nullptr);
+    fprintf(stderr, "[rplus] room %d: camp %d's chest (item 0x%02X%s)\n", roomNo, key, campItem(key),
+            sCampState[key] == CAMP_OPENED ? ", opened" : "");
+}
+
+void watchCamp(int key, int roomNo, float x, float z, float deckY, const fpc_ProcID* ids, int n) {
+    if (n == 0) {
+        return;
+    }
+    CampLive* slot = nullptr;
+    for (CampLive& c : sCamps) {
+        if (c.used && c.key == key) {
+            slot = &c;  // the room loaded again: the new enemies
+            break;
+        }
+        if (!c.used && slot == nullptr) {
+            slot = &c;
+        }
+    }
+    if (slot == nullptr) {
+        return;
+    }
+    *slot = CampLive{};
+    slot->used = true;
+    slot->key = key, slot->room = roomNo, slot->x = x, slot->z = z, slot->y = deckY;
+    slot->n = std::min(n, CAMP_ENEMIES);
+    for (int i = 0; i < slot->n; i++) {
+        slot->ids[i] = ids[i];
+    }
+}
+
 // Enemy camps: on open flat land away from the start and the towns, a campfire with Bokoblins round it (and
 // sometimes a Moblin), a few pots by it. At most CAMPS_PER_ROOM a room.
-constexpr int CAMPS_PER_ROOM = 2;
 int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
     Pools& P = pools();
     const Entry* bk = findEntry(P.enemies, "Bk");
@@ -399,6 +522,9 @@ int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::
         if (nearTown) {
             continue;
         }
+        const int key = roomNo * CAMPS_PER_ROOM + camps;
+        fpc_ProcID ids[CAMP_ENEMIES];
+        int nIds = 0;
         if (fire != nullptr) {
             // No switch, no treasure-chest bit: always lit.
             spawn(*fire, x, z, 0, roomNo, (fire->params & ~0x1F0FFu) | 0x1F0FFu);
@@ -411,11 +537,17 @@ int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::
             if (rplus::roomAt(ex, ez) != roomNo || rplus::steep(ex, ez)) {
                 continue;
             }
-            spawn(*bk, ex, ez, cM_atan2s(x - ex, z - ez), roomNo, bk->params | 0xFFFF0000u);
+            const fpc_ProcID id = spawn(*bk, ex, ez, cM_atan2s(x - ex, z - ez), roomNo, bk->params | 0xFFFF0000u);
+            if (id != fpcM_ERROR_PROCESS_ID_e && nIds < CAMP_ENEMIES) {
+                ids[nIds++] = id;
+            }
             made++;
         }
         if (mo != nullptr && ((h >> 13) & 1)) {
-            spawn(*mo, x + 900.0f, z, cM_atan2s(-1.0f, 0.0f), roomNo, mo->params | 0xFFFF0000u);
+            const fpc_ProcID id = spawn(*mo, x + 900.0f, z, cM_atan2s(-1.0f, 0.0f), roomNo, mo->params | 0xFFFF0000u);
+            if (id != fpcM_ERROR_PROCESS_ID_e && nIds < CAMP_ENEMIES) {
+                ids[nIds++] = id;
+            }
             made++;
         }
         if (pot != nullptr) {
@@ -425,11 +557,200 @@ int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::
                 made++;
             }
         }
+        if (sCampState[key] == CAMP_NEW) {
+            watchCamp(key, roomNo, x, z, -1e9f, ids, nIds);
+        } else {
+            spawnCampChest(key, roomNo, x, z, -1e9f);
+        }
         camps++;
-        fprintf(stderr, "[rplus] room %d: an enemy camp at %.0f %.0f (%d Bokoblins%s)\n", roomNo, x, z, n,
+        fprintf(stderr, "[rplus] room %d: enemy camp %d at %.0f %.0f (%d Bokoblins%s)\n", roomNo, key, x, z, n,
                 mo != nullptr && ((h >> 13) & 1) ? " and a Moblin" : "");
     }
     return made;
+}
+
+void highSpot(float* x, float* z, float r);
+
+// ---- Lookout towers (see "Camp chests" above)
+
+constexpr int TOWERS_LIVE = 8;
+constexpr int TOWER_WAIT_FRAMES = 90;  // how long to wait for the tower's collision before giving up on its deck
+
+// A tower made, its deck not found yet.
+struct TowerLive {
+    bool used;
+    int key, room;
+    float x, z;
+    fpc_ProcID id;
+    int frames;
+};
+TowerLive sTowers[TOWERS_LIVE];
+
+bool towerChestFromStart(int key) {
+    return (mix((u32)key, pc_rplus_seed() ^ 0x70E7u) & 1) != 0;
+}
+
+// The deck under (x, z): the first ground from high above, if it is well over the land (the tower's, not the land's).
+bool deckAt(float x, float z, float* y) {
+    const float land = rplus::groundY(x, z);
+    dBgS_ObjGndChk gnd;
+    cXyz top(x, land + 6000.0f, z);
+    gnd.SetPos(&top);
+    const f32 h = dComIfG_Bgsp()->GroundCross(&gnd);
+    if (h < land + 300.0f || h > land + 5900.0f) {
+        return false;
+    }
+    *y = h;
+    return true;
+}
+
+// The deck's enemies and its chest.
+void fillTower(TowerLive& t, float deckY) {
+    Pools& P = pools();
+    struct Pick {
+        const char* name;
+        u8 weight;
+        u32 clearPath;
+    };
+    static const Pick kTop[] = {
+        {"Bk", 6, 0xFFFF0000u}, {"c_red", 2, 0xFF000000u}, {"c_green", 2, 0xFF000000u}, {"mo2", 1, 0xFFFF0000u},
+    };
+    const u32 h = mix((u32)t.key, pc_rplus_seed() ^ 0x70E8u);
+    fpc_ProcID ids[CAMP_ENEMIES];
+    int nIds = 0;
+    const int n = 1 + (int)(h % 3);
+    for (int k = 0; k < n; k++) {
+        const u32 g = mix(h, (u32)k + 7u);
+        int total = 0;
+        for (const Pick& p : kTop) {
+            total += findEntry(P.enemies, p.name) != nullptr ? p.weight : 0;
+        }
+        if (total == 0) {
+            break;
+        }
+        int pick = (int)(g % (u32)total);
+        for (const Pick& p : kTop) {
+            const Entry* e = findEntry(P.enemies, p.name);
+            if (e == nullptr) {
+                continue;
+            }
+            if (pick >= p.weight) {
+                pick -= p.weight;
+                continue;
+            }
+            // Round the deck's middle (the chest's), each on the deck where it stands.
+            const float a = (k + ((h >> 8) & 0xFF) / 256.0f) * 6.2831853f / n;
+            const float ex = t.x + sinf(a) * 180.0f, ez = t.z + cosf(a) * 180.0f;
+            float ey;
+            if (!deckAt(ex, ez, &ey)) {
+                ey = deckY;
+            }
+            const fpc_ProcID id = spawnAt(*e, ex, ey + 5.0f, ez, cM_atan2s(ex - t.x, ez - t.z), t.room,
+                                          e->params | p.clearPath);
+            if (id != fpcM_ERROR_PROCESS_ID_e && nIds < CAMP_ENEMIES) {
+                ids[nIds++] = id;
+            }
+            break;
+        }
+    }
+    // Keese about the tower (not needed to beat it).
+    const Entry* keese = findEntry(P.enemies, "keeth");
+    if (keese != nullptr) {
+        for (int k = 0; k < (int)((h >> 4) % 3); k++) {
+            const float a = (h >> (12 + k * 4) & 15) * 0.3927f;
+            spawnAt(*keese, t.x + sinf(a) * 600.0f, deckY + 400.0f, t.z + cosf(a) * 600.0f, 0, t.room,
+                    keese->params | 0x00FF0000u);
+        }
+    }
+    const u8 state = sCampState[t.key];
+    if (state != CAMP_NEW || towerChestFromStart(t.key)) {
+        spawnCampChest(t.key, t.room, t.x, t.z, deckY);
+    } else {
+        watchCamp(t.key, t.room, t.x, t.z, deckY, ids, nIds);
+    }
+    fprintf(stderr, "[rplus] room %d: tower %d's deck at %.0f (%d enemies%s)\n", t.room, t.key, deckY, nIds,
+            state == CAMP_NEW && !towerChestFromStart(t.key) ? ", chest when beaten" : "");
+}
+
+void towersFrame() {
+    for (TowerLive& t : sTowers) {
+        if (!t.used) {
+            continue;
+        }
+        fopAc_ac_c* a = nullptr;
+        if (!fopAcM_SearchByID(t.id, &a)) {
+            t.used = false;  // gone (its room went, or it failed)
+            continue;
+        }
+        if (a == nullptr) {
+            continue;  // still being made
+        }
+        float deckY;
+        if (deckAt(t.x, t.z, &deckY)) {
+            t.used = false;
+            fillTower(t, deckY);
+        } else if (++t.frames > TOWER_WAIT_FRAMES) {
+            t.used = false;
+            fprintf(stderr, "[rplus] room %d: tower %d has no deck to stand on, left empty\n", t.room, t.key);
+        }
+    }
+}
+
+// One lookout tower in roomNo (most rooms): on a rise of gentle open land, away from the start and the towns.
+void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
+    const int key = TOWER_KEY0 + roomNo;
+    if (key >= CAMP_KEYS) {
+        return;
+    }
+    for (int tries = 0; tries < 200; tries++) {
+        const u32 h = mix((u32)roomNo * 15485863u + (u32)tries, pc_rplus_seed() ^ 0x70E9u);
+        if (tries == 0 && h % 5 < 2) {
+            return;  // two rooms in five have none
+        }
+        float x = rx0 + (0.08f + (h & 0xFFFF) / 65536.0f * 0.84f) * 100000.0f;
+        float z = rz0 + (0.08f + ((h >> 16) & 0xFFFF) / 65536.0f * 0.84f) * 100000.0f;
+        if (rplus::biomeAt(x, z) == '.') {
+            continue;
+        }
+        highSpot(&x, &z, 1200.0f);
+        const float y = rplus::groundY(x, z);
+        if (rplus::roomAt(x, z) != roomNo || rplus::biomeAt(x, z) == '.' || y < 200.0f || rplus::steep(x, z) ||
+            !rplus::openGround(x, z, 1000.0f) || !gentle(x, z, 450.0f, 120.0f)) {
+            continue;
+        }
+        if ((x - sx) * (x - sx) + (z - sz) * (z - sz) < 10000.0f * 10000.0f) {
+            continue;
+        }
+        bool nearTown = false;
+        for (const rplus::TownInfo& t : towns) {
+            nearTown = nearTown || (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.r + 5000.0f) * (t.r + 5000.0f);
+        }
+        if (nearTown) {
+            continue;
+        }
+        cXyz pos(x, y, z);
+        csXyz angle(0, (s16)(h >> 3), 0);
+        // Params bit 0: with its ladder.
+        const fpc_ProcID id = fopAcM_create((char*)"Aygr", 0x00000001u, &pos, roomNo, &angle, nullptr);
+        if (id == fpcM_ERROR_PROCESS_ID_e) {
+            return;
+        }
+        TowerLive* slot = nullptr;
+        for (TowerLive& t : sTowers) {
+            if (t.used && t.key == key) {
+                slot = &t;
+                break;
+            }
+            if (!t.used && slot == nullptr) {
+                slot = &t;
+            }
+        }
+        if (slot != nullptr) {
+            *slot = TowerLive{true, key, roomNo, x, z, id, 0};
+        }
+        fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, y, z);
+        return;
+    }
 }
 
 void placeEnemies(int roomNo) {
@@ -443,6 +764,9 @@ void placeEnemies(int roomNo) {
     float rx0, rz0;
     rplus::roomCorner(roomNo, &rx0, &rz0);
     int made = placeCamps(roomNo, rx0, rz0, sx, sz, towns), groups = 0;
+    if (getenv("COS_RPLUS_TOWERS") == nullptr || strcmp(getenv("COS_RPLUS_TOWERS"), "0") != 0) {
+        placeTower(roomNo, rx0, rz0, sx, sz, towns);
+    }
     for (int tries = 0; tries < 400 && groups < ENEMY_GROUPS_PER_ROOM; tries++) {
         const u32 h = mix((u32)roomNo * 7919u + (u32)tries, pc_rplus_seed() ^ 0xE7E7u);
         const float x = rx0 + (h & 0xFFFF) / 65536.0f * 100000.0f;
@@ -669,6 +993,143 @@ void pc_rplus_life_room(int roomNo) {
     }
     if (enabled("COS_RPLUS_WEATHER")) {
         placeWeather(roomNo);
+    }
+}
+
+// ---- Camp chests (see "Camp chests" above)
+
+namespace {
+
+std::string campSavePath(int slot) {
+    const char* saves = getenv("COS_SAVE_DIR");
+    std::string dir = saves != nullptr && saves[0] != '\0' ? saves : pc::seedgen::userDir();
+    return dir + "/rplus-camps-" + std::to_string(pc_rplus_seed()) + "-" + std::to_string(slot) + ".txt";
+}
+
+} // namespace
+
+void pc_rplus_camps_reset(void) {
+    memset(sCampState, 0, sizeof(sCampState));
+    memset(sCamps, 0, sizeof(sCamps));
+    memset(sTowers, 0, sizeof(sTowers));
+}
+
+void pc_rplus_camps_load(int slot) {
+    pc_rplus_camps_reset();
+    if (!pc_rplus_active()) {
+        return;
+    }
+    FILE* f = fopen(campSavePath(slot).c_str(), "r");
+    if (f == nullptr) {
+        return;
+    }
+    int key, state, n = 0;
+    while (fscanf(f, "%d %d", &key, &state) == 2) {
+        if (key >= 0 && key < CAMP_KEYS && state >= CAMP_NEW && state <= CAMP_OPENED) {
+            sCampState[key] = (u8)state;
+            n++;
+        }
+    }
+    fclose(f);
+    fprintf(stderr, "[rplus] camps: %d beaten (file slot %d)\n", n, slot);
+}
+
+void pc_rplus_camps_save(int slot) {
+    if (!pc_rplus_active()) {
+        return;
+    }
+    FILE* f = fopen(campSavePath(slot).c_str(), "w");
+    if (f == nullptr) {
+        fprintf(stderr, "[rplus] camps: can't write %s\n", campSavePath(slot).c_str());
+        return;
+    }
+    for (int k = 0; k < CAMP_KEYS; k++) {
+        if (sCampState[k] != CAMP_NEW) {
+            fprintf(f, "%d %d\n", k, sCampState[k]);
+        }
+    }
+    fclose(f);
+}
+
+void pc_rplus_camps_room_gone(int roomNo) {
+    // Its enemies go with it: not beaten.
+    for (CampLive& c : sCamps) {
+        if (c.used && c.room == roomNo) {
+            c.used = false;
+        }
+    }
+    for (TowerLive& t : sTowers) {
+        if (t.used && t.room == roomNo) {
+            t.used = false;
+        }
+    }
+}
+
+void pc_rplus_camps_frame(void) {
+    if (!pc_rplus_active()) {
+        return;
+    }
+    if (strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
+        memset(sCamps, 0, sizeof(sCamps));  // left the sea: its rooms' enemies are gone
+        memset(sTowers, 0, sizeof(sTowers));
+        return;
+    }
+    for (CampLive& c : sCamps) {
+        if (!c.used) {
+            continue;
+        }
+        bool left = false, any = false;
+        for (int i = 0; i < c.n; i++) {
+            fopAc_ac_c* a = nullptr;
+            const BOOL alive = fopAcM_SearchByID(c.ids[i], &a);  // TRUE while being made too
+            if (alive && a != nullptr) {
+                c.seen[i] = true;
+            }
+            left = left || alive;
+            any = any || c.seen[i];
+        }
+        if (left || !any) {
+            continue;
+        }
+        // Only with Link near: a room going away (far from him) takes its enemies before it is gone itself.
+        fopAc_ac_c* link = dComIfGp_getPlayer(0);
+        if (link == nullptr || (link->current.pos.x - c.x) * (link->current.pos.x - c.x) +
+                                       (link->current.pos.z - c.z) * (link->current.pos.z - c.z) >
+                                   12000.0f * 12000.0f) {
+            if (link != nullptr) {
+                c.used = false;
+            }
+            continue;
+        }
+        c.used = false;
+        if (c.key < 0 || c.key >= CAMP_KEYS || sCampState[c.key] != CAMP_NEW) {
+            continue;
+        }
+        sCampState[c.key] = CAMP_BEATEN;
+        fprintf(stderr, "[rplus] room %d: camp %d beaten\n", c.room, c.key);
+        mDoAud_seStart(JA_SE_READ_RIDDLE_1, NULL, 0, 0);  // the puzzle-solved jingle
+        spawnCampChest(c.key, c.room, c.x, c.z, c.y);
+    }
+    towersFrame();
+}
+
+int pc_rplus_camp_chest_key(unsigned int params, int angleX) {
+    if (!pc_rplus_active() || (params & 0xFF000000u) != (CAMP_CHEST_PARAMS & 0xFF000000u) ||
+        (angleX & 0xC000) != 0x4000) {
+        return -1;
+    }
+    const int key = (angleX >> 6) & 0xFF;
+    return key < CAMP_KEYS ? key : -1;
+}
+
+int pc_rplus_camp_chest_opened(int key) {
+    return key >= 0 && key < CAMP_KEYS && sCampState[key] == CAMP_OPENED;
+}
+
+void pc_rplus_camp_chest_open(int key) {
+    if (key >= 0 && key < CAMP_KEYS) {
+        sCampState[key] = CAMP_OPENED;
+        fprintf(stderr, "[rplus] camp %d's chest opened\n", key);
     }
 }
 

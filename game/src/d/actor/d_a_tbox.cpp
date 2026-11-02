@@ -21,6 +21,7 @@
 #include "m_Do/m_Do_mtx.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "pc/game_hooks.h"
 #include "d/actor/d_a_player_main.h"
 #endif
 
@@ -316,6 +317,13 @@ BOOL daTbox_c::checkEnv() {
 
 /* 00000CD8-00000D48       .text checkOpen__8daTbox_cFv */
 BOOL daTbox_c::checkOpen() {
+#if TARGET_PC
+    // Randomizer+: a beaten camp's chest keeps its own opened flag (pc_rplus_life.cpp)
+    const int camp = pc_rplus_camp_chest_key(fopAcM_GetParam(this), home.angle.x);
+    if (camp >= 0) {
+        return pc_rplus_camp_chest_opened(camp);
+    }
+#endif
     if (getFuncType() == FUNC_TYPE_EXTRA_SAVE_INFO || getFuncType() == FUNC_TYPE_EXTRA_SAVE_INFO_SPAWN) {
         return dComIfGs_isTbox(dSv_save_c::STAGE_SEA2, getTboxNo());
     }
@@ -933,6 +941,12 @@ void daTbox_c::demoProcSpringTrap() {
 void daTbox_c::OpenInit_com() {
     mOpenAnm.setPlaySpeed(1.0f);
 
+#if TARGET_PC
+    const int camp = pc_rplus_camp_chest_key(fopAcM_GetParam(this), home.angle.x);
+    if (camp >= 0) {
+        pc_rplus_camp_chest_open(camp);
+    } else
+#endif
     if (getFuncType() == FUNC_TYPE_EXTRA_SAVE_INFO || getFuncType() == FUNC_TYPE_EXTRA_SAVE_INFO_SPAWN) {
         dComIfGs_onStageTbox(dSv_save_c::STAGE_SEA2, getTboxNo());
     }
