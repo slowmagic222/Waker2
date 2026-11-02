@@ -2283,6 +2283,20 @@ void daPy_lk_c::setDoStatusBasic() {
             }
         }
     }
+    // Randomizer+ weapons (pc_weapon_unlocks.cpp, Dillon 2026-11-02: "they won't be thrown"): a weapon Link holds is
+    // on B as the sword is, so A does what it does with the sword drawn: put it away standing, else hop or attack
+    if (mEquipItem == daPyItem_BOKO_e && dComIfGp_getDoStatus() == dActStts_THROW_e && pc_rplus_weapon_keeps()) {
+        if (checkAttentionLock() ||
+            (mActorKeepThrow.getActor() != NULL && mpAttnActorLockOn == mActorKeepThrow.getActor()))
+        {
+            dComIfGp_setDoStatus(mStickDistance > 0.05f && getDirectionFromShapeAngle() != DIR_FORWARD ? dActStts_JUMP_e
+                                                                                                      : dActStts_UNK43);
+        } else if (mStickDistance > fVar1) {
+            dComIfGp_setDoStatus(dActStts_ATTACK_e);
+        } else {
+            dComIfGp_setDoStatus(dActStts_PUT_AWAY_e);
+        }
+    }
 }
 
 /* 801088E8-80108A9C       .text setDoStatus__9daPy_lk_cFv */
@@ -7202,6 +7216,38 @@ bool daPy_lk_c::pcCanJumpFromButton() {
     return mpAttention->mLockOnState == 0 && !mpAttention->chkFlag(AttnFlag_10000000 | AttnFlag_20000000);
 }
 
+// Randomizer+ weapons (pc_weapon_unlocks.cpp; Dillon 2026-11-02: a picked-up weapon swaps into B, is not thrown, and
+// can be switched and stored). Once a frame: an enemy's weapon Link picks up becomes his and goes on B; A puts it away
+// (setDoStatusBasic: Put away in place of Throw); the weapon button switches B between the sword and his weapons. While
+// a weapon is on B and his hands are free he holds it again (after a door, an item, a swim...): it is made and put
+// straight in his hand, as the grab ends (procGrabReady). True when that runs in place of this frame's proc.
+bool daPy_lk_c::pcRplusWeaponFrame() {
+    fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
+    const bool free = pcCanJumpFromButton();
+    const bool putAway = held != NULL && doTrigger() && dComIfGp_getDoStatus() == dActStts_PUT_AWAY_e;
+    const int act = pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e,
+                                          held != NULL ? (int)fopAcM_GetParam(held) : -1, free, putAway,
+                                          mEquipItem == daPyItem_NONE_e);
+    if (act == PC_RPLUS_WEAPON_PUT_AWAY && held != NULL) {
+        deleteEquipItem(TRUE);
+        fopAcM_delete(held);
+        return false;
+    }
+    fopAc_ac_c* weapon = pc_rplus_weapon_ready();
+    if (weapon == NULL || !free || mEquipItem != daPyItem_NONE_e || checkEquipAnime()) {
+        return false;
+    }
+    pc_rplus_weapon_taken();
+    fopAcM_setCarryNow(weapon, 1);
+    static_cast<daBoko_c*>(weapon)->setNowMode(daBoko_c::Mode_PLAYER_CARRY_e);
+    mEquipItem = daPyItem_BOKO_e;
+    mActorKeepEquip.setData(weapon);
+    setWeaponBlur();
+    seStartOnlyReverb(JA_SE_LK_ITEM_TAKEOUT);
+    checkNextMode(0);
+    return true;
+}
+
 // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): once a frame, the stamina wheel (pc_climb.cpp) drains
 // while Link climbs and refills on the ground; it is drawn by his shoulder.
 void daPy_lk_c::pcClimbFrame() {
@@ -11512,18 +11558,26 @@ BOOL daPy_lk_c::execute() {
     // procAutoJump flies and lands it from the next frame, with its ledge grabs and glides.
     if (pc_qol_jump_take() && pcCanJumpFromButton()) {
         procAutoJump_init();
+    } else if (pcRplusWeaponFrame()) {
+        // Randomizer+ weapons: Link picks up the one he drew, in place of this frame's proc
     } else if (mCurProcFunc != NULL) {
         (this->*mCurProcFunc)();
     }
-    pcClimbFrame();
-    // Sprint with A button: hold A while moving on ground to drain stamina wheel
+    // Sprint (pc_sprint.cpp, COS_QOL_SPRINT): A held while Link runs on the ground under the player's control. With
+    // climbing on it drains the climbing stamina wheel (pc_climb.cpp: the wheel shows, and an empty one stops it
+    // until it refills); without, there is no stamina.
     extern int pc_sprint_a_held(void);
     extern void pc_sprint_frame(int sprinting, int ground, float deltaSeconds);
     extern float pc_sprint_speed_multiplier(void);
     const int onGround = !checkModeFlg(ModeFlg_MIDAIR | ModeFlg_SWIM | ModeFlg_HANG | ModeFlg_ROPE | ModeFlg_CLIMB | ModeFlg_LADDER);
-    const int movingForward = mStickDistance > 0.1f;
-    const int sprinting = pc_sprint_a_held() && onGround && movingForward;
-    pc_sprint_frame(sprinting, onGround, 1.0f / 30.0f);  // Use per-second rates, 1/30 for 30fps baseline
+    const int sprinting = pc_sprint_a_held() && onGround && mAcch.ChkGroundHit() && mCurProc == daPyProc_MOVE_e &&
+                          mStickDistance > 0.1f && !dComIfGp_event_runCheck() &&
+                          (!pc_qol(PC_QOL_CLIMB) || pc_qol_climb_can_grab());
+    if (sprinting) {
+        pc_qol_climb_sprint();
+    }
+    pcClimbFrame();
+    pc_sprint_frame(sprinting, onGround, 1.0f / 30.0f);
     // Randomizer+: house decor found about the world, and the cabana's pieces (pc_rplus_decor.cpp)
     pc_rplus_decor_frame();
     // Randomizer+: enemy camps beaten get a chest by the fire (pc_rplus_life.cpp)
@@ -11531,15 +11585,14 @@ BOOL daPy_lk_c::execute() {
     
     playTextureAnime();
     cXyz sp14 = current.pos;
-
-    // Apply sprint speed boost before movement
-    float sprintMult = pc_sprint_speed_multiplier();
-    if (sprintMult != 1.0f) {
-        speed.x *= sprintMult;
-        speed.z *= sprintMult;
-    }
-
     posMove();
+    // Sprint: posMove sets speed from the run animation's own stride, so the boost scales the ground move it made
+    // (before CrrPos, so walls still stop him)
+    const float sprintMult = pc_sprint_speed_multiplier();
+    if (sprintMult != 1.0f) {
+        current.pos.x += (current.pos.x - sp14.x) * (sprintMult - 1.0f);
+        current.pos.z += (current.pos.z - sp14.z) * (sprintMult - 1.0f);
+    }
     mOldSpeed = speed;
     cXyz sp8 = current.pos;
     mAcch.ClrGroundHit();

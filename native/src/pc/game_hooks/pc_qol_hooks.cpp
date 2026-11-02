@@ -6,6 +6,7 @@
 // next frame. The buttons are physical ones (pc_button_remap_input_held), not GameCube actions.
 #include "d/dolzel.h" // IWYU pragma: keep
 #include "pc/pc_qol.h"
+#include "pc/game_hooks.h"
 #include "pc/pc_button_remap.h"
 #include "pc/pc_settings.h"
 #include "pc_internal.h"
@@ -370,6 +371,10 @@ int pc_qol_jump_take(void) {
 }
 
 const char* pc_qol_notice(void) {
+    // Randomizer+: a weapon just found (pc_weapon_unlocks.cpp) shows in the same corner
+    if (const char* weapon = pc_rplus_weapon_notice()) {
+        return weapon;
+    }
     return sAuto.noticeFrames > 0 ? (pc::pc_ui_spanish() ? "Guardado" : "Saved") : nullptr;
 }
 

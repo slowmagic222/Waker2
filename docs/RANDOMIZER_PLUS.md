@@ -142,10 +142,10 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   lighthouse or enemy puzzle is not built). Its item and save flag are the disc's.
 - **Link's home** (the cabana, `Abesso`, unlocked): its dishes, pots and tubs are left out (`pc_rplus_home_actor`)
   for the house decor Link finds.
-- **House decor** (`pc_rplus_decor.cpp`, `COS_RPLUS_DECOR=0` to turn it off): 175 pieces, every carryable thing
+- **House decor** (`pc_rplus_decor.cpp`, `COS_RPLUS_DECOR=0` to turn it off): 169 pieces, every carryable thing
   that is not an item (the 16 `d_a_tsubo` types: pots, jug, barrel, stool, skull, bucket, seeds, crate, stone
   figures, Kutani pot; two small rocks, a boulder and a stone head; three pigs; the five Tingle statues; seven
-  Tower of the Gods stones and statues; the six enemy weapons) and the Nintendo Gallery's 134 figurines on their
+  Tower of the Gods stones and statues; the enemy weapons are weapon unlocks instead) and the Nintendo Gallery's 134 figurines on their
   pedestals. Six (pot, large pot, barrel, stool, bucket, crate) are Link's from the start. The rest are non-progress
   check rewards: a check that holds only filler (rupees, hearts, magic, bombs, arrows, a fairy) and goes through
   `fopAcM_createItemForTrBoxDemo` (chests, sunken treasure, demo pickups) also gives the next piece Link lacks, in
@@ -156,6 +156,18 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   `COS_RPLUS_DECOR_FIGURES` (48) figurines stand there at once, the last found. What was found and where it stands
   is kept per save file in `rplus-decor-<seed>-<slot>.txt` next to the memory card, written with the save
   (`dSv_info_c::memory_to_card`) and read with the file (`card_to_memory`).
+- **Weapons on B** (`pc_weapon_unlocks.cpp`, `COS_RPLUS_WEAPONS=0` to turn it off): the six enemy weapons Link
+  can pick up (`d_a_boko`: Bokoblin staff, machete, Stalfos mace, Darknut sword, Moblin spear, Phantom Ganon's
+  sword). One he picks up is his from then on and goes on B in place of the sword: B swings it, and A puts it away
+  (Put away where the game says Throw, `setDoStatusBasic`), which puts the sword back on B. While a weapon is on B
+  and his hands are free he holds it again of his own, after a door, an item, a ladder or a swim
+  (`daPy_lk_c::pcRplusWeaponFrame` makes it in his hand). The weapon button (`COS_RPLUS_WEAPON_BUTTON`: L, D-pad
+  down or a stick click, Quality of life tab) switches B to his next weapon, then back to the sword after the last.
+  They are also check rewards: a filler check the seed picks (about the 2nd, 5th, 9th, 14th, 20th and 27th, each
+  up to two later, the weapons in a seed order) gives one in place of that check's decor piece, with a notice.
+  `COS_RPLUS_WEAPONS_START=1` ("Weapons from the start", off by default) gives all six at once. Kept per save file
+  in `rplus-weapons-<seed>-<slot>.txt` (found, filler checks, what is on B). Not yet: slots of their own in the
+  item screen. The file is not named `pc_rplus_*` so that a push of it does not start the Steam Deck workflow.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models

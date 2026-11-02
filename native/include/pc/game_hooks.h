@@ -381,6 +381,29 @@ int pc_rplus_camp_chest_opened(int key);
 void pc_rplus_camp_chest_open(int key);
 // The notice of the piece just found ("Found decor: Barrel ..."), NULL if none now.
 const char* pc_rplus_decor_notice(void);
+// Randomizer+ weapon unlocks (pc_weapon_unlocks.cpp): the enemies' weapons (d_a_boko) found as check rewards, drawn
+// with the weapon button (COS_RPLUS_WEAPON_BUTTON). Reset / load / save: as the decor's (dSv_info_c).
+void pc_rplus_weapon_reset(void);
+void pc_rplus_weapon_load(int slot);
+void pc_rplus_weapon_save(int slot);
+// fopAcM_createItemForTrBoxDemo, before the decor's: a filler check the seed picked gives a weapon; 1 if it did.
+int pc_rplus_weapon_check(int itemNo);
+// 1 while Randomizer+ keeps Link's weapons on B (setDoStatusBasic: A puts one away instead of throwing it).
+int pc_rplus_weapon_keeps(void);
+// daPy_lk_c::execute, once a frame: `heldId`/`heldType` the d_a_boko Link holds (fpcM_ERROR_PROCESS_ID_e / -1: none),
+// `free` he could jump from the jump button now, `putAway` A puts the held weapon away this frame, `handsEmpty` he
+// holds nothing (no sword, no item). Follows pickups, the weapon button and what is on B; returns
+// PC_RPLUS_WEAPON_PUT_AWAY when the player's code lets go of the held weapon and deletes it (B switched).
+#define PC_RPLUS_WEAPON_NONE 0
+#define PC_RPLUS_WEAPON_PUT_AWAY 1
+int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAway, int handsEmpty);
+// The weapon made for Link's hand (made and not carried), NULL if none; _taken: it is in his hand now.
+class fopAc_ac_c* pc_rplus_weapon_ready(void);
+void pc_rplus_weapon_taken(void);
+// 1 when the actor procId is Link's own weapon.
+int pc_rplus_weapon_owns(unsigned int procId);
+// The notice of the weapon just found ("Weapon unlocked: Darknut sword ..."), NULL if none now.
+const char* pc_rplus_weapon_notice(void);
 /* daBg_c::execute of generated room roomNo: puts Link on the world's start cell, and keeps him there until the
    start cell's room is loaded (once a game). */
 void pc_rplus_place_player(int roomNo);

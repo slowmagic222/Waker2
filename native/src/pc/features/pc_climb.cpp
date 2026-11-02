@@ -33,6 +33,7 @@ float sStamina = 1.0f;  // 0..1
 bool sExhausted = false; // ran out: no grabbing until full again
 unsigned sFrame = 0;
 unsigned sPlainFrame = 0; // the last frame Link held on to a plain wall
+unsigned sSprintFrame = 0; // the last frame Link sprinted (pc_sprint.cpp): it drains the wheel as climbing does
 int sGroundFrames = 0;
 float sAlpha = 0.0f; // the wheel's fade
 float sShoulder[3] = {};
@@ -59,6 +60,10 @@ void pc_qol_climb_plain(void) {
     sPlainFrame = sFrame;
 }
 
+void pc_qol_climb_sprint(void) {
+    sSprintFrame = sFrame;
+}
+
 void pc_qol_climb_frame(int climbing, int ground, int still, const float shoulder[3]) {
     if (!pc_qol(PC_QOL_CLIMB)) {
         sStamina = 1.0f;
@@ -69,13 +74,15 @@ void pc_qol_climb_frame(int climbing, int ground, int still, const float shoulde
     sFrame++;
     // setMoveBGCorrectClimb kept him on a plain wall in his last update
     const bool plain = climbing && sFrame - sPlainFrame <= 2u;
-    if (plain) {
+    const bool sprint = !climbing && sFrame - sSprintFrame <= 1u;
+    if (plain || sprint) {
         sStamina -= (still ? kHangShare : 1.0f) * kFrameSeconds / staminaSeconds();
         sGroundFrames = 0;
         if (sStamina <= 0.0f) {
             sStamina = 0.0f;
             sExhausted = true;
-            pc::writef(STDERR_FILENO, "[cos] qol: climbing out of stamina, letting go\n");
+            pc::writef(STDERR_FILENO, sprint ? "[cos] qol: sprint out of stamina\n"
+                                             : "[cos] qol: climbing out of stamina, letting go\n");
         }
     } else if (!climbing && ground) {
         if (++sGroundFrames > kRefillDelayFrames && sStamina < 1.0f) {
@@ -89,7 +96,7 @@ void pc_qol_climb_frame(int climbing, int ground, int still, const float shoulde
         sGroundFrames = 0;
     }
     // the wheel shows while it is not full, and fades a second after
-    const float target = plain || sStamina < 1.0f ? 1.0f : 0.0f;
+    const float target = plain || sprint || sStamina < 1.0f ? 1.0f : 0.0f;
     sAlpha += (target - sAlpha) * (target > sAlpha ? 0.5f : 0.06f);
     if (sAlpha < 0.01f) {
         sAlpha = 0.0f;
