@@ -17,6 +17,15 @@
 namespace daStone2 {
 Mtx daStone2::Act_c::M_tmp_mtx;
 
+#if TARGET_PC
+// Randomizer+ house decor: in Link's home a boulder or stone head is a small ornament (scaled down, lifted without
+// the Power Bracelets, no solid collision of its full size).
+static const f32 kPcHomeScale = 0.35f;
+static bool pcHomeSmall(const fopAc_ac_c* i_this) {
+    return pc_rplus_decor_in_home(fopAcM_GetID((fopAc_ac_c*)i_this)) != 0;
+}
+#endif
+
 const dCcD_SrcCyl Act_c::M_cyl_src = {
     // dCcD_SrcGObjInf
     {
@@ -154,9 +163,22 @@ BOOL Act_c::Create() {
     cLib_onBit<u32>(attention_info.flags, fopAc_Attn_ACTION_CARRY_e);
     attention_info.distances[fopAc_Attn_TYPE_CARRY_e] = attr().m0C;
     fopAcM_OnStatus(this, fopAcStts_UNK10000_e);
+#if TARGET_PC
+    if (pcHomeSmall(this)) {
+        fopAcM_OffStatus(this, fopAcStts_UNK10000_e);  // a light lift, not a heavy one
+        scale.set(kPcHomeScale, kPcHomeScale, kPcHomeScale);
+        mCyl.SetR(attr().m12 * kPcHomeScale);
+        mCyl.SetH(attr().m14 * kPcHomeScale);
+        attention_info.distances[fopAc_Attn_TYPE_CARRY_e] = 0x17;  // as a pot
+    }
+#endif
 
     attention_info.position.x = current.pos.x;
+#if TARGET_PC
+    attention_info.position.y = current.pos.y + attr().m38 * scale.y;
+#else
     attention_info.position.y = current.pos.y + attr().m38;
+#endif
     attention_info.position.z = current.pos.z;
     m658 = 0;
     m657 = 1;
@@ -218,11 +240,16 @@ BOOL Act_c::Mthd_Delete() {
 void Act_c::set_mtx() {
     bool tmp = m648 == 2;
 
-    mDoMtx_stack_c::transS(current.pos.x, tmp ? current.pos.y + attr().m34 : current.pos.y, current.pos.z);
+#if TARGET_PC
+    const f32 pivot = attr().m34 * scale.y;  // the tumble's pivot, as small as the model in Link's home
+#else
+    const f32 pivot = attr().m34;
+#endif
+    mDoMtx_stack_c::transS(current.pos.x, tmp ? current.pos.y + pivot : current.pos.y, current.pos.z);
     mDoMtx_stack_c::ZXYrotM(shape_angle);
 
     if (tmp) {
-        mDoMtx_stack_c::transM(0.0f, -attr().m34, 0.0f);
+        mDoMtx_stack_c::transM(0.0f, -pivot, 0.0f);
     }
 
     mpModel->setBaseTRMtx(mDoMtx_stack_c::get());
@@ -324,7 +351,7 @@ bool Act_c::damage_bg_proc_directly() {
             speed.set(0.0f, 0.0f, 0.0f);
             shape_angle.x = 0;
             home.pos = current.pos;
-            if (!mpBgW->ChkUsed()) {
+            if (!mpBgW->ChkUsed() && !pcHomeSmall(this)) {
                 dComIfG_Bgsp()->Regist(mpBgW, this);
             }
             cLib_onBit<u32>(attention_info.flags, fopAc_Attn_ACTION_CARRY_e);
@@ -730,6 +757,11 @@ void Act_c::demo_proc_call() {
 
 /* 000023BC-00002574       .text Execute__Q28daStone25Act_cFPPA3_A4_f */
 BOOL Act_c::Execute(Mtx** outMtx) {
+#if TARGET_PC
+    if (pcHomeSmall(this) && mpBgW != NULL && mpBgW->ChkUsed()) {
+        dComIfG_Bgsp()->Release(mpBgW);  // its full-size collision would stand round the small model
+    }
+#endif
     cull_set_move();
     if (m657 != 0 || m648 != 0 || !prm_get_cull() || !fopAcM_cullingCheck(this)) {
         m657 = 0;
@@ -755,7 +787,11 @@ BOOL Act_c::Execute(Mtx** outMtx) {
             }
 
             attention_info.position.x = current.pos.x;
+#if TARGET_PC
+            attention_info.position.y = current.pos.y + attr().m38 * scale.y;
+#else
             attention_info.position.y = current.pos.y + attr().m38;
+#endif
             attention_info.position.z = current.pos.z;
             eyePos = attention_info.position;
         }
