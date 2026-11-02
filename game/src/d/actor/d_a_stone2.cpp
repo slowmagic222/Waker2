@@ -169,7 +169,8 @@ BOOL Act_c::Create() {
         scale.set(kPcHomeScale, kPcHomeScale, kPcHomeScale);
         mCyl.SetR(attr().m12 * kPcHomeScale);
         mCyl.SetH(attr().m14 * kPcHomeScale);
-        attention_info.distances[fopAc_Attn_TYPE_CARRY_e] = 0x17;  // as a pot
+        // its own carry distance (0x18) stays: it takes a lift point -120 to 100 from Link's (92.5 over his feet), which
+        // the lowered one is; a pot's 0x17 wants 25 to 195 and so never offered the lift
     }
 #endif
 
@@ -550,6 +551,13 @@ void Act_c::mode_wait_init() {
     mCyl.OffAtSPrmBit(cCcD_AtSPrm_Set_e);
     mCyl.OnTgSPrmBit(cCcD_TgSPrm_Set_e);
     mCyl.OffCoSPrmBit(cCcD_CoSPrm_Set_e);
+#if TARGET_PC
+    if (pcHomeSmall(this)) {
+        // no solid collision in Link's home: its cylinder keeps Link out instead, standing firm
+        mCyl.OnCoSPrmBit(cCcD_CoSPrm_Set_e | cCcD_CoSPrm_IsOther_e | cCcD_CoSPrm_VsGrpAll_e);
+        mStts.SetWeight(0xFF);
+    }
+#endif
     m648 = 0;
 }
 

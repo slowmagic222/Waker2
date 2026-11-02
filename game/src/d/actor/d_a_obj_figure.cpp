@@ -742,7 +742,9 @@ void daObjFigure_c::pcDecorExecute() {
     shape_angle.x = shape_angle.z = 0;
     current.angle.y = shape_angle.y;
     m736 = shape_angle.y;
-    attention_info.position.set(current.pos.x, current.pos.y + 80.0f, current.pos.z);
+    // The lift point stays high: the carry distance (0x17) wants it 25-195 above Link's own attention point, which is
+    // 92.5 over his feet, so it can't come down with the figure off its pedestal.
+    attention_info.position.set(current.pos.x, current.pos.y + 150.0f, current.pos.z);
     eyePos.set(current.pos.x, current.pos.y + 50.0f, current.pos.z);
     if (mpBrkAnm) {
         mpBrkAnm->play();
