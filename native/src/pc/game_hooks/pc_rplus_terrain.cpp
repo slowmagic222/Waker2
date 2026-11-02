@@ -2091,6 +2091,22 @@ bool solidLand(const Layout& L, float x, float z) {
     return natAt(L, x, z) > LAND_BASE + 40.0f;
 }
 
+// Land at (x, z) and all round it out to r, so a building there does not hang over the shore.
+bool inlandAt(const Layout& L, float x, float z, float r) {
+    if (!solidLand(L, x, z)) {
+        return false;
+    }
+    for (float rr : {r * 0.5f, r}) {
+        for (int k = 0; k < 8; k++) {
+            const float a = k * 6.2831853f / 8.0f;
+            if (natAt(L, x + sinf(a) * rr, z + cosf(a) * rr) < LAND_BASE + 60.0f) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 float slopeAt(const Layout& L, float x, float z) {
     const float d = 200.0f;
     return (fabsf(natAt(L, x + d, z) - natAt(L, x - d, z)) + fabsf(natAt(L, x, z + d) - natAt(L, x, z - d))) /
@@ -2104,21 +2120,24 @@ int roomAtXZ(const Layout& L, float x, float z) {
 }
 
 // A spot for a lone building near (x, z): on land, not steep, in the same room; failing that, gentler slopes
-// further off, then any land in the room. Never the sea floor (a door there is under water).
+// further off, then any land in the room. Never the sea floor (a door there is under water). The first passes
+// want land all round the spot (inlandAt), so the house and its levelled pad stay off the shore.
 void landSpot(const Layout& L, float* x, float* z) {
-    if (solidLand(L, *x, *z) && slopeAt(L, *x, *z) < 0.3f) {
+    constexpr float INLAND = 1600.0f;
+    if (inlandAt(L, *x, *z, INLAND) && slopeAt(L, *x, *z) < 0.3f) {
         return;
     }
     const int room = roomAtXZ(L, *x, *z);
     struct Pass {
-        float reach, slope;
+        float reach, slope, inland;
     };
-    for (const Pass& ps : {Pass{6000.0f, 0.3f}, Pass{24000.0f, 0.3f}, Pass{24000.0f, 0.6f}, Pass{50000.0f, 9.0f}}) {
+    for (const Pass& ps : {Pass{6000.0f, 0.3f, INLAND}, Pass{24000.0f, 0.3f, INLAND}, Pass{24000.0f, 0.6f, INLAND},
+                           Pass{24000.0f, 0.6f, 800.0f}, Pass{50000.0f, 9.0f, 0.0f}}) {
         for (float r = 600.0f; r <= ps.reach; r += 600.0f) {
             for (int k = 0; k < 16; k++) {
                 const float a = k * 6.2831853f / 16.0f;
                 const float tx = *x + sinf(a) * r, tz = *z + cosf(a) * r;
-                if (roomAtXZ(L, tx, tz) == room && solidLand(L, tx, tz) && slopeAt(L, tx, tz) < ps.slope) {
+                if (roomAtXZ(L, tx, tz) == room && inlandAt(L, tx, tz, ps.inland) && slopeAt(L, tx, tz) < ps.slope) {
                     *x = tx;
                     *z = tz;
                     return;
@@ -2326,7 +2345,7 @@ const Layout& layout() {
                         const float a = a0 + k * 6.2831853f / slots;
                         const float hx = mx + sinf(a) * R, hz = mz + cosf(a) * R;
                         // The house behind the door, and the yard in front, on land.
-                        ok = solidLand(L, hx, hz) &&
+                        ok = inlandAt(L, hx, hz, 700.0f) &&
                              solidLand(L, mx + sinf(a) * (R + 500.0f), mz + cosf(a) * (R + 500.0f)) &&
                              lineOnLand(L, mx, mz, hx, hz);
                     }
