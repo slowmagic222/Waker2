@@ -172,10 +172,10 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   sword). One found in a chest is his for good and goes on B in place of the sword (one picked up from an enemy
   that he doesn't own is on B for now only: not saved, and A or the weapon button drops it as the game does): B swings it, and A puts it away
   (Put away where the game says Throw, `setDoStatusBasic`; `pcRplusPutAway` takes it out of his hand with the sword's
-  sheathing sound, not dropped), which puts the sword back on B. While a weapon is on B
+  sheathing sound, not dropped); it stays on B, and B draws it again as it does the sword. While a weapon is on B
   and his hands are free he holds it again of his own, after a door, an item, a ladder or a swim
   (`daPy_lk_c::pcRplusWeaponFrame` makes it in his hand). The weapon button (`COS_RPLUS_WEAPON_BUTTON`: L, D-pad
-  down or a stick click, Quality of life tab) switches B to his next weapon, then back to the sword after the last.
+  down or a stick click, Quality of life tab) switches B to his next weapon, then back to the sword after the last; with the sword in his hand it sheathes the sword and draws the weapon.
   They are also check rewards: a filler check the seed picks (about the 2nd, 5th, 9th, 14th, 20th and 27th, each
   up to two later, the weapons in a seed order) gives one in place of that check's decor piece: the chest shows the
   weapon and its own get-item text (`pc_rplus_decor_show_weapon`) instead of the filler, and it goes on B.

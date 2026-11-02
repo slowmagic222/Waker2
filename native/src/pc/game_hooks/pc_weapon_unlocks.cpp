@@ -183,6 +183,8 @@ fpc_ProcID sOurs = fpcM_ERROR_PROCESS_ID_e;     // Link's weapon in the world (h
 fpc_ProcID sTemp = fpcM_ERROR_PROCESS_ID_e;     // an enemy's weapon he holds for now (not his)
 fpc_ProcID sPending = fpcM_ERROR_PROCESS_ID_e;  // made for his hand, not in it yet
 int sPendingFrames = 0;
+// put away with A (Dillon, 2026-11-02): his weapon stays on B, out of his hand until B (or the weapon button) draws it
+bool sStowed = false;
 
 // the owned weapon after `from` (-1: the first owned), -1 past the last (the sword)
 int nextOwned(int from) {
@@ -222,6 +224,7 @@ const char* label(int w) {
 void pc_rplus_weapon_reset(void) {
     sState = State();
     sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;
+    sStowed = false;
 }
 
 void pc_rplus_weapon_load(int slot) {
@@ -341,13 +344,26 @@ int pc_rplus_weapon_put_away(unsigned int heldId) {
     if (heldId != sOurs) {
         return 0;  // picked up for now: the game drops it
     }
-    sState.onB = -1;
     sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;  // the player's code deletes it
-    notice(pc::pc_ui_spanish() ? "Espada en B (arma guardada)" : "Sword on B (weapon put away)");
+    sStowed = sState.onB >= 0;                    // still on B: B draws it again, as it does the sword
+    if (sStowed) {
+        char text[160];
+        snprintf(text, sizeof text, pc::pc_ui_spanish() ? "%s guardada (B la saca)" : "%s put away (B draws it)",
+                 label(sState.onB));
+        notice(text);
+    }
     return 1;
 }
 
-int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAway, int handsEmpty) {
+int pc_rplus_weapon_draw(void) {
+    if (!pc_rplus_weapon_keeps() || !sStowed || sState.onB < 0 || !owned(sState.onB)) {
+        return 0;
+    }
+    sStowed = false;  // made at his hand next frame, as the frame below finds his hands empty
+    return 1;
+}
+
+int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int swordOut, int handsEmpty) {
     const bool press = pressed();  // followed every frame, so a press made elsewhere does not count later
     if (!pc_rplus_weapon_keeps()) {
         return PC_RPLUS_WEAPON_NONE;
@@ -380,7 +396,6 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
     if (sTemp != heldId) {
         sTemp = fpcM_ERROR_PROCESS_ID_e;  // let go of: it stays where it fell, the game's own
     }
-    (void)putAway;  // A's put away comes through pc_rplus_weapon_put_away, as the player's code puts it away
     // his weapon out of his hand (a door, an item, a ladder, knocked out by a hit...): back in the inventory, not left
     // lying about nor picked up by an enemy; it is in his hand again once he can hold it (below)
     if (!holding && sOurs != fpcM_ERROR_PROCESS_ID_e && sOurs != sPending) {
@@ -394,6 +409,7 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
     // the weapon button: B to the next weapon, the sword after the last
     if (press && calm && ownedCount() > 0) {
         sState.onB = nextOwned(sState.onB);
+        sStowed = false;  // the button draws the one now on B
         if (sState.onB >= 0) {
             char text[160];
             snprintf(text, sizeof text, pc::pc_ui_spanish() ? "En B: %s" : "On B: %s", label(sState.onB));
@@ -409,9 +425,13 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
             sTemp = fpcM_ERROR_PROCESS_ID_e;
             return PC_RPLUS_WEAPON_DROP;  // one picked up for now: dropped, his own is made next frame
         }
+        if (swordOut && sState.onB >= 0) {
+            return PC_RPLUS_WEAPON_SHEATHE;  // the sword in his hand (Dillon, 2026-11-02): sheathed, then the weapon
+        }
     }
     // a weapon on B and his hands free: it is in them again
-    if (sState.onB >= 0 && owned(sState.onB) && !holding && handsEmpty && calm && sPending == fpcM_ERROR_PROCESS_ID_e &&
+    if (sState.onB >= 0 && owned(sState.onB) && !sStowed && !holding && handsEmpty && calm &&
+        sPending == fpcM_ERROR_PROCESS_ID_e &&
         sOurs == fpcM_ERROR_PROCESS_ID_e) {
         make(link, sState.onB);
     }

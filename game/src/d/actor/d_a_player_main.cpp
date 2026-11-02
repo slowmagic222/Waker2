@@ -3916,7 +3916,9 @@ BOOL daPy_lk_c::checkItemChangeFromButton() {
         !checkPlayerGuard()
     ) {
         if (!daPy_dmEcallBack_c::checkCurse()) {
-            if (swordTrigger() && checkSwordEquip() && mEquipItem != daPyItem_SWORD_e) {
+            if (swordTrigger() && mEquipItem == daPyItem_NONE_e && pc_rplus_weapon_draw()) {
+                // Randomizer+: B draws the weapon put away on B (pc_weapon_unlocks.cpp), not the sword
+            } else if (swordTrigger() && checkSwordEquip() && mEquipItem != daPyItem_SWORD_e) {
                 setAnimeEquipSword(TRUE);
             } else if (itemTriggerX()) {
                 if (checkNewItemChange(dItemBtn_X_e)) {
@@ -7261,8 +7263,8 @@ bool daPy_lk_c::pcRplusWeaponFrame() {
     fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
     const bool free = pcRplusCanHold();
     const int act = pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e,
-                                          held != NULL ? (int)fopAcM_GetParam(held) : -1, free, FALSE,
-                                          mEquipItem == daPyItem_NONE_e);
+                                          held != NULL ? (int)fopAcM_GetParam(held) : -1, free,
+                                          mEquipItem == daPyItem_SWORD_e, mEquipItem == daPyItem_NONE_e);
     if (act == PC_RPLUS_WEAPON_PUT_AWAY && held != NULL) {
         deleteEquipItem(TRUE);
         fopAcM_delete(held);
@@ -7270,6 +7272,10 @@ bool daPy_lk_c::pcRplusWeaponFrame() {
     }
     if (act == PC_RPLUS_WEAPON_DROP && held != NULL) {
         deleteEquipItem(FALSE);
+        return false;
+    }
+    if (act == PC_RPLUS_WEAPON_SHEATHE && mEquipItem == daPyItem_SWORD_e && !checkEquipAnime()) {
+        setAnimeUnequip();  // the sword sheathed; the weapon on B is made once his hands are empty
         return false;
     }
     fopAc_ac_c* weapon = pc_rplus_weapon_ready();
