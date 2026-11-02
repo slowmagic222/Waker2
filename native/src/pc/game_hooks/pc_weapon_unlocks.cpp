@@ -2,8 +2,10 @@
 // the Bokoblin's stick, the machete, the Stalfos mace, the Darknut's sword, the Moblin's spear, Phantom Ganon's sword).
 //
 // On B (Dillon, 2026-11-02: "should swap into the b position. They won't be thrown. Can be switched and stored in
-// inventory"): a weapon Link picks up is his from then on and goes on B in place of the sword; B swings it, A puts it
-// away (the sword is on B again) where the game would throw it. While a weapon is on B and his hands are free he holds
+// inventory"; then "not auto save picked up weapons only if they are found in a chest"): a weapon found in a chest is
+// his for good and goes on B in place of the sword; B swings it, A puts it away (the sword is on B again) where the
+// game would throw it. One picked up from an enemy that he doesn't own is on B for now only: not saved, and A or the
+// weapon button drops it as the game does. While a weapon is on B and his hands are free he holds
 // it again of his own (after a door, an item, a swim...): it is made in his hand (daPy_lk_c::pcRplusWeaponFrame). A
 // press of the weapon button (COS_RPLUS_WEAPON_BUTTON, the Calidad de vida tab) switches B to his next weapon, then
 // back to the sword after the last.
@@ -178,6 +180,7 @@ bool pressed() {
 // ---- The weapon in Link's hand
 
 fpc_ProcID sOurs = fpcM_ERROR_PROCESS_ID_e;     // Link's weapon in the world (held, dropped, or being made)
+fpc_ProcID sTemp = fpcM_ERROR_PROCESS_ID_e;     // an enemy's weapon he holds for now (not his)
 fpc_ProcID sPending = fpcM_ERROR_PROCESS_ID_e;  // made for his hand, not in it yet
 int sPendingFrames = 0;
 
@@ -334,10 +337,14 @@ int pc_rplus_weapon_keeps(void) {
     return pc_rplus_active() && enabled();
 }
 
-void pc_rplus_weapon_put_away(void) {
+int pc_rplus_weapon_put_away(unsigned int heldId) {
+    if (heldId != sOurs) {
+        return 0;  // picked up for now: the game drops it
+    }
     sState.onB = -1;
     sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;  // the player's code deletes it
     notice(pc::pc_ui_spanish() ? "Espada en B (arma guardada)" : "Sword on B (weapon put away)");
+    return 1;
 }
 
 int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAway, int handsEmpty) {
@@ -350,21 +357,28 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
         return PC_RPLUS_WEAPON_NONE;
     }
     const bool holding = heldId != fpcM_ERROR_PROCESS_ID_e;
-    // an enemy's weapon he picked up: his from now on, on B
-    if (holding && heldId != sOurs && heldType >= 0 && heldType < WEAPONS) {
-        removeOurs();
-        sOurs = heldId;
-        const bool fresh = !owned(heldType);
-        sState.owned[heldType] = true;
-        sState.onB = heldType;
+    // an enemy's weapon he picked up (Dillon, 2026-11-02: only chests unlock weapons for good): one he owns is his
+    // own again, on B; one he doesn't is on B for now only, not saved, and once it leaves his hand it lies there
+    if (holding && heldId != sOurs && heldId != sTemp && heldType >= 0 && heldType < WEAPONS) {
         char line[200];
-        if (pc::pc_ui_spanish()) {
-            snprintf(line, sizeof line, fresh ? "Arma nueva en B: %s" : "En B: %s", label(heldType));
+        if (owned(heldType)) {
+            removeOurs();
+            sOurs = heldId;
+            sState.onB = heldType;
+            snprintf(line, sizeof line, pc::pc_ui_spanish() ? "En B: %s" : "On B: %s", label(heldType));
         } else {
-            snprintf(line, sizeof line, fresh ? "New weapon on B: %s" : "On B: %s", label(heldType));
+            sTemp = heldId;
+            snprintf(line, sizeof line,
+                     pc::pc_ui_spanish() ? "En B por ahora: %s (los cofres dan armas para siempre)"
+                                         : "On B for now: %s (chests unlock weapons for good)",
+                     label(heldType));
         }
         notice(line);
-        fprintf(stderr, "[rplus] weapons: picked up %s, on B\n", kWeapons[heldType].key);
+        fprintf(stderr, "[rplus] weapons: picked up %s (%s)\n", kWeapons[heldType].key,
+                sTemp == heldId ? "for now" : "his own");
+    }
+    if (sTemp != heldId) {
+        sTemp = fpcM_ERROR_PROCESS_ID_e;  // let go of: it stays where it fell, the game's own
     }
     (void)putAway;  // A's put away comes through pc_rplus_weapon_put_away, as the player's code puts it away
     // his weapon out of his hand (a door, an item, a ladder, knocked out by a hit...): back in the inventory, not left
@@ -390,6 +404,10 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
         if (holding && heldId == sOurs) {
             sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;
             return PC_RPLUS_WEAPON_PUT_AWAY;  // the player's code deletes it; the next one is made next frame
+        }
+        if (holding) {
+            sTemp = fpcM_ERROR_PROCESS_ID_e;
+            return PC_RPLUS_WEAPON_DROP;  // one picked up for now: dropped, his own is made next frame
         }
     }
     // a weapon on B and his hands free: it is in them again

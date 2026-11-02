@@ -160,7 +160,8 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   (`dSv_info_c::memory_to_card`) and read with the file (`card_to_memory`).
 - **Weapons on B** (`pc_weapon_unlocks.cpp`, `COS_RPLUS_WEAPONS=0` to turn it off): the six enemy weapons Link
   can pick up (`d_a_boko`: Bokoblin staff, machete, Stalfos mace, Darknut sword, Moblin spear, Phantom Ganon's
-  sword). One he picks up is his from then on and goes on B in place of the sword: B swings it, and A puts it away
+  sword). One found in a chest is his for good and goes on B in place of the sword (one picked up from an enemy
+  that he doesn't own is on B for now only: not saved, and A or the weapon button drops it as the game does): B swings it, and A puts it away
   (Put away where the game says Throw, `setDoStatusBasic`; `pcRplusPutAway` takes it out of his hand with the sword's
   sheathing sound, not dropped), which puts the sword back on B. While a weapon is on B
   and his hands are free he holds it again of his own, after a door, an item, a ladder or a swim

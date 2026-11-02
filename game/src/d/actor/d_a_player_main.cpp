@@ -7226,11 +7226,10 @@ bool daPy_lk_c::pcCanJumpFromButton() {
 // sword's sheathing sound, and the sword is on B again. Anything else unequips as the game does.
 void daPy_lk_c::pcRplusPutAway() {
     fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
-    if (held == NULL || !pc_rplus_weapon_keeps()) {
+    if (held == NULL || !pc_rplus_weapon_keeps() || !pc_rplus_weapon_put_away(fopAcM_GetID(held))) {
         setAnimeUnequip();
         return;
     }
-    pc_rplus_weapon_put_away();
     deleteEquipItem(FALSE);
     fopAcM_delete(held);
     seStartOnlyReverb(JA_SE_LK_SW_PUTIN_S);
@@ -7267,6 +7266,10 @@ bool daPy_lk_c::pcRplusWeaponFrame() {
     if (act == PC_RPLUS_WEAPON_PUT_AWAY && held != NULL) {
         deleteEquipItem(TRUE);
         fopAcM_delete(held);
+        return false;
+    }
+    if (act == PC_RPLUS_WEAPON_DROP && held != NULL) {
+        deleteEquipItem(FALSE);
         return false;
     }
     fopAc_ac_c* weapon = pc_rplus_weapon_ready();

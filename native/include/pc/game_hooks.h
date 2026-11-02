@@ -399,14 +399,17 @@ void pc_rplus_weapon_save(int slot);
 int pc_rplus_weapon_check(int itemNo);
 // 1 while Randomizer+ keeps Link's weapons on B (setDoStatusBasic: A puts one away instead of throwing it).
 int pc_rplus_weapon_keeps(void);
-// A put Link's held weapon away (the player's code deletes it): the sword is on B again.
-void pc_rplus_weapon_put_away(void);
+// A puts Link's held weapon `heldId` away: 1 when it is his own (the player's code deletes it; the sword is on B
+// again), 0 for one picked up for now (the game drops it).
+int pc_rplus_weapon_put_away(unsigned int heldId);
 // daPy_lk_c::execute, once a frame: `heldId`/`heldType` the d_a_boko Link holds (fpcM_ERROR_PROCESS_ID_e / -1: none),
 // `free` he could jump from the jump button now, `putAway` A puts the held weapon away this frame, `handsEmpty` he
 // holds nothing (no sword, no item). Follows pickups, the weapon button and what is on B; returns
-// PC_RPLUS_WEAPON_PUT_AWAY when the player's code lets go of the held weapon and deletes it (B switched).
+// PC_RPLUS_WEAPON_PUT_AWAY when the player's code lets go of the held weapon and deletes it (B switched), _DROP when
+// it only lets go of it (an enemy's, picked up for now).
 #define PC_RPLUS_WEAPON_NONE 0
 #define PC_RPLUS_WEAPON_PUT_AWAY 1
+#define PC_RPLUS_WEAPON_DROP 2 /* one picked up for now: let go of, as the game does */
 int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAway, int handsEmpty);
 // The weapon made for Link's hand (made and not carried), NULL if none; _taken: it is in his hand now.
 class fopAc_ac_c* pc_rplus_weapon_ready(void);
