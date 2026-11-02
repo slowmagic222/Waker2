@@ -46,6 +46,19 @@ void fopAcM_setStageLayer(void* pProc) {
 void fopAcM_setRoomLayer(void* pProc, int room_no) {
     if (room_no >= 0) {
         scene_class* roomProc = fopScnM_SearchByID(dStage_roomControl_c::getStatusProcID(room_no));
+#if TARGET_PC
+        if (roomProc == NULL) {
+            // An actor made for a room that is not loaded (now or any more): Randomizer+ rooms come and go
+            // round Link (Deck crash 2026-11-02 entering a town). Kept on the stage's layer instead of halting.
+            static int sMissingRoomLogs = 0;
+            if (sMissingRoomLogs++ < 20) {
+                fprintf(stderr, "[cos] actor (profile %d) made for room %d, which is not loaded: on the stage's layer\n",
+                        (int)fpcM_GetName(pProc), room_no);
+            }
+            fopAcM_setStageLayer(pProc);
+            return;
+        }
+#endif
         JUT_ASSERT(261, roomProc != NULL);
         fpcM_ChangeLayerID(pProc, fopScnM_LayerID(roomProc));
     }

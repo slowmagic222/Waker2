@@ -20,6 +20,7 @@
 #include "pc_internal.h"
 
 #include "pc/pc_tracker.h"
+#include "pc/pc_rplus.h"
 
 #include "JSystem/JKernel/JKRHeap.h"
 #include "JSystem/JUtility/JUTResFont.h"
@@ -174,7 +175,10 @@ std::string progressKey() {
             sDisc += "-" + std::to_string((long long)st.st_size);
         }
     }
-    return sDisc + "-file" + std::to_string(dComIfGs_getDataNum());
+    // Randomizer+: each world its own progress (one seed's disc plays many worlds; Deck 2026-11-02 showed an older
+    // world's checks and items)
+    const std::string world = pc_rplus_active() ? "-rplus" + std::to_string(pc_rplus_seed()) : "";
+    return sDisc + world + "-file" + std::to_string(dComIfGs_getDataNum());
 }
 
 bool readLine(FILE* f, std::string& out) {
