@@ -106,8 +106,8 @@ World& world() {
         fclose(f);
         w.loaded = header && rows == w.n;
         if (w.loaded) {
-            fprintf(stderr, "[rplus] world %s: seed %u, %dx%d rooms of %d cells, start cell %d,%d\n", path, w.seed,
-                    w.squares, w.squares, w.cells, w.startX, w.startY);
+            fprintf(stderr, "[rplus] world %s: seed %u, %dx%d rooms of %d cells, start cell %d,%d%s\n", path, w.seed,
+                    w.squares, w.squares, w.cells, w.startX, w.startY, w.test ? ", a quick-test world" : "");
         } else {
             fprintf(stderr, "[rplus] %s is not a Randomizer+ world (rplus 1, %d of %d rows): Randomizer+ is off\n",
                     path, rows, w.n);

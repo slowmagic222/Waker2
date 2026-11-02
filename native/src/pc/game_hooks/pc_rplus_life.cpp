@@ -1460,6 +1460,11 @@ void pc_rplus_life_room(int roomNo) {
     if (!pc_rplus_active()) {
         return;
     }
+    static bool sSaidTest = false;
+    if (!sSaidTest) {
+        sSaidTest = true;  // so a log shows whether the Test start row (or COS_RPLUS_TEST_START) was on
+        fprintf(stderr, "[rplus] test start: %s\n", pc_rplus_test_start() ? "on" : "off");
+    }
     if (pc_rplus_test_start()) {
         placeTestStart(roomNo);
     }
