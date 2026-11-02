@@ -7202,6 +7202,34 @@ bool daPy_lk_c::pcCanJumpFromButton() {
     return mpAttention->mLockOnState == 0 && !mpAttention->chkFlag(AttnFlag_10000000 | AttnFlag_20000000);
 }
 
+// Randomizer+ weapons (pc_weapon_unlocks.cpp, COS_RPLUS_WEAPON_BUTTON): once a frame, the weapon button. A press
+// while Link could jump from the jump button lets go of the weapon in his hand (one he drew goes) and lays the next
+// of his own in front of him; once it is made he picks it up with the game's own grab, as one an enemy dropped
+// (procGrabReady_init, which makes it his equipped d_a_boko). True when that grab starts in place of this frame's proc.
+bool daPy_lk_c::pcRplusWeaponFrame() {
+    fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
+    const bool free = pcCanJumpFromButton();
+    switch (pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e, free)) {
+    case PC_RPLUS_WEAPON_PUT_AWAY:
+        deleteEquipItem(FALSE);
+        fopAcM_delete(held);
+        return false;
+    case PC_RPLUS_WEAPON_DROP:
+        deleteEquipItem(FALSE);
+        return false;
+    default:
+        break;
+    }
+    fopAc_ac_c* weapon = pc_rplus_weapon_ready();
+    if (weapon == NULL || held != NULL || !free || fopAcM_searchActorDistance(this, weapon) > 150.0f) {
+        return false;
+    }
+    pc_rplus_weapon_taken();
+    mpAttnActorA = weapon;
+    procGrabReady_init();
+    return true;
+}
+
 // QoL "Trepar cualquier pared" (pc_qol.h, COS_QOL_CLIMB): once a frame, the stamina wheel (pc_climb.cpp) drains
 // while Link climbs and refills on the ground; it is drawn by his shoulder.
 void daPy_lk_c::pcClimbFrame() {
@@ -11512,32 +11540,39 @@ BOOL daPy_lk_c::execute() {
     // procAutoJump flies and lands it from the next frame, with its ledge grabs and glides.
     if (pc_qol_jump_take() && pcCanJumpFromButton()) {
         procAutoJump_init();
+    } else if (pcRplusWeaponFrame()) {
+        // Randomizer+ weapons: Link picks up the one he drew, in place of this frame's proc
     } else if (mCurProcFunc != NULL) {
         (this->*mCurProcFunc)();
     }
-    pcClimbFrame();
-    // Sprint with A button: hold A while moving on ground to drain stamina wheel
+    // Sprint (pc_sprint.cpp, COS_QOL_SPRINT): A held while Link runs on the ground under the player's control. With
+    // climbing on it drains the climbing stamina wheel (pc_climb.cpp: the wheel shows, and an empty one stops it
+    // until it refills); without, there is no stamina.
     extern int pc_sprint_a_held(void);
     extern void pc_sprint_frame(int sprinting, int ground, float deltaSeconds);
     extern float pc_sprint_speed_multiplier(void);
     const int onGround = !checkModeFlg(ModeFlg_MIDAIR | ModeFlg_SWIM | ModeFlg_HANG | ModeFlg_ROPE | ModeFlg_CLIMB | ModeFlg_LADDER);
-    const int movingForward = mStickDistance > 0.1f;
-    const int sprinting = pc_sprint_a_held() && onGround && movingForward;
-    pc_sprint_frame(sprinting, onGround, 1.0f / 30.0f);  // Use per-second rates, 1/30 for 30fps baseline
+    const int sprinting = pc_sprint_a_held() && onGround && mAcch.ChkGroundHit() && mCurProc == daPyProc_MOVE_e &&
+                          mStickDistance > 0.1f && !dComIfGp_event_runCheck() &&
+                          (!pc_qol(PC_QOL_CLIMB) || pc_qol_climb_can_grab());
+    if (sprinting) {
+        pc_qol_climb_sprint();
+    }
+    pcClimbFrame();
+    pc_sprint_frame(sprinting, onGround, 1.0f / 30.0f);
     // Randomizer+: house decor found about the world, and the cabana's pieces (pc_rplus_decor.cpp)
     pc_rplus_decor_frame();
     
     playTextureAnime();
     cXyz sp14 = current.pos;
-
-    // Apply sprint speed boost before movement
-    float sprintMult = pc_sprint_speed_multiplier();
-    if (sprintMult != 1.0f) {
-        speed.x *= sprintMult;
-        speed.z *= sprintMult;
-    }
-
     posMove();
+    // Sprint: posMove sets speed from the run animation's own stride, so the boost scales the ground move it made
+    // (before CrrPos, so walls still stop him)
+    const float sprintMult = pc_sprint_speed_multiplier();
+    if (sprintMult != 1.0f) {
+        current.pos.x += (current.pos.x - sp14.x) * (sprintMult - 1.0f);
+        current.pos.z += (current.pos.z - sp14.z) * (sprintMult - 1.0f);
+    }
     mOldSpeed = speed;
     cXyz sp8 = current.pos;
     mAcch.ClrGroundHit();
