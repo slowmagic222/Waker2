@@ -41,8 +41,8 @@ int pc_rplus_anchor(int i, const char** id, const char** kind, const char** stag
 
 /* The world's seed, for the log and the file select. */
 unsigned int pc_rplus_seed(void);
-// Quick-test start (Dillon, 2026-11-02): the world file's "test 1" line or COS_RPLUS_TEST_START=1 (0 turns it off
-// for a test world). Chests by the start give the six weapons and house decor, with a camp and a lookout tower near.
+// Quick-test start (Dillon, 2026-11-02): the world file's "test 1" line, the Quality of life tab's "Test start" row,
+// or COS_RPLUS_TEST_START=1 in the environment (=0 there turns it off even for a test world). Chests by the start give the six weapons and house decor, with a camp and a lookout tower near.
 int pc_rplus_test_start(void);
 
 /* From pc_harness_init, right after pc_seedgen_boot: applies the Randomizer+ tab's choices kept in

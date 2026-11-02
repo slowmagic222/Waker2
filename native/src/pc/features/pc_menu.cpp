@@ -801,6 +801,13 @@ const PcSettingDesc kBuiltins[] = {
      "Weapons from the start (Randomizer+)",
      "Link has all six enemy weapons from the start. Off: they are picked up from enemies or found in chests and "
      "other checks."},
+    {"COS_RPLUS_TEST_START", "Inicio de prueba (Randomizer+)",
+     "Para probar rápido: 12 cofres junto al inicio de Link con las armas y decoración de la casa, un campamento "
+     "enemigo y una torre de vigía cerca. Se ve al volver a cargar el mundo.",
+     PC_SETTING_TAB_QOL, 0, CHOICES(kOnOff), "0", nullptr, nullptr, 217,
+     "Test start (Randomizer+)",
+     "For quick testing: 12 chests by Link's start holding the weapons and house decor, an enemy camp and a lookout "
+     "tower close by. Shows once the world loads again."},
     {"COS_QOL_CLIMB", "Trepar cualquier pared",
      "Link trepa cualquier pared como trepa la hiedra, al estilo de Breath of the Wild, con una rueda de "
      "resistencia junto a él. Sin resistencia se suelta, y vuelve a trepar cuando se ha llenado en el suelo.",

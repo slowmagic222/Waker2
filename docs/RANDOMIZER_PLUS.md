@@ -192,7 +192,8 @@ COS_BOOT_PRESET=sailing
 ### Quick-test start
 
 For testing new things fast (Dillon, 2026-11-02): a world with a `test 1` line (`worldgen.py --quick-test`), or any
-world with `COS_RPLUS_TEST_START=1` (`=0` turns a test world's off), puts by Link's start:
+world with **Test start (Randomizer+)** on in the Quality of life tab or `COS_RPLUS_TEST_START=1` in the environment
+(`=0` there turns a test world's off), puts by Link's start:
 
 - 12 plain chests in a ring 700-2600 units out, facing the start. Each holds rupees or hearts (filler), so opening
   it brings a pickup weapon (the 1st, 3rd, 5th ... 11th filler check give the six weapons, `pc_weapon_unlocks.cpp`)

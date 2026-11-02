@@ -3,6 +3,7 @@
 // game_hooks/pc_rplus_terrain.cpp.
 #include "pc_internal.h"
 #include "pc/pc_rplus.h"
+#include "pc/pc_settings.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -172,6 +173,11 @@ int pc_rplus_test_start(void) {
     const char* v = getenv("COS_RPLUS_TEST_START");
     if (v != nullptr && v[0] != '\0') {
         return strcmp(v, "0") != 0 ? 1 : 0;
+    }
+    // the Quality of life tab's "Test start" row
+    const char* row = pc_settings_get("COS_RPLUS_TEST_START");
+    if (row != nullptr && strcmp(row, "1") == 0) {
+        return 1;
     }
     return w.test ? 1 : 0;
 }
