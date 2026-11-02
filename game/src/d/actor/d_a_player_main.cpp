@@ -2283,6 +2283,20 @@ void daPy_lk_c::setDoStatusBasic() {
             }
         }
     }
+    // Randomizer+ weapons (pc_weapon_unlocks.cpp, Dillon 2026-11-02: "they won't be thrown"): a weapon Link holds is
+    // on B as the sword is, so A does what it does with the sword drawn: put it away standing, else hop or attack
+    if (mEquipItem == daPyItem_BOKO_e && dComIfGp_getDoStatus() == dActStts_THROW_e && pc_rplus_weapon_keeps()) {
+        if (checkAttentionLock() ||
+            (mActorKeepThrow.getActor() != NULL && mpAttnActorLockOn == mActorKeepThrow.getActor()))
+        {
+            dComIfGp_setDoStatus(mStickDistance > 0.05f && getDirectionFromShapeAngle() != DIR_FORWARD ? dActStts_JUMP_e
+                                                                                                      : dActStts_UNK43);
+        } else if (mStickDistance > fVar1) {
+            dComIfGp_setDoStatus(dActStts_ATTACK_e);
+        } else {
+            dComIfGp_setDoStatus(dActStts_PUT_AWAY_e);
+        }
+    }
 }
 
 /* 801088E8-80108A9C       .text setDoStatus__9daPy_lk_cFv */
@@ -7202,31 +7216,35 @@ bool daPy_lk_c::pcCanJumpFromButton() {
     return mpAttention->mLockOnState == 0 && !mpAttention->chkFlag(AttnFlag_10000000 | AttnFlag_20000000);
 }
 
-// Randomizer+ weapons (pc_weapon_unlocks.cpp, COS_RPLUS_WEAPON_BUTTON): once a frame, the weapon button. A press
-// while Link could jump from the jump button lets go of the weapon in his hand (one he drew goes) and lays the next
-// of his own in front of him; once it is made he picks it up with the game's own grab, as one an enemy dropped
-// (procGrabReady_init, which makes it his equipped d_a_boko). True when that grab starts in place of this frame's proc.
+// Randomizer+ weapons (pc_weapon_unlocks.cpp; Dillon 2026-11-02: a picked-up weapon swaps into B, is not thrown, and
+// can be switched and stored). Once a frame: an enemy's weapon Link picks up becomes his and goes on B; A puts it away
+// (setDoStatusBasic: Put away in place of Throw); the weapon button switches B between the sword and his weapons. While
+// a weapon is on B and his hands are free he holds it again (after a door, an item, a swim...): it is made and put
+// straight in his hand, as the grab ends (procGrabReady). True when that runs in place of this frame's proc.
 bool daPy_lk_c::pcRplusWeaponFrame() {
     fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
     const bool free = pcCanJumpFromButton();
-    switch (pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e, free)) {
-    case PC_RPLUS_WEAPON_PUT_AWAY:
-        deleteEquipItem(FALSE);
+    const bool putAway = held != NULL && doTrigger() && dComIfGp_getDoStatus() == dActStts_PUT_AWAY_e;
+    const int act = pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e,
+                                          held != NULL ? (int)fopAcM_GetParam(held) : -1, free, putAway,
+                                          mEquipItem == daPyItem_NONE_e);
+    if (act == PC_RPLUS_WEAPON_PUT_AWAY && held != NULL) {
+        deleteEquipItem(TRUE);
         fopAcM_delete(held);
         return false;
-    case PC_RPLUS_WEAPON_DROP:
-        deleteEquipItem(FALSE);
-        return false;
-    default:
-        break;
     }
     fopAc_ac_c* weapon = pc_rplus_weapon_ready();
-    if (weapon == NULL || held != NULL || !free || fopAcM_searchActorDistance(this, weapon) > 150.0f) {
+    if (weapon == NULL || !free || mEquipItem != daPyItem_NONE_e || checkEquipAnime()) {
         return false;
     }
     pc_rplus_weapon_taken();
-    mpAttnActorA = weapon;
-    procGrabReady_init();
+    fopAcM_setCarryNow(weapon, 1);
+    static_cast<daBoko_c*>(weapon)->setNowMode(daBoko_c::Mode_PLAYER_CARRY_e);
+    mEquipItem = daPyItem_BOKO_e;
+    mActorKeepEquip.setData(weapon);
+    setWeaponBlur();
+    seStartOnlyReverb(JA_SE_LK_ITEM_TAKEOUT);
+    checkNextMode(0);
     return true;
 }
 

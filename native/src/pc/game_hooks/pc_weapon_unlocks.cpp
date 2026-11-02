@@ -1,20 +1,23 @@
-// Randomizer+ weapon unlocks (pc/game_hooks.h, docs/RANDOMIZER_PLUS.md): the enemies' weapons Link can pick up
-// (d_a_boko: the Bokoblin's stick, the machete, the Stalfos mace, the Darknut's sword, the Moblin's spear, Phantom
-// Ganon's sword) are found as check rewards; once found, a press of the weapon button (COS_RPLUS_WEAPON_BUTTON, the
-// Calidad de vida tab) lays one in front of Link and he picks it up, the game's own grab (procGrabReady_init) as
-// for one an enemy dropped. The next press puts it away and gives the next weapon he has; after the last, his hands
-// are empty again. An enemy's weapon he is holding is dropped instead.
+// Randomizer+ weapons (pc/game_hooks.h, docs/RANDOMIZER_PLUS.md): the enemies' weapons Link can pick up (d_a_boko:
+// the Bokoblin's stick, the machete, the Stalfos mace, the Darknut's sword, the Moblin's spear, Phantom Ganon's sword).
+//
+// On B (Dillon, 2026-11-02: "should swap into the b position. They won't be thrown. Can be switched and stored in
+// inventory"): a weapon Link picks up is his from then on and goes on B in place of the sword; B swings it, A puts it
+// away (the sword is on B again) where the game would throw it. While a weapon is on B and his hands are free he holds
+// it again of his own (after a door, an item, a swim...): it is made in his hand (daPy_lk_c::pcRplusWeaponFrame). A
+// press of the weapon button (COS_RPLUS_WEAPON_BUTTON, the Calidad de vida tab) switches B to his next weapon, then
+// back to the sword after the last.
 //
 // The checks (Dillon, 2026-10-28): like the house decor (pc_rplus_decor.cpp), a check that holds only filler
 // (fopAcM_createItemForTrBoxDemo: a chest, sunken treasure, a demo pickup) can give a weapon, at the filler checks
 // the seed picks: the k-th weapon at about the 2nd, 5th, 9th, 14th, 20th and 27th, each a little later by the seed,
 // in an order the seed shuffles. That check gives no decor piece; the filler still comes.
 //
-// From the start (Dillon, 2026-10-28): COS_RPLUS_WEAPONS_START, on by default, gives Link all six at once and no
-// check gives one; off, they are found as above.
+// From the start (Dillon, 2026-10-28; "nah" 10-28 23:23): COS_RPLUS_WEAPONS_START=1 gives Link all six at once and no
+// check gives one. Off by default: they are found as above, or picked up from enemies.
 //
 // The save: rplus-weapons-<seed>-<slot>.txt next to the memory card (as the decor's), read when the file is loaded
-// and written when the game saves. Picking up an enemy's weapon in the world unlocks nothing.
+// and written when the game saves: the weapons found, the filler checks so far and what is on B.
 //
 // File name: not pc_rplus_* so that a push of it does not start the Steam Deck workflow (steamdeck.yml paths).
 #include "pc/game_hooks.h"
@@ -64,7 +67,7 @@ const int kAt[WEAPONS] = {2, 5, 9, 14, 20, 27};
 struct State {
     bool owned[WEAPONS] = {};
     int fillers = 0;   // filler checks so far
-    int selected = -1; // the weapon the next press draws (-1: the first owned)
+    int onB = -1;      // the weapon on B (-1: the sword)
 };
 
 State sState;
@@ -98,7 +101,7 @@ int checkFor(int k) {
 // (the default); then no check gives one. 0: they are found at checks.
 bool allFromStart() {
     const char* v = pc_settings_get("COS_RPLUS_WEAPONS_START");
-    return v == nullptr || v[0] == '\0' || strcmp(v, "0") != 0;
+    return v != nullptr && strcmp(v, "1") == 0;
 }
 
 bool owned(int i) {
@@ -169,13 +172,13 @@ bool pressed() {
     return press;
 }
 
-// ---- The weapon in the world
+// ---- The weapon in Link's hand
 
-fpc_ProcID sOurs = fpcM_ERROR_PROCESS_ID_e;     // the last weapon laid down (held, thrown or waiting)
-fpc_ProcID sPending = fpcM_ERROR_PROCESS_ID_e;  // laid down for Link to pick up
+fpc_ProcID sOurs = fpcM_ERROR_PROCESS_ID_e;     // Link's weapon in the world (held, dropped, or being made)
+fpc_ProcID sPending = fpcM_ERROR_PROCESS_ID_e;  // made for his hand, not in it yet
 int sPendingFrames = 0;
 
-// the owned weapon after `from` (-1: the first owned), -1 past the last
+// the owned weapon after `from` (-1: the first owned), -1 past the last (the sword)
 int nextOwned(int from) {
     for (int i = from + 1; i < WEAPONS; i++) {
         if (owned(i)) {
@@ -194,16 +197,18 @@ void removeOurs() {
     sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;
 }
 
-void layDown(fopAc_ac_c* link, int type) {
-    removeOurs();  // the last one, unless Link holds it (the player's code puts that one away)
-    const s16 ay = link->shape_angle.y;
-    const float a = ay * (3.14159265f / 32768.0f);
-    cXyz pos(link->current.pos.x + 45.0f * sinf(a), link->current.pos.y + 15.0f, link->current.pos.z + 45.0f * cosf(a));
-    csXyz angle(0, (s16)(ay + 0x4000), 0);
+// made at Link's hand; the player's code puts it in his hand once it exists
+void make(fopAc_ac_c* link, int type) {
+    removeOurs();
+    cXyz pos(link->current.pos.x, link->current.pos.y + 60.0f, link->current.pos.z);
+    csXyz angle(0, link->shape_angle.y, 0);
     sOurs = fopAcM_create("Boko", (u32)type, &pos, fopAcM_GetRoomNo(link), &angle, nullptr);
     sPending = sOurs;
     sPendingFrames = 0;
-    fprintf(stderr, "[rplus] weapons: drawing %s\n", kWeapons[type].key);
+}
+
+const char* label(int w) {
+    return pc::pc_ui_spanish() ? kWeapons[w].es : kWeapons[w].en;
 }
 
 } // namespace
@@ -234,6 +239,10 @@ void pc_rplus_weapon_load(int slot) {
             sState.fillers = n;
             continue;
         }
+        if (strcmp(key, "onB") == 0) {
+            sState.onB = n >= 0 && n < WEAPONS ? n : -1;
+            continue;
+        }
         for (int i = 0; i < WEAPONS; i++) {
             if (strcmp(kWeapons[i].key, key) == 0) {
                 sState.owned[i] = true;
@@ -257,6 +266,7 @@ void pc_rplus_weapon_save(int slot) {
     }
     fprintf(f, "# Randomizer+ weapon unlocks (pc_weapon_unlocks.cpp): the filler checks so far, the weapons found\n");
     fprintf(f, "fillers %d\n", sState.fillers);
+    fprintf(f, "onB %d\n", sState.onB);
     for (int i = 0; i < WEAPONS; i++) {
         if (sState.owned[i]) {
             fprintf(f, "%s\n", kWeapons[i].key);
@@ -293,10 +303,10 @@ int pc_rplus_weapon_check(int itemNo) {
         const char* b = button();
         if (pc::pc_ui_spanish()) {
             snprintf(line, sizeof line, "Arma: %s (%d de %d)%s", kWeapons[w].es, ownedCount(), WEAPONS,
-                     b != nullptr ? ", pulsa el botón de armas para sacarla" : "; elige un botón de armas en Calidad de vida");
+                     b != nullptr ? ", el botón de armas la pone en B" : "; elige un botón de armas en Calidad de vida");
         } else {
             snprintf(line, sizeof line, "Weapon unlocked: %s (%d of %d)%s", kWeapons[w].en, ownedCount(), WEAPONS,
-                     b != nullptr ? ", press the weapon button to draw it" : "; pick a weapon button in Quality of life");
+                     b != nullptr ? ", the weapon button puts it on B" : "; pick a weapon button in Quality of life");
         }
         notice(line);
         fprintf(stderr, "[rplus] weapons: found %s at filler check %d\n", kWeapons[w].key, sState.fillers);
@@ -305,37 +315,73 @@ int pc_rplus_weapon_check(int itemNo) {
     return 0;
 }
 
-int pc_rplus_weapon_frame(unsigned int heldId, int free) {
+int pc_rplus_weapon_keeps(void) {
+    return pc_rplus_active() && enabled();
+}
+
+int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAway, int handsEmpty) {
     const bool press = pressed();  // followed every frame, so a press made elsewhere does not count later
-    if (!pc_rplus_active()) {
-        return PC_RPLUS_WEAPON_NONE;
-    }
-    if (sPending != fpcM_ERROR_PROCESS_ID_e && ++sPendingFrames > 90) {
-        sPending = fpcM_ERROR_PROCESS_ID_e;  // not picked up in time: it stays on the ground for the A button
-    }
-    if (!press || !free || ownedCount() == 0 || dComIfGp_event_runCheck() || fopOvlpM_IsDoingReq()) {
+    if (!pc_rplus_weapon_keeps()) {
         return PC_RPLUS_WEAPON_NONE;
     }
     fopAc_ac_c* link = dComIfGp_getLinkPlayer();
     if (link == nullptr) {
         return PC_RPLUS_WEAPON_NONE;
     }
-    if (heldId != fpcM_ERROR_PROCESS_ID_e && heldId == sOurs) {
-        // put away (the player's code deletes it); the next weapon Link has is laid down now, none after the last
-        sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;
-        sState.selected = nextOwned(sState.selected);
-        if (sState.selected >= 0) {
-            layDown(link, sState.selected);
+    const bool holding = heldId != fpcM_ERROR_PROCESS_ID_e;
+    // an enemy's weapon he picked up: his from now on, on B
+    if (holding && heldId != sOurs && heldType >= 0 && heldType < WEAPONS) {
+        removeOurs();
+        sOurs = heldId;
+        const bool fresh = !owned(heldType);
+        sState.owned[heldType] = true;
+        sState.onB = heldType;
+        char line[200];
+        if (pc::pc_ui_spanish()) {
+            snprintf(line, sizeof line, fresh ? "Arma nueva en B: %s" : "En B: %s", label(heldType));
+        } else {
+            snprintf(line, sizeof line, fresh ? "New weapon on B: %s" : "On B: %s", label(heldType));
         }
-        return PC_RPLUS_WEAPON_PUT_AWAY;
+        notice(line);
+        fprintf(stderr, "[rplus] weapons: picked up %s, on B\n", kWeapons[heldType].key);
     }
-    if (heldId != fpcM_ERROR_PROCESS_ID_e) {
-        return PC_RPLUS_WEAPON_DROP;  // an enemy's: dropped; the next press draws one of Link's
+    // A: put away, the sword on B again (the game drops it: it goes below)
+    if (holding && putAway) {
+        sState.onB = -1;
+        notice(pc::pc_ui_spanish() ? "Espada en B (arma guardada)" : "Sword on B (weapon put away)");
     }
-    if (sState.selected < 0 || !owned(sState.selected)) {
-        sState.selected = nextOwned(-1);
+    // his weapon let go of (put away, a door, an item, a ladder...): back in the inventory, not left lying about
+    if (!holding && sOurs != fpcM_ERROR_PROCESS_ID_e && sOurs != sPending) {
+        fopAc_ac_c* a = fopAcM_SearchByID(sOurs);
+        if (a == nullptr || !fopAcM_checkCarryNow(a)) {
+            removeOurs();
+        }
     }
-    layDown(link, sState.selected);
+    // made but not taken (he got busy): made again later
+    if (sPending != fpcM_ERROR_PROCESS_ID_e && ++sPendingFrames > 30) {
+        removeOurs();
+    }
+    const bool calm = free && !dComIfGp_event_runCheck() && !fopOvlpM_IsDoingReq();
+    // the weapon button: B to the next weapon, the sword after the last
+    if (press && calm && ownedCount() > 0) {
+        sState.onB = nextOwned(sState.onB);
+        if (sState.onB >= 0) {
+            char text[160];
+            snprintf(text, sizeof text, pc::pc_ui_spanish() ? "En B: %s" : "On B: %s", label(sState.onB));
+            notice(text);
+        } else {
+            notice(pc::pc_ui_spanish() ? "Espada en B" : "Sword on B");
+        }
+        if (holding && heldId == sOurs) {
+            sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;
+            return PC_RPLUS_WEAPON_PUT_AWAY;  // the player's code deletes it; the next one is made next frame
+        }
+    }
+    // a weapon on B and his hands free: it is in them again
+    if (sState.onB >= 0 && owned(sState.onB) && !holding && handsEmpty && calm && sPending == fpcM_ERROR_PROCESS_ID_e &&
+        sOurs == fpcM_ERROR_PROCESS_ID_e) {
+        make(link, sState.onB);
+    }
     return PC_RPLUS_WEAPON_NONE;
 }
 
