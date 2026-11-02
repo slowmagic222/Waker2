@@ -14,6 +14,7 @@
 #include "pc_internal.h"
 #include "d/d_item_data.h"
 #include "d/d_bg_s_gnd_chk.h"
+#include "res/Object/Aygr.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_stage.h"
 #include "d/d_camera.h"
@@ -601,6 +602,8 @@ struct TowerLive {
     float x, z;
     fpc_ProcID id;
     int frames;
+    u32 h;  // its seed (its facing)
+    float lift;  // how far it was made over the ground
 };
 TowerLive sTowers[TOWERS_LIVE];
 
@@ -615,10 +618,10 @@ bool towerChestFromStart(int key) {
 bool deckAt(float x, float z, float* y) {
     const float land = rplus::groundY(x, z);
     dBgS_ObjGndChk gnd;
-    cXyz top(x, land + 6000.0f, z);
+    cXyz top(x, land + 12000.0f, z);
     gnd.SetPos(&top);
     const f32 h = dComIfG_Bgsp()->GroundCross(&gnd);
-    if (h < land + 300.0f || h > land + 5900.0f) {
+    if (h < land + 300.0f || h > land + 11900.0f) {
         return false;
     }
     *y = h;
@@ -693,6 +696,28 @@ void fillTower(TowerLive& t, float deckY) {
             state == CAMP_NEW && !towerChestFromStart(t.key) ? ", chest when beaten" : "");
 }
 
+// The tower stands on the sea with its ladder's foot under the water. On land it is lifted so the ladder's foot
+// (the lowest point of its collision, Aygr's aygrh.dzb) is at the ground: Link then steps onto the ladder from the
+// ground instead of being put at its foot under the land. Read from the first tower made (the archive is loaded
+// then); that tower is made again at the lifted height.
+float sTowerLift = -1e9f;  // unknown yet
+
+void makeTower(int key, int roomNo, float x, float y, float z, u32 h);
+
+float dzbMinY(int index, float* maxY) {
+    cBgD_t* d = (cBgD_t*)dComIfG_getObjectRes("Aygr", index);
+    if (d == nullptr || d->m_v_num <= 0) {
+        return 1e9f;
+    }
+    float lo = 1e9f, hi = -1e9f;
+    for (s32 i = 0; i < d->m_v_num; i++) {
+        lo = std::min(lo, d->m_v_tbl[i].y);
+        hi = std::max(hi, d->m_v_tbl[i].y);
+    }
+    *maxY = hi;
+    return lo;
+}
+
 void towersFrame() {
     for (TowerLive& t : sTowers) {
         if (!t.used) {
@@ -706,6 +731,25 @@ void towersFrame() {
         if (a == nullptr) {
             continue;  // still being made
         }
+        if (sTowerLift < -1e8f) {
+            float ladderTop = 0, bodyTop = 0;
+            const float ladderFoot = dzbMinY(dRes_INDEX_AYGR_DZB_AYGRH_e, &ladderTop);
+            const float bodyFoot = dzbMinY(dRes_INDEX_AYGR_DZB_AYGR_e, &bodyTop);
+            sTowerLift = ladderFoot < 1e8f ? -ladderFoot : 0.0f;
+            fprintf(stderr,
+                    "[rplus] lookout tower collision: ladder %.0f..%.0f, body %.0f..%.0f; lifted %.0f on land\n",
+                    ladderFoot, ladderTop, bodyFoot, bodyTop, sTowerLift);
+        }
+        if (fabsf(t.lift - sTowerLift) > 1.0f) {
+            // Made before the lift was known: made again at the lifted height (the ladder's collision is placed
+            // once, when it is made).
+            const TowerLive again = t;
+            const float groundAt = a->home.pos.y - t.lift;
+            t.used = false;
+            fopAcM_delete(a);
+            makeTower(again.key, again.room, again.x, groundAt, again.z, again.h);
+            continue;
+        }
         float deckY;
         if (deckAt(t.x, t.z, &deckY)) {
             t.used = false;
@@ -717,7 +761,6 @@ void towersFrame() {
     }
 }
 
-void makeTower(int key, int roomNo, float x, float y, float z, u32 h);
 
 // One lookout tower in roomNo (most rooms): on a rise of gentle open land, away from the start and the towns.
 void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
@@ -758,7 +801,8 @@ void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std:
 
 // A tower (with its ladder) standing at (x, y, z); its deck is filled once its collision is in (towersFrame).
 void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
-    cXyz pos(x, y, z);
+    const float lift = sTowerLift > -1e8f ? sTowerLift : 0.0f;
+    cXyz pos(x, y + lift, z);
     csXyz angle(0, (s16)(h >> 3), 0);
     // Params bit 0: with its ladder.
     const fpc_ProcID id = fopAcM_create((char*)"Aygr", 0x00000001u, &pos, roomNo, &angle, nullptr);
@@ -776,9 +820,9 @@ void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
         }
     }
     if (slot != nullptr) {
-        *slot = TowerLive{true, key, roomNo, x, z, id, 0};
+        *slot = TowerLive{true, key, roomNo, x, z, id, 0, h, lift};
     }
-    fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, y, z);
+    fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, pos.y, z);
 }
 
 void placeEnemies(int roomNo) {
