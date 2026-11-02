@@ -145,8 +145,8 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
 - **House decor** (`pc_rplus_decor.cpp`, `COS_RPLUS_DECOR=0` to turn it off): 169 pieces, every carryable thing
   that is not an item (the 16 `d_a_tsubo` types: pots, jug, barrel, stool, skull, bucket, seeds, crate, stone
   figures, Kutani pot; two small rocks, a boulder and a stone head; three pigs; the five Tingle statues; seven
-  Tower of the Gods stones and statues; the enemy weapons are weapon unlocks instead) and the Nintendo Gallery's 134 figurines on their
-  pedestals. Six (pot, large pot, barrel, stool, bucket, crate) are Link's from the start. The rest are non-progress
+  Tower of the Gods stones and statues; the enemy weapons are weapon unlocks instead) and the Nintendo Gallery's 134 figurines (in the
+  cabana the figure alone, without its pedestal). Six (pot, large pot, barrel, stool, bucket, crate) are Link's from the start. The rest are non-progress
   check rewards: a check that holds only filler (rupees, hearts, magic, bombs, arrows, a fairy) and goes through
   `fopAcM_createItemForTrBoxDemo` (chests, sunken treasure, demo pickups) also gives the next piece Link lacks, in
   an order the seed shuffles, in the filler's place: the chest's item-get (`daDitem_c`) shows the piece's own

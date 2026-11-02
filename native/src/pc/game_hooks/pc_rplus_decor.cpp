@@ -3,7 +3,7 @@
 //
 // The catalog: what Link can lift or hold that is not an item (pots, jugs, barrels, stools, skulls, buckets, crates,
 // seeds, stone figures, rocks, boulders, the pigs, the Tingle statues, the Tower of the Gods' stones and statues) and
-// the Nintendo Gallery's figurines, each on its own pedestal. The bomb flowers, stunned enemies,
+// the Nintendo Gallery's figurines (the figure alone: d_a_obj_figure leaves its pedestal out). The bomb flowers, stunned enemies,
 // Medli, Makar and the Command Melody's statue are not decor (they blow up, or are people).
 //
 // The checks (Dillon, 2026-10-28): decor is a non-progress check reward, not something standing about. A check that

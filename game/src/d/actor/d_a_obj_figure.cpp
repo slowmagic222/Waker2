@@ -644,7 +644,13 @@ BOOL daObjFigure_c::_draw() {
         }
 
         mBtpAnm1.entry(pModelData, 1);
+#if TARGET_PC
+        if (!mPcDecor) {  // Randomizer+ house decor: the figure alone, no pedestal
+            mDoExt_modelUpdateDL(mpPedestalModel);
+        }
+#else
         mDoExt_modelUpdateDL(mpPedestalModel);
+#endif
         mDoExt_modelUpdateDL(mpModel);
         mBtpAnm1.remove(pModelData);
 
@@ -736,8 +742,8 @@ void daObjFigure_c::pcDecorExecute() {
     shape_angle.x = shape_angle.z = 0;
     current.angle.y = shape_angle.y;
     m736 = shape_angle.y;
-    attention_info.position.set(current.pos.x, current.pos.y + 150.0f, current.pos.z);
-    eyePos.set(current.pos.x, current.pos.y + 150.0f, current.pos.z);
+    attention_info.position.set(current.pos.x, current.pos.y + 80.0f, current.pos.z);
+    eyePos.set(current.pos.x, current.pos.y + 50.0f, current.pos.z);
     if (mpBrkAnm) {
         mpBrkAnm->play();
     }
@@ -1043,7 +1049,12 @@ void daObjFigure_c::setMtx() {
     mpPedestalModel->setBaseTRMtx(mDoMtx_stack_c::get());
     cXyz scale(1.0f, 1.0f, 1.0f);
     mpModel->setBaseScale(scale);
+#if TARGET_PC
+    // Randomizer+ house decor stands on the floor itself, not on the pedestal's top
+    mDoMtx_stack_c::transS(current.pos.x, current.pos.y + (mPcDecor ? 0.0f : 100.0f), current.pos.z);
+#else
     mDoMtx_stack_c::transS(current.pos.x, current.pos.y + 100.0f, current.pos.z);
+#endif
     mDoMtx_stack_c::YrotM(m736);
     mpModel->setBaseTRMtx(mDoMtx_stack_c::get());
 
