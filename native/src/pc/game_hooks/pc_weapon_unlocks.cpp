@@ -312,6 +312,18 @@ int pc_rplus_weapon_check(int itemNo) {
                      b != nullptr ? ", the weapon button puts it on B" : "; pick a weapon button in Quality of life");
         }
         notice(line);
+        // on B at once, and the chest shows it (pc_rplus_decor.cpp's item-get, its own text) in the filler's place
+        sState.onB = w;
+        static const char* const kEsAscii[WEAPONS] = {"Baston de bokoblin", "Machete pirata", "Maza de Stalfos",
+                                                      "Espada de Darknut", "Lanza de Moblin", "Espada de Ganon Fantasma"};
+        char tail[96];
+        if (pc::pc_ui_spanish()) {
+            snprintf(tail, sizeof tail, "!\nYa esta en B. (%d de %d)", ownedCount(), WEAPONS);
+            pc_rplus_decor_show_weapon(itemNo, w, "Tienes un arma:\n", kEsAscii[w], tail);
+        } else {
+            snprintf(tail, sizeof tail, "!\nIt's on B now. (%d of %d)", ownedCount(), WEAPONS);
+            pc_rplus_decor_show_weapon(itemNo, w, "You got a weapon:\n", kWeapons[w].en, tail);
+        }
         fprintf(stderr, "[rplus] weapons: found %s at filler check %d\n", kWeapons[w].key, sState.fillers);
         return 1;
     }
@@ -320,6 +332,12 @@ int pc_rplus_weapon_check(int itemNo) {
 
 int pc_rplus_weapon_keeps(void) {
     return pc_rplus_active() && enabled();
+}
+
+void pc_rplus_weapon_put_away(void) {
+    sState.onB = -1;
+    sOurs = sPending = fpcM_ERROR_PROCESS_ID_e;  // the player's code deletes it
+    notice(pc::pc_ui_spanish() ? "Espada en B (arma guardada)" : "Sword on B (weapon put away)");
 }
 
 int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAway, int handsEmpty) {
@@ -348,11 +366,7 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
         notice(line);
         fprintf(stderr, "[rplus] weapons: picked up %s, on B\n", kWeapons[heldType].key);
     }
-    // A: put away, the sword on B again (the game drops it: it goes below)
-    if (holding && putAway) {
-        sState.onB = -1;
-        notice(pc::pc_ui_spanish() ? "Espada en B (arma guardada)" : "Sword on B (weapon put away)");
-    }
+    (void)putAway;  // A's put away comes through pc_rplus_weapon_put_away, as the player's code puts it away
     // his weapon let go of (put away, a door, an item, a ladder...): back in the inventory, not left lying about
     if (!holding && sOurs != fpcM_ERROR_PROCESS_ID_e && sOurs != sPending) {
         fopAc_ac_c* a = fopAcM_SearchByID(sOurs);

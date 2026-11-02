@@ -3935,7 +3935,7 @@ BOOL daPy_lk_c::checkItemChangeFromButton() {
                 }
             } else if (doTrigger()) {
                 if (dComIfGp_getDoStatus() == dActStts_PUT_AWAY_e) {
-                    setAnimeUnequip();
+                    pcRplusPutAway();
                 }
             }
         } else {
@@ -3950,12 +3950,12 @@ BOOL daPy_lk_c::checkItemChangeFromButton() {
                     return procBottleOpen_init(dItemNo_FAIRY_BOTTLE_e);
                 } else if (doTrigger()) {
                     if (dComIfGp_getDoStatus() == dActStts_PUT_AWAY_e) {
-                        setAnimeUnequip();
+                        pcRplusPutAway();
                     }
                 }
             } else if (doTrigger()) {
                 if (dComIfGp_getDoStatus() == dActStts_PUT_AWAY_e) {
-                    setAnimeUnequip();
+                    pcRplusPutAway();
                 }
             }
         }
@@ -7219,14 +7219,30 @@ bool daPy_lk_c::pcCanJumpFromButton() {
 // Randomizer+ weapons (pc_weapon_unlocks.cpp; Dillon 2026-11-02: a picked-up weapon swaps into B, is not thrown, and
 // can be switched and stored). Once a frame: an enemy's weapon Link picks up becomes his and goes on B; A puts it away
 // (setDoStatusBasic: Put away in place of Throw); the weapon button switches B between the sword and his weapons. While
-// a weapon is on B and his hands are free he holds it again (after a door, an item, a swim...): it is made and put
+// a weapon is on B and his hands are free he holds it again (after a door, an item, a swim...); A's Put away is
+// pcRplusPutAway: it is made and put
 // straight in his hand, as the grab ends (procGrabReady). True when that runs in place of this frame's proc.
+// A's Put away (setDoStatusBasic): a weapon of Link's is put away as the sword is, not dropped: it goes, with the
+// sword's sheathing sound, and the sword is on B again. Anything else unequips as the game does.
+void daPy_lk_c::pcRplusPutAway() {
+    fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
+    if (held == NULL || !pc_rplus_weapon_keeps()) {
+        setAnimeUnequip();
+        return;
+    }
+    pc_rplus_weapon_put_away();
+    deleteEquipItem(FALSE);
+    fopAcM_delete(held);
+    seStartOnlyReverb(JA_SE_LK_SW_PUTIN_S);
+    m_old_fdata->initOldFrameMorf(5.0f, 0, CL_NUM_JNTS_e);
+    mAnimeEquipItem = daPyItem_NONE_e;
+}
+
 bool daPy_lk_c::pcRplusWeaponFrame() {
     fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
     const bool free = pcCanJumpFromButton();
-    const bool putAway = held != NULL && doTrigger() && dComIfGp_getDoStatus() == dActStts_PUT_AWAY_e;
     const int act = pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e,
-                                          held != NULL ? (int)fopAcM_GetParam(held) : -1, free, putAway,
+                                          held != NULL ? (int)fopAcM_GetParam(held) : -1, free, FALSE,
                                           mEquipItem == daPyItem_NONE_e);
     if (act == PC_RPLUS_WEAPON_PUT_AWAY && held != NULL) {
         deleteEquipItem(TRUE);

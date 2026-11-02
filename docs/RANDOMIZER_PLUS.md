@@ -161,12 +161,14 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
 - **Weapons on B** (`pc_weapon_unlocks.cpp`, `COS_RPLUS_WEAPONS=0` to turn it off): the six enemy weapons Link
   can pick up (`d_a_boko`: Bokoblin staff, machete, Stalfos mace, Darknut sword, Moblin spear, Phantom Ganon's
   sword). One he picks up is his from then on and goes on B in place of the sword: B swings it, and A puts it away
-  (Put away where the game says Throw, `setDoStatusBasic`), which puts the sword back on B. While a weapon is on B
+  (Put away where the game says Throw, `setDoStatusBasic`; `pcRplusPutAway` takes it out of his hand with the sword's
+  sheathing sound, not dropped), which puts the sword back on B. While a weapon is on B
   and his hands are free he holds it again of his own, after a door, an item, a ladder or a swim
   (`daPy_lk_c::pcRplusWeaponFrame` makes it in his hand). The weapon button (`COS_RPLUS_WEAPON_BUTTON`: L, D-pad
   down or a stick click, Quality of life tab) switches B to his next weapon, then back to the sword after the last.
   They are also check rewards: a filler check the seed picks (about the 2nd, 5th, 9th, 14th, 20th and 27th, each
-  up to two later, the weapons in a seed order) gives one in place of that check's decor piece, with a notice.
+  up to two later, the weapons in a seed order) gives one in place of that check's decor piece: the chest shows the
+  weapon and its own get-item text (`pc_rplus_decor_show_weapon`) instead of the filler, and it goes on B.
   `COS_RPLUS_WEAPONS_START=1` ("Weapons from the start", off by default) gives all six at once. Kept per save file
   in `rplus-weapons-<seed>-<slot>.txt` (found, filler checks, what is on B). Not yet: slots of their own in the
   item screen. The file is not named `pc_rplus_*` so that a push of it does not start the Steam Deck workflow.

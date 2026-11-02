@@ -144,6 +144,11 @@ struct Show {
 };
 Show sShow;
 char sShowMsg[256];
+// A weapon a chest gave (pc_weapon_unlocks.cpp) shows the same way: its piece is catalog().size() + its d_a_boko type,
+// with its own name and text.
+char sShowWeaponName[64];
+char sShowWeaponHead[64];
+char sShowWeaponTail[96];
 
 State fresh() {
     Host host;
@@ -484,9 +489,12 @@ int pc_rplus_decor_show_bind(unsigned proc, int itemNo, const char** arc, int* r
     if (sShow.piece < 0 || (sShow.bound ? sShow.proc != proc : itemNo != sShow.filler)) {
         return 0;
     }
-    const Decor& d = catalog()[sShow.piece];
+    const int weapon = sShow.piece >= (int)catalog().size() ? sShow.piece - (int)catalog().size() : -1;
+    const Decor& d = catalog()[weapon >= 0 ? 0 : sShow.piece];
     int r = -1;
-    switch (d.kind) {
+    if (weapon >= 0) {
+        r = pc_decor_model_boko(weapon, arc, res);
+    } else switch (d.kind) {
     case K_TSUBO: r = pc_decor_model_tsubo((int)(d.params >> 24 & 0xF), arc, res); break;
     case K_STONE: r = pc_decor_model_stone((int)(d.params >> 24 & 0x7), arc, res); break;
     case K_STONE2: r = pc_decor_model_stone2((int)(d.params >> 24 & 0x7), arc, res); break;
@@ -519,9 +527,14 @@ int pc_rplus_decor_show_bind(unsigned proc, int itemNo, const char** arc, int* r
             n += len;
         };
         const char* head = es ? "Decoracion para tu casa:\n" : "You got house decor:\n";
+        const char* name = d.label.c_str();
+        if (weapon >= 0) {
+            head = sShowWeaponHead, name = sShowWeaponName;
+            snprintf(tail, sizeof tail, "%s", sShowWeaponTail);
+        }
         put(head, strlen(head));
         put(kRed, sizeof kRed);
-        put(d.label.c_str(), d.label.size());
+        put(name, strlen(name));
         put(kWhite, sizeof kWhite);
         put(tail, strlen(tail));
         sShowMsg[n] = 0;
@@ -535,6 +548,13 @@ int pc_rplus_decor_show_end(unsigned proc) {
     }
     sShow.piece = -1;
     return 1;
+}
+
+void pc_rplus_decor_show_weapon(int itemNo, int type, const char* head, const char* name, const char* tail) {
+    snprintf(sShowWeaponHead, sizeof sShowWeaponHead, "%s", head);
+    snprintf(sShowWeaponName, sizeof sShowWeaponName, "%s", name);
+    snprintf(sShowWeaponTail, sizeof sShowWeaponTail, "%s", tail);
+    sShow = Show{(int)catalog().size() + type, itemNo, false, 0, 90};
 }
 
 const char* pc_rplus_decor_msg(unsigned msgNo) {
