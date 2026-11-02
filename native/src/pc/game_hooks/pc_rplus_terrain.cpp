@@ -2996,7 +2996,7 @@ struct PropKind {
 
 enum PropId {
     P_GRASS21, P_GRASS7, P_GRASS1, P_FLWR7, P_PFLWR7, P_FLOWER, P_SWOOD, P_SWOOD3, P_SWOOD5, P_LWOOD, P_PALM,
-    P_PEBBLE, P_ROCK, P_ROCK2, P_BOMBFLOWER, P_COUNT
+    P_PEBBLE, P_ROCK, P_ROCK2, P_BOMBFLOWER, P_STONE, P_COUNT
 };
 const PropKind kProps[P_COUNT] = {
     {"kusax21", 0x00000FC2, 21, 0, 260.0f}, {"kusax7", 0x00000FC1, 7, 0, 170.0f},
@@ -3006,7 +3006,7 @@ const PropKind kProps[P_COUNT] = {
     {"swood5", 0x00000017, 5, 2, 620.0f},   {"lwood", 0xFFFFFFFF, 0, 3, 1100.0f},
     {"Oyashi", 0xFFFFFFFF, 0, 3, 600.0f},    {"koisi1", 0x707FFFE0, 0, 3, 160.0f},
     {"Ebrock", 0xF27FFF3F, 0, 3, 500.0f},   {"Ebrock2", 0xF47FFF3A, 0, 3, 500.0f},
-    {"BFlower", 0x0000FF0F, 0, 3, 320.0f},
+    {"BFlower", 0x0000FF0F, 0, 3, 320.0f},  {"koisi1", 0x017FFF3F, 0, 3, 220.0f},
 };
 // What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 2048 trees,
 // shared by the rooms loaded at once; up to four rooms) and how many plain actors it makes.
@@ -3033,16 +3033,16 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
     constexpr float PEAK_THRESHOLD = LAND_BASE + 600.0f;  // no grass/palms above this altitude (snowy peaks)
     const bool isPeak = y >= PEAK_THRESHOLD && !beach;
 
-    // Snowy peaks: only rocks and pebbles above threshold
+    // Peaks: mostly stones and pebbles, a big boulder only now and then, sparse grass below the snow
     if (isPeak) {
-        if (edge == 1 || r < 200) {
-            return b == 's' ? P_ROCK2 : P_ROCK;
-        }
-        return r < 350 ? P_PEBBLE : P_COUNT;
+        return r < 50 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 170 ? P_STONE : r < 340 ? P_PEBBLE
+               : r < 400 && b != 's' ? P_GRASS1 : P_COUNT;
     }
 
     if (edge == 1 && !beach) {
-        return r < 200 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 420 ? P_PEBBLE : r < 560 && green ? P_GRASS7 : P_COUNT;
+        return r < 50 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 160 ? P_STONE : r < 340 ? P_PEBBLE
+               : r < 480 && green ? P_GRASS7 : r < 540 && green ? P_FLOWER : r < 570 && b == 'v' ? P_BOMBFLOWER
+               : P_COUNT;
     }
     if (edge == 2 && green) {
         return r < 240 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 560 ? P_GRASS7 : P_COUNT;
@@ -3086,11 +3086,13 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
     case 'd':
         return r < 30 ? P_PALM : r < 120 ? P_GRASS1 : r < 160 ? P_GRASS7 : r < 175 ? P_PEBBLE : P_COUNT;
     case 'r':
-        return r < 40 ? P_ROCK : r < 90 ? P_PEBBLE : r < 200 ? P_GRASS1 : r < 230 ? P_GRASS7 : P_COUNT;
+        return r < 12 ? P_ROCK : r < 50 ? P_STONE : r < 100 ? P_PEBBLE : r < 210 ? P_GRASS1 : r < 250 ? P_GRASS7
+               : r < 270 ? P_FLOWER : r < 285 ? P_SWOOD : P_COUNT;
     case 'v':
-        return r < 30 ? P_ROCK : r < 55 ? P_BOMBFLOWER : r < 100 ? P_PEBBLE : P_COUNT;
+        return r < 10 ? P_ROCK : r < 35 ? P_STONE : r < 65 ? P_BOMBFLOWER : r < 110 ? P_PEBBLE : r < 130 ? P_GRASS1
+               : P_COUNT;
     case 's':
-        return r < 30 ? P_ROCK2 : r < 70 ? P_PEBBLE : P_COUNT;
+        return r < 10 ? P_ROCK2 : r < 35 ? P_STONE : r < 80 ? P_PEBBLE : r < 95 ? P_SWOOD : P_COUNT;
     default:
         return P_COUNT;
     }
