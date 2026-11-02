@@ -2379,8 +2379,8 @@ const Layout& layout() {
             start = start || cands[m].in == nullptr;
         }
         if (start) {
-            cx = startX;
-            cz = startZ;
+            cx = L.startX;  // the start cell moved onto flat land inland (landSpot)
+            cz = L.startZ;
         } else {
             int best = members[0];
             for (int m : members) {
@@ -2399,9 +2399,11 @@ const Layout& layout() {
         float R = 0, a0 = 0;
         int slots = n;  // the houses on the ring: the doors' and some more (homes without a way in)
         auto fits = [&](float mx, float mz) {
-            if (!solidLand(L, mx, mz)) {
+            // The plaza on gentle ground well off the shore (the town is levelled to its middle's height).
+            if (!inlandAt(L, mx, mz, 1600.0f) || slopeAt(L, mx, mz) > 0.35f) {
                 return false;
             }
+            const float my = natAt(L, mx, mz);
             const float scales[] = {1.0f, 0.85f, 1.2f, 0.7f};
             for (float sc : scales) {
                 R = (1100.0f + 300.0f * slots) * sc;
@@ -2412,7 +2414,8 @@ const Layout& layout() {
                         const float a = a0 + k * 6.2831853f / slots;
                         const float hx = mx + sinf(a) * R, hz = mz + cosf(a) * R;
                         // The house behind the door, and the yard in front, on land.
-                        ok = inlandAt(L, hx, hz, 700.0f) &&
+                        ok = inlandAt(L, hx, hz, 900.0f) && slopeAt(L, hx, hz) < 0.45f &&
+                             fabsf(natAt(L, hx, hz) - my) < 450.0f &&
                              solidLand(L, mx + sinf(a) * (R + 500.0f), mz + cosf(a) * (R + 500.0f)) &&
                              lineOnLand(L, mx, mz, hx, hz);
                     }
