@@ -137,7 +137,9 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   pedestals. Six (pot, large pot, barrel, stool, bucket, crate) are Link's from the start. The rest are non-progress
   check rewards: a check that holds only filler (rupees, hearts, magic, bombs, arrows, a fairy) and goes through
   `fopAcM_createItemForTrBoxDemo` (chests, sunken treasure, demo pickups) also gives the next piece Link lacks, in
-  an order the seed shuffles, with a notice; the filler still comes too. In the cabana every piece found stands
+  an order the seed shuffles, in the filler's place: the chest's item-get (`daDitem_c`) shows the piece's own
+  model, sized like an item, and the get-item text names it (`pc_rplus_decor_show_bind`, `pc_rplus_decor_msg`);
+  the filler is not given. If the piece has no model to show, the filler shows and comes as before. In the cabana every piece found stands
   where Link last set it down, else on the next free spot of rings round where the cabana's pots stood; nothing
   breaks there (sword, bomb or throw: `d_a_tsubo`, `d_a_stone`, `d_a_stone2`, which also stands again where it
   lands), and a figurine is lifted and set down like a Tingle statue (`daObjFigure_c::pcDecorExecute`). At most

@@ -3688,3 +3688,15 @@ actor_process_profile_definition g_profile_TSUBO = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLSPHERE_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for this tsubo type.
+int pc_decor_model_tsubo(int type, const char** arc, int* res) {
+    if (type < 0 || type >= (int)ARRAY_SIZE(daTsubo::Act_c::M_arcname)) {
+        return -1;
+    }
+    *arc = daTsubo::Act_c::M_arcname[type];
+    *res = daTsubo::Act_c::M_data[type].m6C;
+    return 0;
+}
+#endif

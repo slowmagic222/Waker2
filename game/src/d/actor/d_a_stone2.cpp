@@ -845,3 +845,15 @@ actor_process_profile_definition g_profile_Stone2 = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLSPHERE_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for this stone2 type.
+int pc_decor_model_stone2(int type, const char** arc, int* res) {
+    if (type < 0 || type >= (int)ARRAY_SIZE(daStone2::Act_c::M_attr) || daStone2::Act_c::M_attr[type].resName == NULL) {
+        return -1;
+    }
+    *arc = daStone2::Act_c::M_attr[type].resName;
+    *res = daStone2::Act_c::M_attr[type].m04;
+    return 0;
+}
+#endif

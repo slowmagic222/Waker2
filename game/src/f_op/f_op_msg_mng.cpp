@@ -18,6 +18,7 @@
 #include "m_Do/m_Do_controller_pad.h"
 #if TARGET_PC
 #include "pc/pc_qol.h"
+#include "pc/game_hooks.h"
 #endif
 #include <stdio.h>
 #if VERSION <= VERSION_JPN
@@ -1542,6 +1543,14 @@ const char* fopMsgM_msgGet_c::getMessage(mesg_header* i_head) {
         }
     }
 
+#if TARGET_PC
+    // Randomizer+: a chest's filler that gave a house decor piece names the piece (pc_rplus_decor.cpp)
+    if (ret != NULL) {
+        if (const char* decor = pc_rplus_decor_msg(mMsgNo)) {
+            return decor;
+        }
+    }
+#endif
     return ret;
 }
 
@@ -1615,6 +1624,11 @@ const char* fopMsgM_itemMsgGet_c::getMessage(mesg_header* i_head) {
 
     const char* result = &data[info->mEntries[mMsgIdx].mDataOffs];
     mResMsgNo = info->mEntries[mMsgIdx].mMsgNo;
+#if TARGET_PC
+    if (const char* decor = pc_rplus_decor_msg(mMsgNo)) {
+        return decor;
+    }
+#endif
     return result;
 }
 

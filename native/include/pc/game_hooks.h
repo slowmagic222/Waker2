@@ -359,6 +359,12 @@ void pc_rplus_decor_save(int slot);
 // fopAcM_createItemForTrBoxDemo (a chest, sunken treasure, a demo pickup): a check of filler itemNo also gives the
 // next decor piece Link lacks; 1 if it did.
 int pc_rplus_decor_check(int itemNo);
+// The chest item (daDitem_c, process proc) for that filler shows the piece instead: its archive and model (an ID when
+// *byId); 1 when it does. show_end: the item goes (1: it was the piece, so no filler with it). msg: the get-item text
+// for message msgNo while it shows, else NULL.
+int pc_rplus_decor_show_bind(unsigned proc, int itemNo, const char** arc, int* res, int* byId);
+int pc_rplus_decor_show_end(unsigned proc);
+const char* pc_rplus_decor_msg(unsigned msgNo);
 // pc_rplus_home_actor: where a dish or pot of the cabana stood.
 void pc_rplus_decor_home_slot(const class cXyz& pos);
 // daPy_lk_c::execute, once a frame: pieces found, the cabana's pieces made and where they were set down.

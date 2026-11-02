@@ -138,6 +138,18 @@ struct State {
 
 State sLive;  // this game, since the file was loaded
 
+// The piece a chest's filler just gave, shown by the chest's item (daDitem_c) in the filler's place: waiting for that
+// item (unbound; dropped if none comes soon), then bound to it until it goes.
+struct Show {
+    int piece = -1;
+    int filler = -1;
+    bool bound = false;
+    u32 proc = 0;
+    int ttl = 0;
+};
+Show sShow;
+char sShowMsg[256];
+
 State fresh() {
     Host host;
     State s;
@@ -460,7 +472,81 @@ int pc_rplus_decor_check(int itemNo) {
         return 0;
     }
     found(best);
+    sShow = Show{best, itemNo, false, 0, 90};
     return 1;
+}
+
+int pc_decor_model_tsubo(int type, const char** arc, int* res);
+int pc_decor_model_stone(int type, const char** arc, int* res);
+int pc_decor_model_stone2(int type, const char** arc, int* res);
+int pc_decor_model_kb(int type, const char** arc, int* res);
+int pc_decor_model_vtil(int type, const char** arc, int* res);
+int pc_decor_model_try(int type, const char** arc, int* res);
+int pc_decor_model_boko(int type, const char** arc, int* res);
+int pc_decor_model_figure(int figureNo, const char** arc, int* res);
+
+int pc_rplus_decor_show_bind(unsigned proc, int itemNo, const char** arc, int* res, int* byId) {
+    if (sShow.piece < 0 || (sShow.bound ? sShow.proc != proc : itemNo != sShow.filler)) {
+        return 0;
+    }
+    const Decor& d = catalog()[sShow.piece];
+    int r = -1;
+    switch (d.kind) {
+    case K_TSUBO: r = pc_decor_model_tsubo((int)(d.params >> 24 & 0xF), arc, res); break;
+    case K_STONE: r = pc_decor_model_stone((int)(d.params >> 24 & 0x7), arc, res); break;
+    case K_STONE2: r = pc_decor_model_stone2((int)(d.params >> 24 & 0x7), arc, res); break;
+    case K_PIG: r = pc_decor_model_kb((int)(d.params & 0xF), arc, res); break;
+    case K_VTIL: r = pc_decor_model_vtil((int)(d.params & 0xF), arc, res); break;
+    case K_TRY: r = pc_decor_model_try((int)(d.params & 0xF), arc, res); break;
+    case K_BOKO: r = pc_decor_model_boko((int)d.params, arc, res); break;
+    case K_FIGURE: r = pc_decor_model_figure((int)d.params, arc, res); break;
+    }
+    if (r < 0 || *arc == nullptr) {
+        sShow.piece = -1;  // no model: the filler shows as before
+        return 0;
+    }
+    *byId = r;
+    if (!sShow.bound) {
+        sShow.bound = true;
+        sShow.proc = proc;
+        // the get-item text, the piece's name in red as the game's own item texts colour their item. The colour codes
+        // hold zero bytes, so it's put together piece by piece.
+        static const char kRed[] = {0x1A, 0x06, (char)0xFF, 0x00, 0x00, 0x01};
+        static const char kWhite[] = {0x1A, 0x06, (char)0xFF, 0x00, 0x00, 0x00};
+        const bool es = pc::pc_ui_spanish();
+        char tail[96];
+        snprintf(tail, sizeof tail, es ? "!\nYa esta en tu cabana. (%d de %d)" : "!\nIt's waiting in your cabana. (%d of %d)",
+                 foundCount(), (int)catalog().size());
+        size_t n = 0;
+        auto put = [&](const char* text, size_t len) {
+            len = len < sizeof sShowMsg - 1 - n ? len : sizeof sShowMsg - 1 - n;
+            memcpy(sShowMsg + n, text, len);
+            n += len;
+        };
+        const char* head = es ? "Decoracion para tu casa:\n" : "You got house decor:\n";
+        put(head, strlen(head));
+        put(kRed, sizeof kRed);
+        put(d.label.c_str(), d.label.size());
+        put(kWhite, sizeof kWhite);
+        put(tail, strlen(tail));
+        sShowMsg[n] = 0;
+    }
+    return 1;
+}
+
+int pc_rplus_decor_show_end(unsigned proc) {
+    if (sShow.piece < 0 || !sShow.bound || sShow.proc != proc) {
+        return 0;
+    }
+    sShow.piece = -1;
+    return 1;
+}
+
+const char* pc_rplus_decor_msg(unsigned msgNo) {
+    if (sShow.piece < 0 || !sShow.bound || (msgNo & 0xFFFF) != (unsigned)(sShow.filler + 101)) {
+        return nullptr;
+    }
+    return sShowMsg;
 }
 
 void pc_rplus_decor_home_slot(const cXyz& pos) {
@@ -473,6 +559,9 @@ void pc_rplus_decor_home_slot(const cXyz& pos) {
 void pc_rplus_decor_frame(void) {
     if (!pc_rplus_active()) {
         return;
+    }
+    if (sShow.piece >= 0 && !sShow.bound && --sShow.ttl <= 0) {
+        sShow.piece = -1;  // no chest item came for it
     }
     fopAc_ac_c* link = dComIfGp_getLinkPlayer();
     if (link == nullptr) {

@@ -1005,3 +1005,15 @@ actor_process_profile_definition g_profile_Obj_Try = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLSPHERE_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for this tower stone.
+int pc_decor_model_try(int type, const char** arc, int* res) {
+    if (type < 0 || type >= (int)ARRAY_SIZE(daObjTry::Act_c::M_attr)) {
+        return -1;
+    }
+    *arc = daObjTry::Act_c::M_arcname;
+    *res = daObjTry::Act_c::M_attr[type].mModelRes;
+    return 0;
+}
+#endif

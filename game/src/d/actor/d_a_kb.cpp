@@ -2648,3 +2648,12 @@ actor_process_profile_definition g_profile_KB = {
     /* Group        */ fopAc_ENV_e,
     /* Cull Type    */ fopAc_CULLBOX_0_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for a pig (its look is a texture pattern).
+int pc_decor_model_kb(int, const char** arc, int* res) {
+    *arc = "Kb";
+    *res = dRes_INDEX_KB_BDL_PG_e;
+    return 0;
+}
+#endif

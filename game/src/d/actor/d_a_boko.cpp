@@ -1078,3 +1078,16 @@ actor_process_profile_definition g_profile_BOKO = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLBOX_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for this weapon (as daBoko_c's createHeap).
+int pc_decor_model_boko(int type, const char** arc, int* res) {
+    static const int model_idx[] = {dRes_INDEX_BOKO_BDL_BOKO_e, dRes_INDEX_NATA_BDL_BK_NATA_e, dRes_INDEX_CLUB_BDL_ST_BUKI_e, dRes_INDEX_TKWN_BDL_TN_KEN1_e, dRes_INDEX_SPEAR_BDL_MO_YARI_e, dRes_INDEX_PGSW_BDL_BPG_KEN1_e};
+    if (type < 0 || type >= 6) {
+        return -1;
+    }
+    *arc = daBoko_c::m_arc_name[type];
+    *res = model_idx[type];
+    return 0;
+}
+#endif

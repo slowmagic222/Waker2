@@ -42,6 +42,13 @@ public:
     /* 0x64C */ cXyz mOffsetPos;
     /* 0x658 */ u8 mFlag;
     /* 0x659 */ u8 mArgFlag;
+#if TARGET_PC
+    // Randomizer+ house decor: a chest's filler shows the decor piece it gave instead (pc_rplus_decor.cpp)
+    const char* mPcDecorArc;  // its archive, NULL when this is an ordinary item
+    int mPcDecorRes;          // its model: an index, or an ID when mPcDecorById
+    int mPcDecorById;
+    cXyz mPcDecorCenter;      // the middle of its model, drawn at the item's place
+#endif
 };
 
 namespace daDitem_prm {
