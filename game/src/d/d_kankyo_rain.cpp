@@ -4040,7 +4040,12 @@ void dKyr_drawRain(Mtx drawMtx, u8** pImg) {
         if (alpha <= 0.0f)
             continue;
 
+#if TARGET_PC
+        f32 rainA = alpha * 14.0f * pc_rplus_precip_boost();
+        reg0.a = rainA > 255.0f ? 255 : (u8)rainA;
+#else
         reg0.a = alpha * 14.0f;
+#endif
         GXSetTevColor(GX_TEVREG0, reg0);
 
         p.x = pPkt->mEff[i].mBasePos.x + pPkt->mEff[i].mPos.x;
@@ -4053,6 +4058,9 @@ void dKyr_drawRain(Mtx drawMtx, u8** pImg) {
             dist = 1.0f;
 
         f32 size = 2.5f + (i / 250.0f);
+#if TARGET_PC
+        size *= pc_rplus_precip_boost();
+#endif
         f32 speed = 5.0f + (dist * 70.0f);
         tilt.x = speed * ((windvec.x + (10.0f * (pPkt->mCenterDelta.x * pPkt->mCenterDeltaMul))) + (dummy.x + (0.08f * (i & 0x07))));
 #if VERSION == VERSION_DEMO
@@ -4909,6 +4917,12 @@ void dKyr_drawSnow(Mtx drawMtx, u8** pImg) {
         color_reg0.a = 0x78;
         color_reg1.a = 0x78;
         eight = 8.0f;
+#if TARGET_PC
+        // Randomizer+ snow storms: brighter, bigger flakes.
+        f32 snowA = 0x78 * pc_rplus_precip_boost();
+        color_reg0.a = color_reg1.a = snowA > 255.0f ? 255 : (u8)snowA;
+        eight *= 1.0f + 0.5f * (pc_rplus_precip_boost() - 1.0f);
+#endif
     } else {
         dKyr_drawKazanbai(drawMtx, pImg);
         return;

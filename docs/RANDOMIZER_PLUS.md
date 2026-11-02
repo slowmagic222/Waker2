@@ -180,6 +180,18 @@ The choices are kept in `user/rando/rplus.ini`; `pc_rplus_boot` applies them at 
 
 Items are not placed in the game yet.
 
+### Skies: each island's day, night and weather
+
+`native/src/pc/game_hooks/pc_rplus_weather.cpp`. Every land mass is an island, and every sea cell belongs to the
+island nearest it. From the world's seed each island gets a clock offset (up to 6 hours either way) and a day
+length (9 to 15 hours of daylight), and for each 8 game hours a weather picked by its biome: clear, rain, snow
+(snow islands only, a blizzard when stormy) or storm (heavy rain, thunder). The same seed always gives the same
+skies. Only the sky changes: the save keeps one clock for the game's rules, and the island's time goes into
+`g_env_light.mCurTime`, which the sun, moon, stars and palettes are drawn from. Rain and snow go up to 500
+drops (the game's limit is 250), drawn stronger in storms; clouds, sky, land and actors are shaded darker and fog
+pulled in. Crossing into another island's zone eases to its time and weather over a few seconds. The log prints
+`[rplus] weather: island N (biome) <weather> <strength>` on each change.
+
 ## Not done yet
 
 - **Textures** on the land (vertex colours only so far), a corner minimap for generated squares, the Ballad of

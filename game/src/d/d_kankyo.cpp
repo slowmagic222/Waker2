@@ -549,6 +549,10 @@ void dScnKy_env_light_c::setDaytime() {
 
     dComIfGs_setTime(mCurTime);
     dComIfGs_setDate(mDayOfWeek);
+#if TARGET_PC
+    // Randomizer+: the sky shows the island's own time (the save keeps the one clock).
+    pc_rplus_sky_time(&mCurTime);
+#endif
 }
 
 /* 80190A18-80190A20       .text GetTimePass__20dStage_roomControl_cFv */
@@ -2191,6 +2195,11 @@ void dKy_event_proc() {
     dScnKy_env_light_c& env_light = dKy_getEnvlight();
 
     if (strcmp(dComIfGp_getStartStageName(), "sea") == 0) {
+#if TARGET_PC
+        // Randomizer+: the island's own weather in place of the dice.
+        if (pc_rplus_weather_frame()) {
+        } else
+#endif
         if (dKy_checkEventNightStop()) {
             if (env_light.mColpatWeather != 1) {
                 env_light.mColpatWeather = 1;
