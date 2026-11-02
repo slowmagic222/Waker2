@@ -7,6 +7,10 @@
 #include "SSystem/SComponent/c_m3d.h"
 #include "math.h"
 #include "dolphin/types.h"
+#if TARGET_PC
+#include <cmath>
+#include <cstdio>
+#endif
 
 /* 80246044-8024609C       .text cM_rad2s__Ff */
 s16 cM_rad2s(float f0) {
@@ -111,11 +115,36 @@ static u16 atntable[] = {
 
 /* 8024609C-802460D0       .text U_GetAtanTable__Fff */
 u16 U_GetAtanTable(float f0, float f1) {
+#if TARGET_PC
+    // A non-finite ratio converts to INT_MIN on x86, indexing far before the
+    // table. Keep malformed actor vectors from turning into a memory access.
+    const float index = f0 / f1 * 1024.0f;
+    if (!std::isfinite(index) || index < 0.0f || index > 1024.0f) {
+        static unsigned warnings = 0;
+        if (warnings++ < 8) {
+            std::fprintf(stderr, "[cos] invalid atan table input: %g / %g (index %g)\n",
+                         static_cast<double>(f0), static_cast<double>(f1), static_cast<double>(index));
+        }
+        return 0;
+    }
+    return atntable[static_cast<int>(index)];
+#else
     return atntable[(int)(f0 / f1 * 1024)];
+#endif
 }
 
 /* 802460D0-80246270       .text cM_atan2s__Fff */
 s16 cM_atan2s(float f0, float f1) {
+#if TARGET_PC
+    if (!std::isfinite(f0) || !std::isfinite(f1)) {
+        static unsigned warnings = 0;
+        if (warnings++ < 8) {
+            std::fprintf(stderr, "[cos] invalid angle vector: y=%g x=%g caller=%p\n",
+                         static_cast<double>(f0), static_cast<double>(f1), __builtin_return_address(0));
+        }
+        return 0;
+    }
+#endif
     u32 retVar;
     if (cM3d_IsZero(f0)) {
         if (f1 >= 0.0f) {

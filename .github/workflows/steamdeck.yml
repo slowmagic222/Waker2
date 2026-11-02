@@ -47,6 +47,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Check angle lookup regression
+        run: python3 native/check/angle_lookup_regression.py
       - uses: docker/setup-buildx-action@v3
       - name: Build image
         uses: docker/build-push-action@v6
@@ -82,6 +84,7 @@ jobs:
             # libstdc++ and libgcc linked in: SteamOS can ship an older libstdc++ than Debian 13 builds
             # against (GLIBCXX_3.4.33), and then the game would not start at all.
             cmake -S native -B build/deck -G Ninja -DCOS_RUNTIME_ASSETS=ON \
+                -DCMAKE_C_FLAGS="-fno-omit-frame-pointer" -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer" \
                 -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" \
                 -DCOS_VERSION=2 -DCOS_ASSETS_DIR=/work/build/ci-stubs/GZLE01
             ninja -C build/deck switchwaker
@@ -100,6 +103,7 @@ jobs:
         run: |
           sha=$(git rev-parse --short HEAD)
           mkdir -p out/waker2
+          objcopy --only-keep-debug build/deck/switchwaker out/switchwaker.debug
           cp build/deck/switchwaker scripts/steamdeck/waker2.sh native/data/initial_pipeline_cache.db out/waker2/
           cp docs/STEAM_DECK.md out/waker2/README.md
           cp -R out/tracker-logic out/waker2/tracker-logic
@@ -121,4 +125,9 @@ jobs:
         with:
           name: ${{ env.NAME }}
           path: out/${{ env.NAME }}.tar.gz
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}-debug-symbols
+          path: out/switchwaker.debug
           retention-days: 30

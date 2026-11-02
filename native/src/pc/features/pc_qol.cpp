@@ -24,7 +24,7 @@ Option sOptions[PC_QOLS] = {
     {"COS_QOL_FREE_BOAT", -1},     {"COS_QOL_SKIP_INTRO", -1},    {"COS_QOL_FIX_BUGS", -1},
     {"COS_QOL_HUD_BUTTON", -1},    {"COS_QOL_ITEMS_STAY", -1},    {"COS_QOL_ITEM_SETS", -1},
     {"COS_QOL_SEA_MAP", -1},       {"COS_QOL_AUTOSAVE", -1},      {"COS_QOL_JUMP_BUTTON", -1},
-    {"COS_QOL_CLIMB", -1},
+    {"COS_QOL_CLIMB", -1},         {"COS_QOL_SPRINT", -1},
 };
 
 // PC_QOL_BUTTON_*'s COS_PAD_* values, by number (0: off)
