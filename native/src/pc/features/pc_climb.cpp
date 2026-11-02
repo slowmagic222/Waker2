@@ -110,11 +110,25 @@ void pc_qol_climb_frame(int climbing, int ground, int still, const float shoulde
 
 namespace pc {
 
+void drawWheel(const ImVec2& c, float r);
+
 // In this frame's ImGui frame (pc_frame.cpp, next to the sea map): the wheel, a ring that empties
 // clockwise, green, then red once it ran out and is refilling.
 void climbWheelFrame() {
+    // Where the wheel goes is worked out once a game frame, the first time this runs after it. The 60fps mode
+    // (pc_frame_split) runs this twice a game frame, the second time with the in-between paint's camera and no view
+    // of its own, and the wheel flickered (Dillon, 2026-11-02); the second time it stands where the first put it.
+    static ImVec2 sLastC;
+    static float sLastR = 0.0f;
+    static unsigned sLastFrame = ~0u;
     if (ImGui::GetCurrentContext() == nullptr || !pc_qol(PC_QOL_CLIMB) || sAlpha <= 0.0f || menuOpen() ||
-        pc_qol_hud_hidden() || fpcM_Search(isPlayScene, nullptr) == nullptr || dComIfGd_getView() == nullptr) {
+        pc_qol_hud_hidden() || fpcM_Search(isPlayScene, nullptr) == nullptr) {
+        return;
+    }
+    if (dComIfGd_getView() == nullptr || sFrame == sLastFrame) {
+        if (sLastR > 0.0f) {
+            drawWheel(sLastC, sLastR);
+        }
         return;
     }
     // Link's shoulder through the camera's projection; the game's picture is fitted into the window at its
@@ -142,6 +156,14 @@ void climbWheelFrame() {
     // to the right of the shoulder
     const ImVec2 c((display.x - pw) / 2.0f + pw * (0.5f + 0.5f * nx) + r * 2.5f,
                    (display.y - ph) / 2.0f + ph * (0.5f - 0.5f * ny));
+    sLastC = c;
+    sLastR = r;
+    sLastFrame = sFrame;
+    drawWheel(c, r);
+}
+
+// The ring at c, radius r, in the foreground of this ImGui frame.
+void drawWheel(const ImVec2& c, float r) {
     const int a = (int)(sAlpha * 255.0f);
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     const float thick = std::fmax(3.0f, r * 0.45f);
