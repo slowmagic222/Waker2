@@ -597,7 +597,7 @@ def describe(world, logic, assignment, placement):
 BIOME_LETTER = {"grass": "g", "forest": "f", "rock": "r", "volcanic": "v", "snow": "s", "sand": "d"}
 
 
-def write_rpw(path, world):
+def write_rpw(path, world, quick_test=False):
   """The world for the game (native/src/pc/features/pc_rplus.cpp): plain text, one record a line.
 
   rplus 1
@@ -608,6 +608,7 @@ def write_rpw(path, world):
   b <row> <letters>                     cell biomes of one row: . water, g grass, f forest, r rock,
                                         v volcanic, s snow, d sand
   start <cx> <cy>                       the start cell (Link's house)
+  test 1                                a quick-test world: chests, a camp and a tower by the start
   anchor <id> <kind> <stage|-> <cx> <cy> <level>
   """
   out = ["rplus 1", "seed %d %d" % (world.request_seed, world.seed), "grid %d %d" % (SQUARES, CELLS)]
@@ -621,6 +622,8 @@ def write_rpw(path, world):
                                         else "." for cx in range(N))))
   sx, sy = world.place["link_house"]["cell"]
   out.append("start %d %d" % (sx, sy))
+  if quick_test:
+    out.append("test 1")
   by_id = {a.id: a for a in A.ANCHORS}
   for aid, p in world.place.items():
     a = by_id[aid]
@@ -732,6 +735,8 @@ def main():
   ap.add_argument("--seed", type=int, default=1)
   ap.add_argument("--out", default="build/rplus")
   ap.add_argument("--test", type=int, default=0, help="generate this many seeds and report")
+  ap.add_argument("--quick-test", action="store_true",
+                  help="a quick-test world: chests with the weapons and house decor, a camp and a tower by the start")
   args = ap.parse_args()
   ww = wwlogic.find_wwrando()
 
@@ -761,7 +766,7 @@ def main():
     draw_map(os.path.join(args.out, "map.png"), world)
   except ImportError:
     print("no Pillow: map.png not drawn")
-  write_rpw(os.path.join(args.out, "world.rpw"), world)
+  write_rpw(os.path.join(args.out, "world.rpw"), world, args.quick_test)
   print("seed %d: %d lands, %d anchors placed, beatable; wrote %s" %
         (args.seed, len(world.lands), len(world.place), args.out))
   return 0

@@ -187,6 +187,20 @@ COS_BOOT_STAGE=sea:44:8
 COS_BOOT_PRESET=sailing
 ```
 
+### Quick-test start
+
+For testing new things fast (Dillon, 2026-11-02): a world with a `test 1` line (`worldgen.py --quick-test`), or any
+world with `COS_RPLUS_TEST_START=1` (`=0` turns a test world's off), puts by Link's start:
+
+- 12 plain chests in a ring 700-2600 units out, facing the start. Each holds rupees or hearts (filler), so opening
+  it brings a pickup weapon (the 1st, 3rd, 5th ... 11th filler check give the six weapons, `pc_weapon_unlocks.cpp`)
+  or the next house decor piece (the others).
+- an enemy camp 3000-6500 out (Bokoblins and a Moblin), its chest when they are beaten;
+- a lookout tower 4500-9000 out, its chest once the enemies on its deck are beaten.
+
+Their opened flags are kept as camps' are (`rplus-camps-<seed>-<slot>.txt`, keys 150-163). The log has a
+`[rplus] test start at ...` line and one per chest. `pc_rplus_life.cpp`, `placeTestStart`.
+
 ### The Randomizer+ tab
 
 The options menu has a **Randomizer+** tab (`native/src/pc/features/pc_rplus_menu.cpp`):

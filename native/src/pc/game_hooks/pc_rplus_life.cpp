@@ -389,7 +389,12 @@ const Entry* findEntry(const std::vector<Entry>& v, const char* name) {
 // next time its room loads; an opened one an open, empty chest. The enemies come back, as the game's own do.
 constexpr int CAMPS_PER_ROOM = 2;
 constexpr int TOWER_KEY0 = 50 * CAMPS_PER_ROOM;
-constexpr int CAMP_KEYS = TOWER_KEY0 + 50;
+// The quick-test start's (pc_rplus_test_start): its chests, then its camp and its tower.
+constexpr int TEST_CHESTS = 12;
+constexpr int TEST_KEY0 = TOWER_KEY0 + 50;
+constexpr int TEST_CAMP_KEY = TEST_KEY0 + TEST_CHESTS;
+constexpr int TEST_TOWER_KEY = TEST_CAMP_KEY + 1;
+constexpr int CAMP_KEYS = TEST_TOWER_KEY + 1;  // under 256: the key is 8 bits of the chest's angle x
 constexpr int CAMP_ENEMIES = 8;
 constexpr int CAMPS_LIVE = 16;
 constexpr u32 CAMP_CHEST_PARAMS = 0xC4000000u | 0xFFu << 12 | 0x1Fu << 7;  // no switch, no chest bit, type 0, shape 0
@@ -486,17 +491,11 @@ void watchCamp(int key, int roomNo, float x, float z, float deckY, const fpc_Pro
 
 // Enemy camps: on open flat land away from the start and the towns, a campfire with Bokoblins round it (and
 // sometimes a Moblin), a few pots by it. At most CAMPS_PER_ROOM a room.
+int makeCamp(int key, int roomNo, float x, float z, u32 h);
+
 int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
-    Pools& P = pools();
-    const Entry* bk = findEntry(P.enemies, "Bk");
-    if (bk == nullptr) {
+    if (findEntry(pools().enemies, "Bk") == nullptr) {
         return 0;
-    }
-    const Entry* mo = findEntry(P.enemies, "mo2");
-    const Entry* fire = findEntry(P.campDecor, "Fire");
-    const Entry* pot = findEntry(P.campDecor, "kotubo");
-    if (pot == nullptr) {
-        pot = findEntry(P.campDecor, "ootubo1");
     }
     int camps = 0, made = 0;
     for (int tries = 0; tries < 300 && camps < CAMPS_PER_ROOM; tries++) {
@@ -522,7 +521,27 @@ int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::
         if (nearTown) {
             continue;
         }
-        const int key = roomNo * CAMPS_PER_ROOM + camps;
+        made += makeCamp(roomNo * CAMPS_PER_ROOM + camps, roomNo, x, z, h);
+        camps++;
+    }
+    return made;
+}
+
+// One camp (its fire, enemies and pots) at (x, z); h picks its look. Returns the actors made.
+int makeCamp(int key, int roomNo, float x, float z, u32 h) {
+    Pools& P = pools();
+    const Entry* bk = findEntry(P.enemies, "Bk");
+    if (bk == nullptr) {
+        return 0;
+    }
+    const Entry* mo = findEntry(P.enemies, "mo2");
+    const Entry* fire = findEntry(P.campDecor, "Fire");
+    const Entry* pot = findEntry(P.campDecor, "kotubo");
+    if (pot == nullptr) {
+        pot = findEntry(P.campDecor, "ootubo1");
+    }
+    int made = 0;
+    {
         fpc_ProcID ids[CAMP_ENEMIES];
         int nIds = 0;
         if (fire != nullptr) {
@@ -562,7 +581,6 @@ int placeCamps(int roomNo, float rx0, float rz0, float sx, float sz, const std::
         } else {
             spawnCampChest(key, roomNo, x, z, -1e9f);
         }
-        camps++;
         fprintf(stderr, "[rplus] room %d: enemy camp %d at %.0f %.0f (%d Bokoblins%s)\n", roomNo, key, x, z, n,
                 mo != nullptr && ((h >> 13) & 1) ? " and a Moblin" : "");
     }
@@ -587,6 +605,9 @@ struct TowerLive {
 TowerLive sTowers[TOWERS_LIVE];
 
 bool towerChestFromStart(int key) {
+    if (key == TEST_TOWER_KEY) {
+        return false;  // the quick-test tower: beat its deck for the chest
+    }
     return (mix((u32)key, pc_rplus_seed() ^ 0x70E7u) & 1) != 0;
 }
 
@@ -663,7 +684,7 @@ void fillTower(TowerLive& t, float deckY) {
         }
     }
     const u8 state = sCampState[t.key];
-    if (state != CAMP_NEW || towerChestFromStart(t.key)) {
+    if (state != CAMP_NEW || towerChestFromStart(t.key) || nIds == 0) {  // none made: nothing to beat
         spawnCampChest(t.key, t.room, t.x, t.z, deckY);
     } else {
         watchCamp(t.key, t.room, t.x, t.z, deckY, ids, nIds);
@@ -695,6 +716,8 @@ void towersFrame() {
         }
     }
 }
+
+void makeTower(int key, int roomNo, float x, float y, float z, u32 h);
 
 // One lookout tower in roomNo (most rooms): on a rise of gentle open land, away from the start and the towns.
 void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
@@ -728,6 +751,14 @@ void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std:
         if (nearTown) {
             continue;
         }
+        makeTower(key, roomNo, x, y, z, h);
+        return;
+    }
+}
+
+// A tower (with its ladder) standing at (x, y, z); its deck is filled once its collision is in (towersFrame).
+void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
+    {
         cXyz pos(x, y, z);
         csXyz angle(0, (s16)(h >> 3), 0);
         // Params bit 0: with its ladder.
@@ -976,11 +1007,123 @@ void placeWeather(int roomNo) {
     }
 }
 
+// ---- The quick-test start (pc_rplus_test_start; Dillon, 2026-11-02: "a test seed that includes chests and locations
+// in the start, for faster testing ... new weapons and some decor items")
+//
+// TEST_CHESTS plain chests in a ring round Link's start (700-2600 away, facing it), each holding a camp's filler, so
+// each brings a weapon or a house decor piece (pc_rplus_weapon_check: the 1st, 3rd ... 11th filler checks give the
+// six weapons, the others decor); an enemy camp 3000-6500 away, its chest when beaten; a lookout tower 4500-9000
+// away, its chest when its deck is beaten. Their opened flags are camp keys (TEST_KEY0 on), saved as a camp's are.
+
+struct TestSpot {
+    float x, z;
+};
+
+struct TestLayout {
+    bool made;
+    unsigned int seed;
+    float sx, sz;
+    int nChests;
+    TestSpot chests[TEST_CHESTS];
+    bool hasCamp, hasTower;
+    TestSpot camp, tower;
+};
+TestLayout sTest;
+
+bool testSpotOk(float x, float z, float clear, float gentleR, float rise, const TestSpot* used, int n, float sep) {
+    if (rplus::roomAt(x, z) == 0 || rplus::biomeAt(x, z) == '.' || rplus::groundY(x, z) < 120.0f ||
+        rplus::steep(x, z) || !rplus::openGround(x, z, clear) || !gentle(x, z, gentleR, rise)) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if ((x - used[i].x) * (x - used[i].x) + (z - used[i].z) * (z - used[i].z) < sep * sep) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The nearest good spot from rMin out to rMax round the start (rings 250 apart, 24 bearings from one the seed turns).
+bool testSpot(float rMin, float rMax, float clear, float gentleR, float rise, u32 salt, const TestSpot* used, int n,
+              float sep, TestSpot* out) {
+    const float a0 = (mix(salt, pc_rplus_seed() ^ 0x7E57u) & 0xFFFF) / 65536.0f * 6.2831853f;
+    for (float r = rMin; r <= rMax; r += 250.0f) {
+        for (int k = 0; k < 24; k++) {
+            const float a = a0 + k * 0.2617994f;
+            const float x = sTest.sx + sinf(a) * r, z = sTest.sz + cosf(a) * r;
+            if (testSpotOk(x, z, clear, gentleR, rise, used, n, sep)) {
+                *out = TestSpot{x, z};
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+const TestLayout& testLayout() {
+    if (sTest.made && sTest.seed == pc_rplus_seed()) {
+        return sTest;
+    }
+    sTest = TestLayout{};
+    sTest.made = true;
+    sTest.seed = pc_rplus_seed();
+    rplus::startXZ(&sTest.sx, &sTest.sz);
+    TestSpot used[TEST_CHESTS + 2];
+    int n = 0;
+    for (int i = 0; i < TEST_CHESTS; i++) {
+        TestSpot sp;
+        // Flat open ground first; then nearly anywhere standable.
+        if (testSpot(700.0f, 2600.0f, 150.0f, 200.0f, 80.0f, (u32)i, used, n, 350.0f, &sp) ||
+            testSpot(600.0f, 4500.0f, 0.0f, 120.0f, 120.0f, (u32)i, used, n, 250.0f, &sp)) {
+            used[n++] = sp;
+            sTest.chests[sTest.nChests++] = sp;
+        }
+    }
+    sTest.hasCamp = testSpot(3000.0f, 6500.0f, 700.0f, 700.0f, 200.0f, 0xCA3Bu, used, n, 1600.0f, &sTest.camp) ||
+                    testSpot(2500.0f, 9000.0f, 300.0f, 500.0f, 300.0f, 0xCA3Bu, used, n, 1400.0f, &sTest.camp);
+    if (sTest.hasCamp) {
+        used[n++] = sTest.camp;
+    }
+    sTest.hasTower = testSpot(4500.0f, 9000.0f, 600.0f, 450.0f, 150.0f, 0x70E9u, used, n, 2000.0f, &sTest.tower) ||
+                     testSpot(3000.0f, 12000.0f, 300.0f, 400.0f, 250.0f, 0x70E9u, used, n, 1500.0f, &sTest.tower);
+    fprintf(stderr, "[rplus] test start at %.0f %.0f: %d chests, camp %s, tower %s\n", sTest.sx, sTest.sz,
+            sTest.nChests, sTest.hasCamp ? "yes" : "no room", sTest.hasTower ? "yes" : "no room");
+    return sTest;
+}
+
+void placeTestStart(int roomNo) {
+    const TestLayout& T = testLayout();
+    for (int i = 0; i < T.nChests; i++) {
+        const TestSpot& c = T.chests[i];
+        if (rplus::roomAt(c.x, c.z) != roomNo) {
+            continue;
+        }
+        const int key = TEST_KEY0 + i;
+        cXyz pos(c.x, rplus::groundY(c.x, c.z), c.z);
+        // Facing the start: Link sees each one's front from where he stands.
+        csXyz angle((s16)(0x4000 | key << 6 | roomNo), cM_atan2s(T.sx - c.x, T.sz - c.z),
+                    (s16)(campItem(key) << 8 | 0xFF));
+        fopAcM_create((char*)"takara", CAMP_CHEST_PARAMS, &pos, roomNo, &angle, nullptr);
+        fprintf(stderr, "[rplus] room %d: test chest %d at %.0f %.0f (item 0x%02X%s)\n", roomNo, i + 1, c.x, c.z,
+                campItem(key), sCampState[key] == CAMP_OPENED ? ", opened" : "");
+    }
+    if (T.hasCamp && rplus::roomAt(T.camp.x, T.camp.z) == roomNo) {
+        makeCamp(TEST_CAMP_KEY, roomNo, T.camp.x, T.camp.z, mix(TEST_CAMP_KEY, pc_rplus_seed()) | 1u << 13);
+    }
+    if (T.hasTower && rplus::roomAt(T.tower.x, T.tower.z) == roomNo) {
+        makeTower(TEST_TOWER_KEY, roomNo, T.tower.x, rplus::groundY(T.tower.x, T.tower.z), T.tower.z,
+                  mix(TEST_TOWER_KEY, pc_rplus_seed()));
+    }
+}
+
 } // namespace
 
 void pc_rplus_life_room(int roomNo) {
     if (!pc_rplus_active()) {
         return;
+    }
+    if (pc_rplus_test_start()) {
+        placeTestStart(roomNo);
     }
     if (enabled("COS_RPLUS_NPCS")) {
         placeNpcs(roomNo);

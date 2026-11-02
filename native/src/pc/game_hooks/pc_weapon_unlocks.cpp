@@ -94,6 +94,9 @@ void order(int out[WEAPONS]) {
 
 // the filler check (1st, 2nd...) that gives the k-th weapon
 int checkFor(int k) {
+    if (pc_rplus_test_start()) {
+        return 1 + 2 * k;  // the quick-test start's chests: a weapon, a decor piece, a weapon...
+    }
     return kAt[k] + (int)(mix((u32)k, pc_rplus_seed() ^ 0xB0C0u) % 3u);
 }
 

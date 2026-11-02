@@ -19,6 +19,7 @@ struct World {
     std::vector<unsigned short> height;
     std::vector<char> biome;
     bool prefab[64] = {};
+    bool test = false;  // "test 1": a quick-test world (pc_rplus_test_start)
     int startX = 0;
     int startY = 0;
     struct Anchor {
@@ -87,6 +88,8 @@ World& world() {
                 for (int x = 0; x < w.n && end[x] != '\0' && end[x] != '\n'; x++) {
                     w.biome[(size_t)row * w.n + x] = end[x];
                 }
+            } else if (strncmp(p, "test ", 5) == 0) {
+                w.test = atoi(p + 5) != 0;
             } else if (strncmp(p, "start ", 6) == 0) {
                 sscanf(p + 6, "%d %d", &w.startX, &w.startY);
             } else if (strncmp(p, "anchor ", 7) == 0) {
@@ -159,6 +162,18 @@ void pc_rplus_start_cell(int* cx, int* cy) {
 
 unsigned int pc_rplus_seed(void) {
     return world().seed;
+}
+
+int pc_rplus_test_start(void) {
+    const World& w = world();
+    if (!w.loaded) {
+        return 0;
+    }
+    const char* v = getenv("COS_RPLUS_TEST_START");
+    if (v != nullptr && v[0] != '\0') {
+        return strcmp(v, "0") != 0 ? 1 : 0;
+    }
+    return w.test ? 1 : 0;
 }
 
 } // extern "C"
