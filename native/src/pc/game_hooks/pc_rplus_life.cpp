@@ -758,30 +758,27 @@ void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std:
 
 // A tower (with its ladder) standing at (x, y, z); its deck is filled once its collision is in (towersFrame).
 void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
-    {
-        cXyz pos(x, y, z);
-        csXyz angle(0, (s16)(h >> 3), 0);
-        // Params bit 0: with its ladder.
-        const fpc_ProcID id = fopAcM_create((char*)"Aygr", 0x00000001u, &pos, roomNo, &angle, nullptr);
-        if (id == fpcM_ERROR_PROCESS_ID_e) {
-            return;
-        }
-        TowerLive* slot = nullptr;
-        for (TowerLive& t : sTowers) {
-            if (t.used && t.key == key) {
-                slot = &t;
-                break;
-            }
-            if (!t.used && slot == nullptr) {
-                slot = &t;
-            }
-        }
-        if (slot != nullptr) {
-            *slot = TowerLive{true, key, roomNo, x, z, id, 0};
-        }
-        fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, y, z);
+    cXyz pos(x, y, z);
+    csXyz angle(0, (s16)(h >> 3), 0);
+    // Params bit 0: with its ladder.
+    const fpc_ProcID id = fopAcM_create((char*)"Aygr", 0x00000001u, &pos, roomNo, &angle, nullptr);
+    if (id == fpcM_ERROR_PROCESS_ID_e) {
         return;
     }
+    TowerLive* slot = nullptr;
+    for (TowerLive& t : sTowers) {
+        if (t.used && t.key == key) {
+            slot = &t;
+            break;
+        }
+        if (!t.used && slot == nullptr) {
+            slot = &t;
+        }
+    }
+    if (slot != nullptr) {
+        *slot = TowerLive{true, key, roomNo, x, z, id, 0};
+    }
+    fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, y, z);
 }
 
 void placeEnemies(int roomNo) {
