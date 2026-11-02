@@ -420,4 +420,14 @@ void pc_rplus_init_story_events(void);
    dangling pointers when streamed rooms unload. */
 void pc_rplus_clear_camera_lock_on_room(int roomNo);
 
+/* Randomizer+ skies (pc_rplus_weather.cpp): each island's own clock and weather. */
+/* dScnKy_env_light_c::setDaytime, after the save's clock is kept: *curTime (mCurTime, what the sun, moon, stars
+   and palettes are drawn from) becomes the time on the island Link is at. Unchanged outside the generated sea. */
+void pc_rplus_sky_time(f32* curTime);
+/* dKy_event_proc on the sea: sets the island's rain, snow, thunder, cloud palette, shading and fog and returns 1
+   (the game's dice weather is skipped), or 0 to leave the weather to the game. */
+int pc_rplus_weather_frame(void);
+/* dKyr_drawRain / dKyr_drawSnow: how much stronger rain streaks and snowflakes are drawn (1 = as the game). */
+float pc_rplus_precip_boost(void);
+
 #endif /* PC_GAME_HOOKS_H */

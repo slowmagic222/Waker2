@@ -75,7 +75,12 @@ public:
 
     /* 0x0010 */ u8* mpTxSnow01;
     /* 0x0014 */ u8* mpTxRingAHalf;
+#if TARGET_PC
+    // Randomizer+ storms (pc_rplus_weather.cpp) ask for up to 500 drops; the game's own weather stays at 250.
+    /* 0x0018 */ RAIN_EFF mEff[500];
+#else
     /* 0x0018 */ RAIN_EFF mEff[250];
+#endif
     /* 0x36C8 */ f32 field_0x36c8;
     /* 0x36CC */ f32 field_0x36cc;
     /* 0x36D0 */ s16 mRainCount;
@@ -122,7 +127,8 @@ public:
     // GameCube that element lay over this object's tail and the next block's padding; on PC it
     // reached the next heap block's header (its mPrev's upper half took mTimer, e.g. 0x1b), and
     // freeing that block at the next room change faulted in JKRExpHeap::recycleFreeBlock.
-    /* 0x0014 */ SNOW_EFF mEff[251];
+    // Randomizer+ blizzards (pc_rplus_weather.cpp) ask for up to 500 flakes.
+    /* 0x0014 */ SNOW_EFF mEff[501];
 #else
     /* 0x0014 */ SNOW_EFF mEff[250];
 #endif
