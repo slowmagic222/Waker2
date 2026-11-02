@@ -2158,6 +2158,22 @@ bool solidLand(const Layout& L, float x, float z) {
     return natAt(L, x, z) > LAND_BASE + 40.0f;
 }
 
+// Land at (x, z) and all round it out to r, so a building there does not hang over the shore.
+bool inlandAt(const Layout& L, float x, float z, float r) {
+    if (!solidLand(L, x, z)) {
+        return false;
+    }
+    for (float rr : {r * 0.5f, r}) {
+        for (int k = 0; k < 8; k++) {
+            const float a = k * 6.2831853f / 8.0f;
+            if (natAt(L, x + sinf(a) * rr, z + cosf(a) * rr) < LAND_BASE + 60.0f) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 float slopeAt(const Layout& L, float x, float z) {
     const float d = 200.0f;
     return (fabsf(natAt(L, x + d, z) - natAt(L, x - d, z)) + fabsf(natAt(L, x, z + d) - natAt(L, x, z - d))) /
@@ -2171,21 +2187,24 @@ int roomAtXZ(const Layout& L, float x, float z) {
 }
 
 // A spot for a lone building near (x, z): on land, not steep, in the same room; failing that, gentler slopes
-// further off, then any land in the room. Never the sea floor (a door there is under water).
+// further off, then any land in the room. Never the sea floor (a door there is under water). The first passes
+// want land all round the spot (inlandAt), so the house and its levelled pad stay off the shore.
 void landSpot(const Layout& L, float* x, float* z) {
-    if (solidLand(L, *x, *z) && slopeAt(L, *x, *z) < 0.3f) {
+    constexpr float INLAND = 1600.0f;
+    if (inlandAt(L, *x, *z, INLAND) && slopeAt(L, *x, *z) < 0.3f) {
         return;
     }
     const int room = roomAtXZ(L, *x, *z);
     struct Pass {
-        float reach, slope;
+        float reach, slope, inland;
     };
-    for (const Pass& ps : {Pass{6000.0f, 0.3f}, Pass{24000.0f, 0.3f}, Pass{24000.0f, 0.6f}, Pass{50000.0f, 9.0f}}) {
+    for (const Pass& ps : {Pass{6000.0f, 0.3f, INLAND}, Pass{24000.0f, 0.3f, INLAND}, Pass{24000.0f, 0.6f, INLAND},
+                           Pass{24000.0f, 0.6f, 800.0f}, Pass{50000.0f, 9.0f, 0.0f}}) {
         for (float r = 600.0f; r <= ps.reach; r += 600.0f) {
             for (int k = 0; k < 16; k++) {
                 const float a = k * 6.2831853f / 16.0f;
                 const float tx = *x + sinf(a) * r, tz = *z + cosf(a) * r;
-                if (roomAtXZ(L, tx, tz) == room && solidLand(L, tx, tz) && slopeAt(L, tx, tz) < ps.slope) {
+                if (roomAtXZ(L, tx, tz) == room && inlandAt(L, tx, tz, ps.inland) && slopeAt(L, tx, tz) < ps.slope) {
                     *x = tx;
                     *z = tz;
                     return;
@@ -2393,7 +2412,7 @@ const Layout& layout() {
                         const float a = a0 + k * 6.2831853f / slots;
                         const float hx = mx + sinf(a) * R, hz = mz + cosf(a) * R;
                         // The house behind the door, and the yard in front, on land.
-                        ok = solidLand(L, hx, hz) &&
+                        ok = inlandAt(L, hx, hz, 700.0f) &&
                              solidLand(L, mx + sinf(a) * (R + 500.0f), mz + cosf(a) * (R + 500.0f)) &&
                              lineOnLand(L, mx, mz, hx, hz);
                     }
@@ -3063,7 +3082,7 @@ struct PropKind {
 
 enum PropId {
     P_GRASS21, P_GRASS7, P_GRASS1, P_FLWR7, P_PFLWR7, P_FLOWER, P_SWOOD, P_SWOOD3, P_SWOOD5, P_LWOOD, P_PALM,
-    P_PEBBLE, P_ROCK, P_ROCK2, P_BOMBFLOWER, P_COUNT
+    P_PEBBLE, P_ROCK, P_ROCK2, P_BOMBFLOWER, P_STONE, P_COUNT
 };
 const PropKind kProps[P_COUNT] = {
     {"kusax21", 0x00000FC2, 21, 0, 260.0f}, {"kusax7", 0x00000FC1, 7, 0, 170.0f},
@@ -3073,7 +3092,7 @@ const PropKind kProps[P_COUNT] = {
     {"swood5", 0x00000017, 5, 2, 620.0f},   {"lwood", 0xFFFFFFFF, 0, 3, 1100.0f},
     {"Oyashi", 0xFFFFFFFF, 0, 3, 600.0f},    {"koisi1", 0x707FFFE0, 0, 3, 160.0f},
     {"Ebrock", 0xF27FFF3F, 0, 3, 500.0f},   {"Ebrock2", 0xF47FFF3A, 0, 3, 500.0f},
-    {"BFlower", 0x0000FF0F, 0, 3, 320.0f},
+    {"BFlower", 0x0000FF0F, 0, 3, 320.0f},  {"koisi1", 0x017FFF3F, 0, 3, 220.0f},
 };
 // What one room may use of each packet (the game's packets now hold 16000 tufts, 2000 flowers, 2048 trees,
 // shared by the rooms loaded at once; up to four rooms) and how many plain actors it makes.
@@ -3100,16 +3119,16 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
     constexpr float PEAK_THRESHOLD = LAND_BASE + 600.0f;  // no grass/palms above this altitude (snowy peaks)
     const bool isPeak = y >= PEAK_THRESHOLD && !beach;
 
-    // Snowy peaks: only rocks and pebbles above threshold
+    // Peaks: mostly stones and pebbles, a big boulder only now and then, sparse grass below the snow
     if (isPeak) {
-        if (edge == 1 || r < 200) {
-            return b == 's' ? P_ROCK2 : P_ROCK;
-        }
-        return r < 350 ? P_PEBBLE : P_COUNT;
+        return r < 50 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 170 ? P_STONE : r < 340 ? P_PEBBLE
+               : r < 400 && b != 's' ? P_GRASS1 : P_COUNT;
     }
 
     if (edge == 1 && !beach) {
-        return r < 200 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 420 ? P_PEBBLE : r < 560 && green ? P_GRASS7 : P_COUNT;
+        return r < 50 ? (b == 's' ? P_ROCK2 : P_ROCK) : r < 160 ? P_STONE : r < 340 ? P_PEBBLE
+               : r < 480 && green ? P_GRASS7 : r < 540 && green ? P_FLOWER : r < 570 && b == 'v' ? P_BOMBFLOWER
+               : P_COUNT;
     }
     if (edge == 2 && green) {
         return r < 240 ? P_SWOOD3 : r < 330 ? P_SWOOD : r < 560 ? P_GRASS7 : P_COUNT;
@@ -3153,11 +3172,13 @@ PropId propAt(char b, bool beach, float meadow, float grove, u32 h, int edge, fl
     case 'd':
         return r < 30 ? P_PALM : r < 120 ? P_GRASS1 : r < 160 ? P_GRASS7 : r < 175 ? P_PEBBLE : P_COUNT;
     case 'r':
-        return r < 40 ? P_ROCK : r < 90 ? P_PEBBLE : r < 200 ? P_GRASS1 : r < 230 ? P_GRASS7 : P_COUNT;
+        return r < 12 ? P_ROCK : r < 50 ? P_STONE : r < 100 ? P_PEBBLE : r < 210 ? P_GRASS1 : r < 250 ? P_GRASS7
+               : r < 270 ? P_FLOWER : r < 285 ? P_SWOOD : P_COUNT;
     case 'v':
-        return r < 30 ? P_ROCK : r < 55 ? P_BOMBFLOWER : r < 100 ? P_PEBBLE : P_COUNT;
+        return r < 10 ? P_ROCK : r < 35 ? P_STONE : r < 65 ? P_BOMBFLOWER : r < 110 ? P_PEBBLE : r < 130 ? P_GRASS1
+               : P_COUNT;
     case 's':
-        return r < 30 ? P_ROCK2 : r < 70 ? P_PEBBLE : P_COUNT;
+        return r < 10 ? P_ROCK2 : r < 35 ? P_STONE : r < 80 ? P_PEBBLE : r < 95 ? P_SWOOD : P_COUNT;
     default:
         return P_COUNT;
     }
