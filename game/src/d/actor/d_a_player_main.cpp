@@ -7238,9 +7238,29 @@ void daPy_lk_c::pcRplusPutAway() {
     mAnimeEquipItem = daPyItem_NONE_e;
 }
 
+// Randomizer+ weapons: Link may have his weapon in hand again (or switch it) when he stands or moves on the ground under
+// the player's control, targeting too (a fight: a weapon knocked out of his hand comes back between hits), with
+// nothing else going on (the jump button's checks, less its targeting one).
+bool daPy_lk_c::pcRplusCanHold() {
+    if (mCurProc < daPyProc_WAIT_e || mCurProc > daPyProc_ATN_ACTOR_MOVE_e) {
+        return false;
+    }
+    if (dComIfGp_event_runCheck() || mDemo.getDemoType() != 0 || mDemo.getDemoMode() != 0) {
+        return false;
+    }
+    if (checkModeFlg(ModeFlg_MIDAIR | ModeFlg_DAMAGE | ModeFlg_WHIDE | ModeFlg_HANG | ModeFlg_HOOKSHOT |
+                     ModeFlg_ROPE | ModeFlg_IN_SHIP | ModeFlg_CLIMB | ModeFlg_SWIM | ModeFlg_GRAB |
+                     ModeFlg_PUSHPULL | ModeFlg_LADDER | ModeFlg_CROUCH | ModeFlg_CRAWL | ModeFlg_CAUGHT |
+                     ModeFlg_SUBJECT | ModeFlg_PARRY))
+    {
+        return false;
+    }
+    return mAcch.ChkGroundHit() && mActorKeepGrab.getActor() == NULL && !checkGrabWear() && !getHeavyStateAndBoots();
+}
+
 bool daPy_lk_c::pcRplusWeaponFrame() {
     fopAc_ac_c* held = mEquipItem == daPyItem_BOKO_e ? mActorKeepEquip.getActor() : NULL;
-    const bool free = pcCanJumpFromButton();
+    const bool free = pcRplusCanHold();
     const int act = pc_rplus_weapon_frame(held != NULL ? fopAcM_GetID(held) : fpcM_ERROR_PROCESS_ID_e,
                                           held != NULL ? (int)fopAcM_GetParam(held) : -1, free, FALSE,
                                           mEquipItem == daPyItem_NONE_e);

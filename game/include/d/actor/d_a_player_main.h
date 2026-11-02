@@ -1185,6 +1185,7 @@ public:
     // Randomizer+ (pc/game_hooks.h): the weapon button (d_a_player_main.cpp)
     bool pcRplusWeaponFrame();
     void pcRplusPutAway();
+    bool pcRplusCanHold();
     BOOL procLand_init(f32 i_anmSpeed, BOOL);
     BOOL procLand();
     BOOL procLandDamage_init(int);

@@ -367,12 +367,10 @@ int pc_rplus_weapon_frame(unsigned int heldId, int heldType, int free, int putAw
         fprintf(stderr, "[rplus] weapons: picked up %s, on B\n", kWeapons[heldType].key);
     }
     (void)putAway;  // A's put away comes through pc_rplus_weapon_put_away, as the player's code puts it away
-    // his weapon let go of (put away, a door, an item, a ladder...): back in the inventory, not left lying about
+    // his weapon out of his hand (a door, an item, a ladder, knocked out by a hit...): back in the inventory, not left
+    // lying about nor picked up by an enemy; it is in his hand again once he can hold it (below)
     if (!holding && sOurs != fpcM_ERROR_PROCESS_ID_e && sOurs != sPending) {
-        fopAc_ac_c* a = fopAcM_SearchByID(sOurs);
-        if (a == nullptr || !fopAcM_checkCarryNow(a)) {
-            removeOurs();
-        }
+        removeOurs();
     }
     // made but not taken (he got busy): made again later
     if (sPending != fpcM_ERROR_PROCESS_ID_e && ++sPendingFrames > 30) {
