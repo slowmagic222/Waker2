@@ -133,7 +133,7 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   with the game's save. A beaten camp's chest stands there at once the next time its room loads; once opened it
   stays an open, empty chest. The enemies come back, as the game's own do.
 - **Lookout towers** (`placeTower`, `COS_RPLUS_TOWERS=0` to leave out): the sea's lookout platform (`Aygr`, with
-  its ladder) standing on a rise of open land, lifted so the ladder's foot (the lowest point of `aygrh.dzb`, read from the first tower made) is at the ground, in three rooms of five. Its deck is found with a ground check once
+  its ladder) standing on a rise of open land, its origin (the sea's water line) at the ground under the ladder's foot, legs into the land. The ladder's collision (`aygrh.dzb`) is cut off at the origin in the loaded archive (held while at sea), so Link steps onto it from the ground, in three rooms of five. Its deck is found with a ground check once
   the tower's collision is in; one to three enemies the seed picks stand on it (Bokoblins, ChuChus, now and then a
   Moblin) and up to two Keese fly round it. Half the towers have a chest on the deck from the start; the rest get one
   when their deck's enemies are beaten. Same chest, item and save as the camps'.

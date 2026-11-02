@@ -678,7 +678,6 @@ struct TowerLive {
     fpc_ProcID id;
     int frames;
     u32 h;  // its seed (its facing)
-    float lift;  // how far it was made over the ground
 };
 TowerLive sTowers[TOWERS_LIVE];
 
@@ -787,31 +786,95 @@ void fillTower(TowerLive& t, float deckY) {
             state == CAMP_NEW && !towerChestFromStart(t.key) ? ", chest when beaten" : "");
 }
 
-// The tower stands on the sea with its ladder's foot under the water. On land it is lifted so the ladder's foot
-// (the lowest point of its collision, Aygr's aygrh.dzb) is at the ground: Link then steps onto the ladder from the
-// ground instead of being put at its foot under the land. Read from the first tower made (the archive is loaded
-// then); that tower is made again at the lifted height.
-float sTowerLift = -1e9f;  // unknown yet
+// The tower stands on the sea with its origin at the water and its legs and ladder running down under it. On land
+// its origin is the ground at the ladder's foot, and the legs go into the land. The ladder's collision (Aygr's
+// aygrh.dzb) is cut off at the origin, so Link steps onto it from the ground instead of being put at its foot under
+// the land: its points under y 0 are raised to 0 in the loaded archive. Towers are made only once that is done, so
+// the archive is held (dComIfG_resLoad) while Link is at sea; where the ladder's foot is (its lowest points, in the
+// tower's frame) is kept from the first time.
+request_of_phase_process_class sAygrPhs;
+bool sAygrHeld = false;
+bool sFootKnown = false;
+float sFootX = 0, sFootZ = 0;
 
 void makeTower(int key, int roomNo, float x, float y, float z, u32 h);
 
-float dzbMinY(int index, float* maxY) {
-    cBgD_t* d = (cBgD_t*)dComIfG_getObjectRes("Aygr", index);
+void prepareAygr() {
+    cBgD_t* d = (cBgD_t*)dComIfG_getObjectRes("Aygr", dRes_INDEX_AYGR_DZB_AYGRH_e);
     if (d == nullptr || d->m_v_num <= 0) {
-        return 1e9f;
+        fprintf(stderr, "[rplus] lookout tower: no ladder collision in Aygr\n");
+        return;
     }
     float lo = 1e9f, hi = -1e9f;
     for (s32 i = 0; i < d->m_v_num; i++) {
         lo = std::min(lo, d->m_v_tbl[i].y);
         hi = std::max(hi, d->m_v_tbl[i].y);
     }
-    *maxY = hi;
-    return lo;
+    if (!sFootKnown && lo < 0.0f) {
+        float sx = 0, sz = 0;
+        int n = 0;
+        for (s32 i = 0; i < d->m_v_num; i++) {
+            if (d->m_v_tbl[i].y < lo + 50.0f) {
+                sx += d->m_v_tbl[i].x, sz += d->m_v_tbl[i].z, n++;
+            }
+        }
+        sFootX = sx / n, sFootZ = sz / n;
+        sFootKnown = true;
+    }
+    int cut = 0;
+    for (s32 i = 0; i < d->m_v_num; i++) {
+        if (d->m_v_tbl[i].y < 0.0f) {
+            d->m_v_tbl[i].y = 0.0f;
+            cut++;
+        }
+    }
+    fprintf(stderr, "[rplus] lookout tower collision: ladder %.0f..%.0f, foot at %.0f %.0f; %d points raised to 0\n",
+            lo, hi, sFootX, sFootZ, cut);
+}
+
+void releaseAygr() {
+    // (one still loading is left to finish the next time Link is at sea)
+    if (sAygrHeld) {
+        dComIfG_resDelete(&sAygrPhs, "Aygr");
+        sAygrHeld = false;
+    }
 }
 
 void towersFrame() {
+    bool waiting = false;
+    for (const TowerLive& t : sTowers) {
+        waiting = waiting || (t.used && t.id == fpcM_ERROR_PROCESS_ID_e);
+    }
+    if (waiting && !sAygrHeld) {
+        if (dComIfG_resLoad(&sAygrPhs, "Aygr") != cPhs_COMPLEATE_e) {
+            waiting = false;  // still loading
+        } else {
+            sAygrHeld = true;
+            prepareAygr();
+        }
+    }
     for (TowerLive& t : sTowers) {
         if (!t.used) {
+            continue;
+        }
+        if (t.id == fpcM_ERROR_PROCESS_ID_e) {
+            if (!sAygrHeld) {
+                continue;
+            }
+            // Its origin: the ground at the ladder's foot.
+            const s16 ay = (s16)(t.h >> 3);
+            const float fx = t.x + sFootX * cM_scos(ay) + sFootZ * cM_ssin(ay);
+            const float fz = t.z - sFootX * cM_ssin(ay) + sFootZ * cM_scos(ay);
+            cXyz pos(t.x, rplus::groundY(fx, fz), t.z);
+            csXyz angle(0, ay, 0);
+            // Params bit 0: with its ladder.
+            t.id = fopAcM_create((char*)"Aygr", 0x00000001u, &pos, t.room, &angle, nullptr);
+            if (t.id == fpcM_ERROR_PROCESS_ID_e) {
+                t.used = false;
+                continue;
+            }
+            fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f (ground %.0f under its middle)\n",
+                    t.room, t.key, t.x, pos.y, t.z, rplus::groundY(t.x, t.z));
             continue;
         }
         fopAc_ac_c* a = nullptr;
@@ -821,25 +884,6 @@ void towersFrame() {
         }
         if (a == nullptr) {
             continue;  // still being made
-        }
-        if (sTowerLift < -1e8f) {
-            float ladderTop = 0, bodyTop = 0;
-            const float ladderFoot = dzbMinY(dRes_INDEX_AYGR_DZB_AYGRH_e, &ladderTop);
-            const float bodyFoot = dzbMinY(dRes_INDEX_AYGR_DZB_AYGR_e, &bodyTop);
-            sTowerLift = ladderFoot < 1e8f ? -ladderFoot : 0.0f;
-            fprintf(stderr,
-                    "[rplus] lookout tower collision: ladder %.0f..%.0f, body %.0f..%.0f; lifted %.0f on land\n",
-                    ladderFoot, ladderTop, bodyFoot, bodyTop, sTowerLift);
-        }
-        if (fabsf(t.lift - sTowerLift) > 1.0f) {
-            // Made before the lift was known: made again at the lifted height (the ladder's collision is placed
-            // once, when it is made).
-            const TowerLive again = t;
-            const float groundAt = a->home.pos.y - t.lift;
-            t.used = false;
-            fopAcM_delete(a);
-            makeTower(again.key, again.room, again.x, groundAt, again.z, again.h);
-            continue;
         }
         float deckY;
         if (deckAt(t.x, t.z, &deckY)) {
@@ -890,16 +934,10 @@ void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std:
     }
 }
 
-// A tower (with its ladder) standing at (x, y, z); its deck is filled once its collision is in (towersFrame).
+// A tower (with its ladder) at (x, z), made once the Aygr archive is ready (towersFrame); its deck is filled once
+// its collision is in. y is not used (the ground at its ladder's foot is).
 void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
-    const float lift = sTowerLift > -1e8f ? sTowerLift : 0.0f;
-    cXyz pos(x, y + lift, z);
-    csXyz angle(0, (s16)(h >> 3), 0);
-    // Params bit 0: with its ladder.
-    const fpc_ProcID id = fopAcM_create((char*)"Aygr", 0x00000001u, &pos, roomNo, &angle, nullptr);
-    if (id == fpcM_ERROR_PROCESS_ID_e) {
-        return;
-    }
+    (void)y;
     TowerLive* slot = nullptr;
     for (TowerLive& t : sTowers) {
         if (t.used && t.key == key) {
@@ -911,9 +949,8 @@ void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
         }
     }
     if (slot != nullptr) {
-        *slot = TowerLive{true, key, roomNo, x, z, id, 0, h, lift};
+        *slot = TowerLive{true, key, roomNo, x, z, fpcM_ERROR_PROCESS_ID_e, 0, h};
     }
-    fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, pos.y, z);
 }
 
 // Away from the start and the towns by at least `away` past each town's ring.
@@ -1558,6 +1595,7 @@ void pc_rplus_camps_frame(void) {
     if (strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         memset(sCamps, 0, sizeof(sCamps));  // left the sea: its rooms' enemies are gone
         memset(sTowers, 0, sizeof(sTowers));
+        releaseAygr();
         return;
     }
     for (CampLive& c : sCamps) {
