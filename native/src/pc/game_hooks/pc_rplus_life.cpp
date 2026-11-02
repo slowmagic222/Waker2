@@ -250,6 +250,36 @@ u32 mix(u32 a, u32 b) {
     return h ^ (h >> 13);
 }
 
+// Size variants (Dillon, 2026-11-02: "Bigger versions or small versions?"): now and then a Bokoblin, Moblin or
+// Darknut comes big (1.4x, twice the health: d_a_bk/d_a_mo2/d_a_tn under TARGET_PC) or small (0.7x), picked by its
+// spot and the seed so it is the same each visit. Only the model grows: the game's hit cylinders stay as they are, so
+// the sizes stay modest. COS_RPLUS_SIZES=0 leaves everyone their own size.
+float sizeVariant(const char* name, float x, float z) {
+    struct Kind {
+        const char* name;
+        u8 bigPct, smallPct;
+    };
+    static const Kind kKinds[] = {{"Bk", 12, 12}, {"mo2", 18, 4}, {"Tn", 15, 0}};
+    static const int on = enabled("COS_RPLUS_SIZES");
+    if (!on) {
+        return 1.0f;
+    }
+    for (const Kind& k : kKinds) {
+        if (strcmp(k.name, name) != 0) {
+            continue;
+        }
+        const u32 h = mix((u32)(s32)x * 31u ^ (u32)(s32)z, pc_rplus_seed() ^ 0x512Eu) % 100u;
+        if (h < k.bigPct) {
+            return 1.4f;
+        }
+        if (h < (u32)(k.bigPct + k.smallPct)) {
+            return 0.7f;
+        }
+        return 1.0f;
+    }
+    return 1.0f;
+}
+
 // At (x, y, z): y below -1e8 is the ground's there.
 fpc_ProcID spawnAt(const Entry& e, float x, float y, float z, s16 ay, int roomNo, u32 params) {
     if (strcmp(e.name, "Bk") == 0) {
@@ -265,7 +295,12 @@ fpc_ProcID spawnAt(const Entry& e, float x, float y, float z, s16 ay, int roomNo
     // By name, so the profile's argument (a ChuChu's colour, a person's look) comes with it.
     char name[9];
     memcpy(name, e.name, sizeof(name));
-    return fopAcM_create(name, params, &pos, roomNo, &angle, nullptr);
+    cXyz scale(1.0f, 1.0f, 1.0f);
+    const float size = sizeVariant(e.name, x, z);
+    if (size != 1.0f) {
+        scale.set(size, size, size);
+    }
+    return fopAcM_create(name, params, &pos, roomNo, &angle, &scale);
 }
 
 fpc_ProcID spawn(const Entry& e, float x, float z, s16 ay, int roomNo, u32 params) {
@@ -371,6 +406,42 @@ const Entry* findEntry(const std::vector<Entry>& v, const char* name) {
     return nullptr;
 }
 
+// ---- More enemy kinds (Dillon, 2026-11-02: "Random darknuts on islands or platforms. Those little spiky balls in a
+// gang somewhere. Even shadow Gannons in a specific spot.")
+//
+// These are made from params of our own rather than the disc's (the dungeons' Darknuts and Morths wait on switches,
+// paths and events of their rooms).
+
+// A Darknut (d_a_tn, "Tn"): params bits 0-3 how it acts (0 roams and comes for Link, 4 guards its spot and goes back
+// to it), 4-7 its armour's colour (0-5), 8-15 how near Link must come (x10), 16-23 path (none), 24-31 switch (none).
+// Angle x bits 5-7: its gear (1 helmet, 3 helmet and shield, 4 shield and cape, 5 all three); angle z its death
+// switch (none). Most wear the plain silver; now and then gold, black or red.
+Entry darknut(u32 h, bool guard) {
+    Entry e{};
+    strcpy(e.name, "Tn");
+    static const u8 kColours[] = {1, 1, 1, 1, 0, 2, 3, 4, 5};
+    static const u8 kGear[] = {1, 1, 3, 3, 3, 4, 5, 5};
+    const u32 colour = kColours[(h >> 4) % sizeof(kColours)];
+    const u32 range = guard ? 0x40 : 0x64;  // 640 on a deck, 1000 on open land
+    e.params = (guard ? 4u : 0u) | colour << 4 | range << 8 | 0xFFu << 16 | 0xFFu << 24;
+    e.ax = (s16)(kGear[(h >> 9) % sizeof(kGear)] << 5);
+    e.az = 0;
+    return e;
+}
+
+// A Morth (d_a_ks, "kuro_s"): params 3 is one that crawls about on its own (0 and 1 are the dungeons' spawners).
+Entry morth() {
+    Entry e{};
+    strcpy(e.name, "kuro_s");
+    e.params = 3;
+    return e;
+}
+
+// Phantom Ganon (d_a_fganon, "Fganon"): type 1, Ganon's Tower maze's: waits unseen till Link comes within 1280 (bits
+// 8-15, x10), then fights; one good sword hit and he drops his sword and is gone. No switches (bits 16-31). As in the
+// maze, he no longer comes once Ganon's Tower's Light Arrow chest is opened.
+constexpr u32 PG_PARAMS = 1u | 0x80u << 8 | 0xFFu << 16 | 0xFFu << 24;
+
 // ---- Camp chests: a camp whose Bokoblins and Moblin are all beaten gets a chest by its fire.
 //
 // Each camp has a number (its room's, two a room: room * CAMPS_PER_ROOM + its index), and the chest a small wooden
@@ -395,7 +466,8 @@ constexpr int TEST_CHESTS = 12;
 constexpr int TEST_KEY0 = TOWER_KEY0 + 50;
 constexpr int TEST_CAMP_KEY = TEST_KEY0 + TEST_CHESTS;
 constexpr int TEST_TOWER_KEY = TEST_CAMP_KEY + 1;
-constexpr int CAMP_KEYS = TEST_TOWER_KEY + 1;  // under 256: the key is 8 bits of the chest's angle x
+constexpr int PG_KEY = TEST_TOWER_KEY + 1;      // Phantom Ganon's haunt: his chest when he is beaten
+constexpr int CAMP_KEYS = PG_KEY + 1;  // under 256: the key is 8 bits of the chest's angle x
 constexpr int CAMP_ENEMIES = 8;
 constexpr int CAMPS_LIVE = 16;
 constexpr u32 CAMP_CHEST_PARAMS = 0xC4000000u | 0xFFu << 12 | 0x1Fu << 7;  // no switch, no chest bit, type 0, shape 0
@@ -418,6 +490,9 @@ CampLive sCamps[CAMPS_LIVE];
 
 // The camp's filler: rupees mostly, now and then a silver rupee or three hearts.
 u8 campItem(int key) {
+    if (key == PG_KEY) {
+        return dItemNo_SILVER_RUPEE_e;  // Phantom Ganon's
+    }
     static const struct { u8 item, weight; } kItems[] = {
         {dItemNo_BLUE_RUPEE_e, 10},  {dItemNo_RED_RUPEE_e, 30},    {dItemNo_PURPLE_RUPEE_e, 30},
         {dItemNo_ORANGE_RUPEE_e, 18}, {dItemNo_SILVER_RUPEE_e, 4}, {dItemNo_TRIPLE_HEART_e, 8},
@@ -642,7 +717,23 @@ void fillTower(TowerLive& t, float deckY) {
     const u32 h = mix((u32)t.key, pc_rplus_seed() ^ 0x70E8u);
     fpc_ProcID ids[CAMP_ENEMIES];
     int nIds = 0;
-    const int n = 1 + (int)(h % 3);
+    int n = 1 + (int)(h % 3);
+    // One tower in three is held by a Darknut, guarding the deck (it walks back to its spot rather than off the edge),
+    // with fewer others beside it. The quick-test tower always is.
+    if (enabled("COS_RPLUS_DARKNUTS") && (t.key == TEST_TOWER_KEY || (h >> 24) % 3 == 0)) {
+        const Entry dn = darknut(h, true);
+        const float a = ((h >> 8) & 0xFF) / 256.0f * 6.2831853f + 3.14159f;
+        const float ex = t.x + sinf(a) * 220.0f, ez = t.z + cosf(a) * 220.0f;
+        float ey;
+        if (!deckAt(ex, ez, &ey)) {
+            ey = deckY;
+        }
+        const fpc_ProcID id = spawnAt(dn, ex, ey + 5.0f, ez, cM_atan2s(ex - t.x, ez - t.z), t.room, dn.params);
+        if (id != fpcM_ERROR_PROCESS_ID_e) {
+            ids[nIds++] = id;
+        }
+        n = std::max(0, n - 1);
+    }
     for (int k = 0; k < n; k++) {
         const u32 g = mix(h, (u32)k + 7u);
         int total = 0;
@@ -825,6 +916,187 @@ void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
     fprintf(stderr, "[rplus] room %d: lookout tower %d at %.0f %.0f %.0f\n", roomNo, key, x, pos.y, z);
 }
 
+// Away from the start and the towns by at least `away` past each town's ring.
+bool wild(float x, float z, float sx, float sz, float fromStart, float away,
+          const std::vector<rplus::TownInfo>& towns) {
+    if ((x - sx) * (x - sx) + (z - sz) * (z - sz) < fromStart * fromStart) {
+        return false;
+    }
+    for (const rplus::TownInfo& t : towns) {
+        if ((x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.r + away) * (t.r + away)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Wandering Darknuts: a knight or two on open high ground (grass, rock, snow), about one room in two. Rare enough to
+// be a surprise; tough enough (helmets, shields, capes) to be worth going round.
+void placeDarknuts(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
+    const u32 h0 = mix((u32)roomNo * 6007u, pc_rplus_seed() ^ 0xDA4Bu);
+    if (h0 % 2 != 0) {
+        return;
+    }
+    for (int tries = 0; tries < 200; tries++) {
+        const u32 h = mix(h0, (u32)tries);
+        float x = rx0 + (0.06f + (h & 0xFFFF) / 65536.0f * 0.88f) * 100000.0f;
+        float z = rz0 + (0.06f + ((h >> 16) & 0xFFFF) / 65536.0f * 0.88f) * 100000.0f;
+        if (strchr("grs", rplus::biomeAt(x, z)) == nullptr) {
+            continue;
+        }
+        highSpot(&x, &z, 1500.0f);
+        if (rplus::roomAt(x, z) != roomNo || strchr("grs", rplus::biomeAt(x, z)) == nullptr ||
+            rplus::groundY(x, z) < 250.0f || rplus::steep(x, z) || !rplus::openGround(x, z, 1200.0f) ||
+            !gentle(x, z, 600.0f, 150.0f) || !wild(x, z, sx, sz, 15000.0f, 6000.0f, towns)) {
+            continue;
+        }
+        const int n = (h >> 3) % 3 == 0 ? 2 : 1;
+        for (int k = 0; k < n; k++) {
+            const u32 g = mix(h, (u32)k + 31u);
+            const float ex = x + k * 450.0f, ez = z + k * 200.0f;
+            const Entry dn = darknut(g, false);
+            spawn(dn, ex, ez, (s16)(g >> 8), roomNo, dn.params);
+        }
+        fprintf(stderr, "[rplus] room %d: %d Darknut%s at %.0f %.0f\n", roomNo, n, n > 1 ? "s" : "", x, z);
+        return;
+    }
+}
+
+// A gang of Morths: 8 to 14 of the little spiky balls crawling over one patch of grass, forest floor or dunes, about
+// one room in two. Each is its own (no spawner), spread over 700 units so they come at Link from all sides.
+int makeMorths(int roomNo, float x, float z, u32 h) {
+    const Entry m = morth();
+    const int n = 8 + (int)((h >> 5) % 7);
+    int made = 0;
+    for (int k = 0; k < n; k++) {
+        const u32 g = mix(h, (u32)k + 77u);
+        const float a = (g & 0xFFFF) / 65536.0f * 6.2831853f;
+        const float r = 80.0f + ((g >> 16) & 0xFF) / 256.0f * 350.0f;
+        const float ex = x + sinf(a) * r, ez = z + cosf(a) * r;
+        if (rplus::roomAt(ex, ez) != roomNo || rplus::steep(ex, ez) || rplus::groundY(ex, ez) < 100.0f) {
+            continue;
+        }
+        spawn(m, ex, ez, (s16)(g >> 8), roomNo, m.params);
+        made++;
+    }
+    fprintf(stderr, "[rplus] room %d: a gang of %d Morths at %.0f %.0f\n", roomNo, made, x, z);
+    return made;
+}
+
+int placeMorths(int roomNo, float rx0, float rz0, float sx, float sz, const std::vector<rplus::TownInfo>& towns) {
+    const u32 h0 = mix((u32)roomNo * 7333u, pc_rplus_seed() ^ 0x3047u);
+    if (h0 % 2 != 0) {
+        return 0;
+    }
+    for (int tries = 0; tries < 200; tries++) {
+        const u32 h = mix(h0, (u32)tries);
+        const float x = rx0 + (0.06f + (h & 0xFFFF) / 65536.0f * 0.88f) * 100000.0f;
+        const float z = rz0 + (0.06f + ((h >> 16) & 0xFFFF) / 65536.0f * 0.88f) * 100000.0f;
+        if (strchr("gfd", rplus::biomeAt(x, z)) == nullptr || rplus::groundY(x, z) < 150.0f || rplus::steep(x, z) ||
+            !rplus::openGround(x, z, 900.0f) || !gentle(x, z, 500.0f, 120.0f) ||
+            !wild(x, z, sx, sz, 12000.0f, 4000.0f, towns)) {
+            continue;
+        }
+        return makeMorths(roomNo, x, z, h);
+    }
+    return 0;
+}
+
+// Phantom Ganon's haunt: one spot in the whole world, the same for a seed. A clearing deep in a forest (misty, see
+// placeWeather) far from the start and the towns; failing that, any quiet open land; with the quick-test start, past
+// its tower so it can be tried at once. Four fires mark it. Beat him and a chest (a silver rupee, and the next decor
+// or weapon) stands there, kept beaten in the camps' save; until then he waits each time his room loads.
+struct PgHaunt {
+    bool made, found;
+    unsigned int seed;
+    int test;
+    float x, z;
+};
+PgHaunt sPg;
+
+const PgHaunt& pgHaunt() {
+    if (sPg.made && sPg.seed == pc_rplus_seed() && sPg.test == pc_rplus_test_start()) {
+        return sPg;
+    }
+    sPg = PgHaunt{};
+    sPg.made = true;
+    sPg.seed = pc_rplus_seed();
+    sPg.test = pc_rplus_test_start();
+    float sx, sz;
+    rplus::startXZ(&sx, &sz);
+    const std::vector<rplus::TownInfo> towns = rplus::towns();
+    auto good = [&](float x, float z, const char* biomes, float fromStart, float fromTowns) {
+        return rplus::roomAt(x, z) != 0 && strchr(biomes, rplus::biomeAt(x, z)) != nullptr &&
+               rplus::groundY(x, z) >= 200.0f && !rplus::steep(x, z) && rplus::openGround(x, z, 1500.0f) &&
+               gentle(x, z, 1000.0f, 150.0f) && wild(x, z, sx, sz, fromStart, fromTowns, towns);
+    };
+    if (sPg.test) {
+        // A ring 7000-14000 out from the start, from a bearing the seed turns.
+        const float a0 = (mix(0x96A0u, pc_rplus_seed()) & 0xFFFF) / 65536.0f * 6.2831853f;
+        for (float r = 7000.0f; r <= 14000.0f && !sPg.found; r += 500.0f) {
+            for (int k = 0; k < 24 && !sPg.found; k++) {
+                const float x = sx + sinf(a0 + k * 0.2618f) * r, z = sz + cosf(a0 + k * 0.2618f) * r;
+                if (good(x, z, "grfdsv", 0.0f, 1500.0f)) {
+                    sPg.found = true, sPg.x = x, sPg.z = z;
+                }
+            }
+        }
+    }
+    static const char* const kPasses[] = {"f", "grfdsv"};
+    for (const char* biomes : kPasses) {
+        for (int tries = 0; tries < 6000 && !sPg.found; tries++) {
+            const u32 h = mix((u32)tries, pc_rplus_seed() ^ 0x96A1u);
+            const int room = 1 + (int)(h % 49);
+            if (!pc_rplus_sea_room_generated(room)) {
+                continue;
+            }
+            float rx0, rz0;
+            rplus::roomCorner(room, &rx0, &rz0);
+            const u32 g = mix(h, 0x51u);
+            const float x = rx0 + (0.08f + (g & 0xFFFF) / 65536.0f * 0.84f) * 100000.0f;
+            const float z = rz0 + (0.08f + ((g >> 16) & 0xFFFF) / 65536.0f * 0.84f) * 100000.0f;
+            if (good(x, z, biomes, 25000.0f, 8000.0f)) {
+                sPg.found = true, sPg.x = x, sPg.z = z;
+            }
+        }
+    }
+    if (sPg.found) {
+        fprintf(stderr, "[rplus] Phantom Ganon haunts room %d at %.0f %.0f\n", rplus::roomAt(sPg.x, sPg.z), sPg.x,
+                sPg.z);
+    } else {
+        fprintf(stderr, "[rplus] Phantom Ganon: no spot for him in this world\n");
+    }
+    return sPg;
+}
+
+void placePhantomGanon(int roomNo) {
+    const PgHaunt& pg = pgHaunt();
+    if (!pg.found || rplus::roomAt(pg.x, pg.z) != roomNo) {
+        return;
+    }
+    // The fires round his spot.
+    const Entry* fire = findEntry(pools().campDecor, "Fire");
+    if (fire != nullptr) {
+        for (int k = 0; k < 4; k++) {
+            const float a = k * 1.5707963f + 0.785398f;
+            spawn(*fire, pg.x + sinf(a) * 1100.0f, pg.z + cosf(a) * 1100.0f, 0, roomNo,
+                  (fire->params & ~0x1F0FFu) | 0x1F0FFu);
+        }
+    }
+    if (sCampState[PG_KEY] != CAMP_NEW) {
+        spawnCampChest(PG_KEY, roomNo, pg.x, pg.z, -1e9f);
+        return;
+    }
+    Entry e{};
+    strcpy(e.name, "Fganon");
+    const fpc_ProcID id = spawnAt(e, pg.x, rplus::groundY(pg.x, pg.z) + 150.0f, pg.z,
+                                  (s16)(mix(0x96A2u, pc_rplus_seed()) >> 8), roomNo, PG_PARAMS);
+    if (id != fpcM_ERROR_PROCESS_ID_e) {
+        watchCamp(PG_KEY, roomNo, pg.x, pg.z, -1e9f, &id, 1);
+    }
+    fprintf(stderr, "[rplus] room %d: Phantom Ganon waits at %.0f %.0f\n", roomNo, pg.x, pg.z);
+}
+
 void placeEnemies(int roomNo) {
     Pools& P = pools();
     if (P.enemies.empty()) {
@@ -838,6 +1110,15 @@ void placeEnemies(int roomNo) {
     int made = placeCamps(roomNo, rx0, rz0, sx, sz, towns), groups = 0;
     if (getenv("COS_RPLUS_TOWERS") == nullptr || strcmp(getenv("COS_RPLUS_TOWERS"), "0") != 0) {
         placeTower(roomNo, rx0, rz0, sx, sz, towns);
+    }
+    if (enabled("COS_RPLUS_DARKNUTS")) {
+        placeDarknuts(roomNo, rx0, rz0, sx, sz, towns);
+    }
+    if (enabled("COS_RPLUS_MORTHS")) {
+        made += placeMorths(roomNo, rx0, rz0, sx, sz, towns);
+    }
+    if (enabled("COS_RPLUS_PGANON")) {
+        placePhantomGanon(roomNo);
     }
     for (int tries = 0; tries < 400 && groups < ENEMY_GROUPS_PER_ROOM; tries++) {
         const u32 h = mix((u32)roomNo * 7919u + (u32)tries, pc_rplus_seed() ^ 0xE7E7u);
@@ -1066,8 +1347,8 @@ struct TestLayout {
     float sx, sz;
     int nChests;
     TestSpot chests[TEST_CHESTS];
-    bool hasCamp, hasTower;
-    TestSpot camp, tower;
+    bool hasCamp, hasTower, hasFoes;
+    TestSpot camp, tower, foes;
 };
 TestLayout sTest;
 
@@ -1109,7 +1390,7 @@ const TestLayout& testLayout() {
     sTest.made = true;
     sTest.seed = pc_rplus_seed();
     rplus::startXZ(&sTest.sx, &sTest.sz);
-    TestSpot used[TEST_CHESTS + 2];
+    TestSpot used[TEST_CHESTS + 3];
     int n = 0;
     for (int i = 0; i < TEST_CHESTS; i++) {
         TestSpot sp;
@@ -1127,8 +1408,15 @@ const TestLayout& testLayout() {
     }
     sTest.hasTower = testSpot(4500.0f, 9000.0f, 600.0f, 450.0f, 150.0f, 0x70E9u, used, n, 2000.0f, &sTest.tower) ||
                      testSpot(3000.0f, 12000.0f, 300.0f, 400.0f, 250.0f, 0x70E9u, used, n, 1500.0f, &sTest.tower);
-    fprintf(stderr, "[rplus] test start at %.0f %.0f: %d chests, camp %s, tower %s\n", sTest.sx, sTest.sz,
-            sTest.nChests, sTest.hasCamp ? "yes" : "no room", sTest.hasTower ? "yes" : "no room");
+    if (sTest.hasTower) {
+        used[n++] = sTest.tower;
+    }
+    // The new kinds (a Darknut, a Morth gang; Phantom Ganon's haunt is further out, pgHaunt) to try at once.
+    sTest.hasFoes = testSpot(3500.0f, 7000.0f, 600.0f, 500.0f, 150.0f, 0xF0E5u, used, n, 1800.0f, &sTest.foes) ||
+                    testSpot(2500.0f, 10000.0f, 300.0f, 400.0f, 250.0f, 0xF0E5u, used, n, 1500.0f, &sTest.foes);
+    fprintf(stderr, "[rplus] test start at %.0f %.0f: %d chests, camp %s, tower %s, Darknut and Morths %s\n",
+            sTest.sx, sTest.sz, sTest.nChests, sTest.hasCamp ? "yes" : "no room", sTest.hasTower ? "yes" : "no room",
+            sTest.hasFoes ? "yes" : "no room");
     return sTest;
 }
 
@@ -1154,6 +1442,15 @@ void placeTestStart(int roomNo) {
     if (T.hasTower && rplus::roomAt(T.tower.x, T.tower.z) == roomNo) {
         makeTower(TEST_TOWER_KEY, roomNo, T.tower.x, rplus::groundY(T.tower.x, T.tower.z), T.tower.z,
                   mix(TEST_TOWER_KEY, pc_rplus_seed()));
+    }
+    if (T.hasFoes && rplus::roomAt(T.foes.x, T.foes.z) == roomNo) {
+        const u32 h = mix(0xF0E5u, pc_rplus_seed());
+        const Entry dn = darknut(h, false);
+        spawn(dn, T.foes.x, T.foes.z, cM_atan2s(T.sx - T.foes.x, T.sz - T.foes.z), roomNo, dn.params);
+        fprintf(stderr, "[rplus] room %d: test Darknut at %.0f %.0f\n", roomNo, T.foes.x, T.foes.z);
+        // The gang off to one side, between the Darknut and the start.
+        const float a = cM_atan2s(T.sx - T.foes.x, T.sz - T.foes.z) * (3.14159265f / 32768.0f) + 1.2f;
+        makeMorths(roomNo, T.foes.x + sinf(a) * 1300.0f, T.foes.z + cosf(a) * 1300.0f, h);
     }
 }
 

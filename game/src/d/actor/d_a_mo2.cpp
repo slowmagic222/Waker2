@@ -21,6 +21,7 @@
 #include "m_Do/m_Do_controller_pad.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "pc/pc_rplus.h"
 #endif
 
 enum Action {
@@ -3588,7 +3589,13 @@ static BOOL daMo2_Execute(mo2_class* i_this) {
         }
     }
     J3DModel* model = i_this->mpMorf->getModel();
+#if TARGET_PC
+    // Randomizer+ size variants (pc_rplus_life.cpp sizeVariant).
+    const f32 rplusSize = pc_rplus_active() ? actor->scale.x : 1.0f;
+    MtxScale(l_mo2HIO.m010 * rplusSize, l_mo2HIO.m010 * rplusSize, l_mo2HIO.m010 * rplusSize, true);
+#else
     MtxScale(l_mo2HIO.m010, l_mo2HIO.m010, l_mo2HIO.m010, true);
+#endif
     model->setBaseTRMtx(*calc_mtx);
     if (i_this->mDamageReaction.mAction >= ACTION_CARRY) {
         i_this->mpMorf->calc();
@@ -4200,6 +4207,12 @@ static cPhs_State daMo2_Create(fopAc_ac_c* a_this) {
     i_this->mDamageReaction.mAcch.SetRoofCrrHeight(REG0_F(7) + 100.0f);
     a_this->health = 10;
     a_this->max_health = 10;
+#if TARGET_PC
+    // Randomizer+ size variants (pc_rplus_life.cpp sizeVariant): a big one takes twice the hits.
+    if (pc_rplus_active() && a_this->scale.x > 1.05f) {
+        a_this->health = a_this->max_health = (s8)(a_this->max_health * 2);
+    }
+#endif
     i_this->mDamageReaction.mStts.Init(200, 0xFF, a_this);
     i_this->mCoCyl.Set(co_cyl_src);
     i_this->mCoCyl.SetStts(&i_this->mDamageReaction.mStts);

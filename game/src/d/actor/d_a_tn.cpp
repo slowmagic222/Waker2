@@ -23,6 +23,7 @@
 #include "JSystem/JUtility/JUTReport.h"
 #if TARGET_PC
 #include "pc/pc_rando.h"
+#include "pc/pc_rplus.h"
 #endif
 
 enum Action {
@@ -3613,6 +3614,12 @@ static BOOL daTn_Execute(tn_class* i_this) {
         }
     }
     J3DModel* model = i_this->mpBodyMorf->getModel();
+#if TARGET_PC
+    // Randomizer+ size variants: the body (and with it the armour, sword and cape on its joints) and the shield.
+    if (actor->scale.x != 1.0f && pc_rplus_active()) {
+        MtxScale(actor->scale.x, actor->scale.x, actor->scale.x, true);
+    }
+#endif
     model->setBaseTRMtx(*calc_mtx);
     if (i_this->mRemainingEquipmentPieces & EQUIPMENT_PIECE_SHIELD) {
         model = i_this->mpShieldMorf->getModel();
@@ -4325,6 +4332,12 @@ static cPhs_State daTn_Create(fopAc_ac_c* a_this) {
         a_this->health = 15;
         a_this->max_health = 15;
     }
+#if TARGET_PC
+    // Randomizer+ size variants (pc_rplus_life.cpp sizeVariant): a big one takes twice the hits.
+    if (pc_rplus_active() && a_this->scale.x > 1.05f) {
+        a_this->health = a_this->max_health = (s8)(a_this->max_health * 2);
+    }
+#endif
     i_this->mDamageReaction.mStts.Init(0xF0, 0xFF, a_this);
     i_this->mCoCyl.Set(co_cyl_src);
     i_this->mCoCyl.SetStts(&i_this->mDamageReaction.mStts);

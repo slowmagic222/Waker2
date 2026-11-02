@@ -27,6 +27,9 @@
 #include "d/d_material.h"
 #include "d/d_snap.h"
 #include "JSystem/JUtility/JUTReport.h"
+#if TARGET_PC
+#include "pc/pc_rplus.h"
+#endif
 
 static u8 hio_set;
 static u8 another_hit;
@@ -5117,6 +5120,12 @@ static cPhs_State daBk_Create(fopAc_ac_c* i_actor) {
         } else {
             i_actor->max_health = i_actor->health = 5;
         }
+#if TARGET_PC
+    // Randomizer+ size variants (pc_rplus_life.cpp sizeVariant): a big one takes twice the hits.
+    if (pc_rplus_active() && i_actor->scale.x > 1.05f) {
+        i_actor->health = i_actor->max_health = (s8)(i_actor->max_health * 2);
+    }
+#endif
         
         i_this->dr.mStts.Init(200, 0xFF, i_this);
         static dCcD_SrcCyl co_cyl_src = {

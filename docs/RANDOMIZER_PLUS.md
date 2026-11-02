@@ -107,6 +107,15 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   (`dPath_GetRoomPath`), so moved people stand rather than walk. Enemies (Bokoblins, Moblins, ChuChus, Keese, Boko
   Babas, Magtails) are spread over open land by biome, away from towns and the start, with params from the
   islands and some dungeons. `COS_RPLUS_NPCS=0` or `COS_RPLUS_ENEMIES=0` leaves them out.
+- **More enemy kinds** (same file): wandering Darknuts on open high ground (about one room in two, mixed armour
+  colours and gear) and one lookout tower in three held by a Darknut guarding its deck; a gang of 8-14 Morths on
+  grass, forest floor or dunes (about one room in two); one Phantom Ganon haunt per world (Ganon's Tower maze type:
+  one sword hit and he drops his sword), in a forest clearing far from the start and towns, marked by four fires.
+  Beating him leaves a chest there (kept in the camps' save). Now and then a Bokoblin, Moblin or Darknut is big
+  (1.4x, twice the health) or small (0.7x); only the model grows, the hit cylinders stay. The quick-test start puts
+  a Darknut and a Morth gang 3500-7000 out, Phantom Ganon 7000-14000 out and a Darknut on its tower. Log lines:
+  `Darknut`, `Morths`, `Phantom Ganon`. `COS_RPLUS_DARKNUTS=0`, `COS_RPLUS_MORTHS=0`, `COS_RPLUS_PGANON=0`,
+  `COS_RPLUS_SIZES=0` leave each out.
 - **Start gear**: a file with no sword gets the logic's start items at sea (Hero's Sword, shield, Wind Waker,
   Wind's Requiem, Ballad of Gales, Song of Passing, sail, magic).
 - **Squares near Link**: the sea's room table loads each square with only the sea floor; `requestRoomLoad` adds
