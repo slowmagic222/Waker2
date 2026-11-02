@@ -1269,3 +1269,23 @@ actor_process_profile_definition g_profile_OBJ_FIGURE = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLBOX_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the archive and model ID a chest shows for this figurine
+// (as phase_2 and CreateHeap; the later variants of a few fathers aside).
+int pc_decor_model_figure(int figureNo, const char** arc, int* res) {
+    if (figureNo < 0 || figureNo >= TOTAL_FIGURE_COUNT) {
+        return -1;
+    }
+    int id = dSnap_GetFigRoomId(figureNo);
+    if (l_figure_dat_tbl[figureNo].mRoomId >= 0) {
+        id = l_figure_dat_tbl[figureNo].mRoomId;
+    }
+    if (id < 0 || id >= (int)ARRAY_SIZE(l_arcname_tbl)) {
+        return -1;
+    }
+    *arc = l_arcname_tbl[id];
+    *res = l_figure_dat_tbl[figureNo].mBmdId;
+    return 1;
+}
+#endif

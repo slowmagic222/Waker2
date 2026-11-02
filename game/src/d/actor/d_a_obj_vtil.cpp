@@ -561,3 +561,15 @@ actor_process_profile_definition g_profile_Obj_Vtil = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLBOX_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for this Tingle statue.
+int pc_decor_model_vtil(int type, const char** arc, int* res) {
+    if (type < 0 || type >= 5) {
+        return -1;
+    }
+    *arc = daObjVtil_c::M_arcname;
+    *res = daObjVtil_c::l_daObjVtil_bdl_idx_table[type];
+    return 0;
+}
+#endif

@@ -13,6 +13,11 @@
 #include "d/d_item.h"
 #include "m_Do/m_Do_mtx.h"
 #include "f_op/f_op_camera.h"
+#if TARGET_PC
+#include "pc/game_hooks.h"
+#include "JSystem/J3DGraphAnimator/J3DModelData.h"
+#include "JSystem/J3DGraphAnimator/J3DJoint.h"
+#endif
 
 const int daDitem_c::m_rot_time = 8*30;
 
@@ -421,11 +426,21 @@ void daDitem_c::set_mtx() {
         mDoMtx_stack_c::get()[1][3] = current.pos.y;
         mDoMtx_stack_c::get()[2][3] = current.pos.z;
     }
+#if TARGET_PC
+    if (mPcDecorArc != NULL) {
+        mDoMtx_stack_c::transM(-mPcDecorCenter.x * scale.x, -mPcDecorCenter.y * scale.y, -mPcDecorCenter.z * scale.z);
+    }
+#endif
     mpModel->setBaseTRMtx(mDoMtx_stack_c::get());
 }
 
 /* 00000880-000008F0       .text settingBeforeDraw__9daDitem_cFv */
 void daDitem_c::settingBeforeDraw() {
+#if TARGET_PC
+    if (mPcDecorArc != NULL) {
+        return;  // a decor piece: no item's specular map
+    }
+#endif
     if (isBomb(m_itemNo) || m_itemNo == dItemNo_BOMB_BAG_e || m_itemNo == dItemNo_SKULL_HAMMER_e || m_itemNo == dItemNo_SMALL_KEY_e) {
         dDlst_texSpecmapST(&eyePos, &tevStr, mpModel->getModelData(), 1.0f);
     }
@@ -435,10 +450,76 @@ void daDitem_c::settingBeforeDraw() {
 void daDitem_c::setListStart() {
 }
 
+#if TARGET_PC
+// The decor piece's model, with nothing else (no animations: a pig or statue stands in its rest pose).
+static BOOL pcDecorCreateHeap(fopAc_ac_c* i_ac) {
+    daDitem_c* i_this = (daDitem_c*)i_ac;
+    J3DModelData* modelData = (J3DModelData*)(i_this->mPcDecorById
+        ? dComIfG_getObjectIDRes(i_this->mPcDecorArc, i_this->mPcDecorRes)
+        : dComIfG_getObjectRes(i_this->mPcDecorArc, i_this->mPcDecorRes));
+    if (modelData == NULL) {
+        return FALSE;
+    }
+    i_this->mpModel = mDoExt_J3DModel__create(modelData, 0x80000, 0x11000002);
+    i_this->mpModelArrow[0] = NULL;
+    i_this->mpModelArrow[1] = NULL;
+    i_this->mpBtkAnm1 = NULL;
+    i_this->mpBtkAnm2 = NULL;
+    i_this->mpBrkAnm1 = NULL;
+    i_this->mpBrkAnm2 = NULL;
+    i_this->mpBckAnm = NULL;
+    return i_this->mpModel != NULL;
+}
+
+// Sized like an item (about 45 units across) and centred on the item's place, from its joints' bounds.
+static void pcDecorFit(daDitem_c* i_this) {
+    J3DModelData* modelData = i_this->mpModel->getModelData();
+    cXyz lo(0.0f, 0.0f, 0.0f), hi(0.0f, 0.0f, 0.0f);
+    bool any = false;
+    for (u16 i = 0; i < modelData->getJointNum(); i++) {
+        J3DJoint* joint = modelData->getJointNodePointer(i);
+        if (joint == NULL) {
+            continue;
+        }
+        const Vec* mn = joint->getMin();
+        const Vec* mx = joint->getMax();
+        if (mx->x < mn->x || mx->y < mn->y || mx->z < mn->z) {
+            continue;
+        }
+        if (!any) {
+            lo.set(mn->x, mn->y, mn->z), hi.set(mx->x, mx->y, mx->z), any = true;
+        } else {
+            lo.set(mn->x < lo.x ? mn->x : lo.x, mn->y < lo.y ? mn->y : lo.y, mn->z < lo.z ? mn->z : lo.z);
+            hi.set(mx->x > hi.x ? mx->x : hi.x, mx->y > hi.y ? mx->y : hi.y, mx->z > hi.z ? mx->z : hi.z);
+        }
+    }
+    f32 size = 0.0f;
+    if (any) {
+        size = hi.x - lo.x;
+        size = hi.y - lo.y > size ? hi.y - lo.y : size;
+        size = hi.z - lo.z > size ? hi.z - lo.z : size;
+        i_this->mPcDecorCenter.set((lo.x + hi.x) * 0.5f, (lo.y + hi.y) * 0.5f, (lo.z + hi.z) * 0.5f);
+    } else {
+        i_this->mPcDecorCenter.set(0.0f, 0.0f, 0.0f);
+    }
+    f32 s = size > 1.0f ? 45.0f / size : 1.0f;
+    s = s < 0.05f ? 0.05f : (s > 1.5f ? 1.5f : s);
+    i_this->scale.set(s, s, s);
+}
+#endif
+
 BOOL daDitem_c::Delete() {
+#if TARGET_PC
+    // A decor piece takes the filler's place: no rupees or hearts with it.
+    const bool pcDecor = pc_rplus_decor_show_end(fopAcM_GetID(this)) != 0;
+    if (!chkArgFlag(FLAG_UNK01) && !pcDecor) {
+        execItemGet(m_itemNo);
+    }
+#else
     if (!chkArgFlag(FLAG_UNK01)) {
         execItemGet(m_itemNo);
     }
+#endif
     
     for (int i = 0; i < ARRAY_SIZE(mpEmitters); i++) {
         if (mpEmitters[i]) {
@@ -448,6 +529,14 @@ BOOL daDitem_c::Delete() {
         }
     }
     
+#if TARGET_PC
+    if (mPcDecorArc != NULL) {
+        if (strcmp(mPcDecorArc, "Always") != 0) {
+            dComIfG_resDelete(&mPhs, mPcDecorArc);
+        }
+        return TRUE;
+    }
+#endif
     return DeleteBase(dItem_data::getArcname(m_itemNo));
 }
 
@@ -455,7 +544,24 @@ cPhs_State daDitem_c::create() {
     fopAcM_ct(this, daDitem_c);
     
     m_itemNo = daDitem_prm::getNo(this);
-    
+
+#if TARGET_PC
+    // Randomizer+: the decor piece this chest's filler gave (pc_rplus_decor_check), shown in its place.
+    mPcDecorArc = NULL;
+    if (pc_rplus_decor_show_bind(fopAcM_GetID(this), m_itemNo, &mPcDecorArc, &mPcDecorRes, &mPcDecorById) && mPcDecorArc != NULL) {
+        cPhs_State decor_state = strcmp(mPcDecorArc, "Always") == 0 ? cPhs_COMPLEATE_e : dComIfG_resLoad(&mPhs, mPcDecorArc);
+        if (decor_state == cPhs_COMPLEATE_e) {
+            if (!fopAcM_entrySolidHeap(this, pcDecorCreateHeap, 0)) {
+                return cPhs_ERROR_e;
+            }
+            CreateInit();
+            pcDecorFit(this);
+        }
+        return decor_state;
+    }
+    mPcDecorArc = NULL;
+#endif
+
     const char* arcName = dItem_data::getArcname(m_itemNo);
     if (dItem_data::getBmdIdx(m_itemNo) == -1 || arcName == NULL) {
         m_itemNo = dItemNo_GREEN_RUPEE_e;

@@ -1050,3 +1050,15 @@ actor_process_profile_definition g_profile_STONE = {
     /* Group        */ fopAc_ACTOR_e,
     /* Cull Type    */ fopAc_CULLSPHERE_CUSTOM_e,
 };
+
+#if TARGET_PC
+// Randomizer+ house decor (pc_rplus_decor.cpp): the model a chest shows for this stone type.
+int pc_decor_model_stone(int type, const char** arc, int* res) {
+    if (type < 0 || type >= (int)ARRAY_SIZE(daStone::Act_c::M_data)) {
+        return -1;
+    }
+    *arc = daStone::Act_c::M_data[type].m74;
+    *res = daStone::Act_c::M_data[type].m7C;
+    return 0;
+}
+#endif
