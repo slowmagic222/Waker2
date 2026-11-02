@@ -15,6 +15,7 @@
 #include "m_Do/m_Do_lib.h"
 #if TARGET_PC
 #include "pc/game_hooks.h"
+#include "pc/pc_rplus.h"
 #endif
 #include "m_Do/m_Do_graphic.h"
 #include "SSystem/SComponent/c_counter.h"
@@ -428,6 +429,9 @@ void dGrass_packet_c::update() {
                     mDoMtx_YrotM(data->mModelMtx, i * 0xDCF);
                     mDoMtx_concat(j3dSys.getViewMtx(), data->mModelMtx, data->mModelMtx);
                 }
+#if TARGET_PC
+                pc_rplus_veg_scale(data->mModelMtx, data->mPos.x, data->mPos.z);
+#endif
             }
         }
         data++;

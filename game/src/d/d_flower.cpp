@@ -9,6 +9,7 @@
 #include "m_Do/m_Do_lib.h"
 #if TARGET_PC
 #include "pc/game_hooks.h"
+#include "pc/pc_rplus.h"
 #endif
 #include "SSystem/SComponent/c_counter.h"
 #include "d/actor/d_a_player.h"
@@ -511,6 +512,9 @@ void dFlower_packet_c::update() {
                 pMtx[1][3] = pData->field_0x04.y;
                 pMtx[2][3] = pData->field_0x04.z;
                 mDoMtx_concat(j3dSys.getViewMtx(), pMtx, pData->field_0x10);
+#if TARGET_PC
+                pc_rplus_veg_scale(pData->field_0x10, pData->field_0x04.x, pData->field_0x04.z);
+#endif
             }
         }
     }

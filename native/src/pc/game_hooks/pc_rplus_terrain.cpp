@@ -1990,6 +1990,22 @@ int pc_rplus_any_point(const char* stage, int point) {
     return 1;
 }
 
+void pc_rplus_veg_scale(float m[3][4], float x, float z) {
+    if (!pc_rplus_active()) {
+        return;
+    }
+    u32 h = (u32)(s32)floorf(x * 0.25f) * 73856093u ^ (u32)(s32)floorf(z * 0.25f) * 19349663u;
+    h ^= h >> 13;
+    h *= 0x5BD1E995u;
+    h ^= h >> 15;
+    const float s = 0.82f + (float)(h % 1000) * 0.0004f;  // 0.82 to 1.22
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            m[i][j] *= s;
+        }
+    }
+}
+
 float pc_rplus_prop_far(int kind) {
     if (!pc_rplus_active() || strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         return 0.0f;
@@ -3385,7 +3401,15 @@ void scatterProps(int roomNo) {
         }
         cXyz pos(x, y, z);
         csXyz angle(0, (s16)(sp.h >> 16), 0);
-        fopAcM_create((char*)kind.name, kind.params, &pos, roomNo, &angle, nullptr);
+        u32 params = kind.params;
+        if (id == P_GRASS1) {
+            // A lone tuft sometimes hides a heart (12%) or a small magic jar (6%): its item, bits 6-11 (d_a_grass).
+            const u32 roll = (sp.h >> 8) % 100;
+            if (roll < 18) {
+                params = (params & ~0xFC0u) | ((roll < 12 ? 0x00u : 0x09u) << 6);
+            }
+        }
+        fopAcM_create((char*)kind.name, params, &pos, roomNo, &angle, nullptr);
         grid[(size_t)gj * gside + gi].push_back((int)placed.size());
         placed.push_back({x, z, clearance});
         used[kind.pool] += cost;

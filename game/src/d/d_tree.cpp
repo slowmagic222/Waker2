@@ -6,6 +6,7 @@
 #include "m_Do/m_Do_lib.h"
 #if TARGET_PC
 #include "pc/game_hooks.h"
+#include "pc/pc_rplus.h"
 #endif
 #include "f_op/f_op_overlap_mng.h"
 
@@ -622,6 +623,10 @@ void dTree_packet_c::update() {
 
                 mDoMtx_concat(j3dSys.getViewMtx(), var_r22->field_0x54, data->field_0x040);
                 mDoMtx_concat(j3dSys.getViewMtx(), data->mShadowMtx, data->field_0x0d0);
+#if TARGET_PC
+                pc_rplus_veg_scale(data->field_0x010, data->mPos.x, data->mPos.z);
+                pc_rplus_veg_scale(data->field_0x040, data->mPos.x, data->mPos.z);
+#endif
             }
         }
         data++;

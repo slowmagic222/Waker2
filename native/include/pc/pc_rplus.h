@@ -19,6 +19,10 @@ extern "C" {
 /* 1 when a world was read (COS_RPLUS_WORLD), else 0. */
 int pc_rplus_active(void);
 
+/* Grass, flowers and small trees drawn from the game's packets: scales the model matrix m (its 3 x 3 part) a
+   little up or down, the same each frame for the spot (x, z); nothing when Randomizer+ is off. */
+void pc_rplus_veg_scale(float m[3][4], float x, float z);
+
 /* 1 when sea room roomNo (1-49) is generated, 0 when it is kept as it is (or Randomizer+ is off). */
 int pc_rplus_sea_room_generated(int roomNo);
 
