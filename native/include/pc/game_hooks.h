@@ -388,6 +388,12 @@ void pc_rplus_camps_frame(void);
 int pc_rplus_camp_chest_key(unsigned int params, int angleX);
 int pc_rplus_camp_chest_opened(int key);
 void pc_rplus_camp_chest_open(int key);
+// Randomizer+ places found (pc_rplus_places.cpp, the tracker's): reset / load / save as the camps'; once a frame from
+// daPy_lk_c::execute (Link near a place, or in its interior, finds it).
+void pc_rplus_places_reset(void);
+void pc_rplus_places_load(int slot);
+void pc_rplus_places_save(int slot);
+void pc_rplus_places_frame(void);
 // The notice of the piece just found ("Found decor: Barrel ..."), NULL if none now.
 const char* pc_rplus_decor_notice(void);
 // Randomizer+ weapon unlocks (pc_weapon_unlocks.cpp): the enemies' weapons (d_a_boko) found as check rewards, drawn

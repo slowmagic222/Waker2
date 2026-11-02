@@ -9,6 +9,10 @@
 //      list to scroll it. On an item, its name and count. Everything comes from the game: nothing is
 //      set by hand. B goes back, then closes it.
 //   2. hidden (L3+R3 again closes it too).
+// Randomizer+ (pc_rplus.h): the sea chart is the generated world's, its squares dark until sailed in, and shows only
+// the places Link has found (pc_rplus_places.cpp: towns, doors, NPCs, camps, towers); a square's list names its found
+// places, each with its checks ticked as the game has them. The world's logic is not the tracker's, so "in logic"
+// is left out there. A place found pops up "Discovered!" with its name.
 // Outside the screen, pop-ups say what the last checks did: "1 location checked!", "4 checks opened up!",
 // with the game's sound (the options menu's COS_TRACKER_POPUPS turns them off).
 // The default button map gives neither stick click to the game. With the options menu open it is hidden.
@@ -16,6 +20,7 @@
 
 #include "pc/pc_tracker.h"
 
+#include "pc/pc_rplus.h"
 #include "pc/pc_settings.h"
 
 #include <aurora/imgui.h>
@@ -633,6 +638,321 @@ void drawExtras(const Canvas& c, const Snapshot& s, const LogicResult& logic) {
     }
 }
 
+// ---- Randomizer+: the generated world's chart and the places found --------------------------------
+
+bool rplusMode() {
+    return pc_rplus_active() != 0;
+}
+
+std::string squareName(int sector) {
+    char t[8];
+    snprintf(t, sizeof t, "%c%d", 'A' + sector / kSeaSide, sector % kSeaSide + 1);
+    return t;
+}
+
+// A place's checks: done of total (camps and towers: their chest), -1 total when it has none
+void placeChecks(const PcRplusPlace& p, int* done, int* total) {
+    *done = 0;
+    *total = 0;
+    if (p.camp >= 0) {
+        *total = 1;
+        *done = p.opened;
+        return;
+    }
+    const int n = p.anchor[0] != '\0' ? pc_rplus_anchor_check_count(p.anchor) : 0;
+    for (int i = 0; i < n; i++) {
+        (*total)++;
+        *done += locationDone(pc_rplus_anchor_check(p.anchor, i)) == 1 ? 1 : 0;
+    }
+}
+
+// One line of a square's list: a place (with its checks done) or one of its checks
+struct RplusRow {
+    std::string text;
+    bool place;
+    char kind;   // the place's
+    int state;   // a check: 1 done, 0 not; a place: its checks not done (-1 none)
+};
+
+std::vector<RplusRow> rplusRows(int sector) {
+    std::vector<RplusRow> rows;
+    for (int pass = 0; pass < 2; pass++) {  // the towns first
+        for (int i = 0; i < pc_rplus_place_count(); i++) {
+            const PcRplusPlace p = *pc_rplus_place(i);
+            if (!p.found || p.sector != sector || (p.kind == 'T') != (pass == 0)) {
+                continue;
+            }
+            int done, total;
+            placeChecks(p, &done, &total);
+            std::string text = p.name;
+            if (total > 0) {
+                text += "  " + std::to_string(done) + "/" + std::to_string(total);
+            }
+            rows.push_back({text, true, p.kind, total > 0 ? total - done : -1});
+            if (p.camp >= 0) {
+                rows.push_back({"Chest", false, p.kind, done});
+                continue;
+            }
+            const int n = p.anchor[0] != '\0' ? pc_rplus_anchor_check_count(p.anchor) : 0;
+            for (int k = 0; k < n; k++) {
+                std::string check = pc_rplus_anchor_check(p.anchor, k);
+                // "Windfall Island - Jail - Maze Chest": the vanilla island means nothing here
+                const size_t dash = check.find(" - ");
+                if (dash != std::string::npos) {
+                    check = check.substr(dash + 3);
+                }
+                rows.push_back({check, false, p.kind, locationDone(pc_rplus_anchor_check(p.anchor, k)) == 1 ? 1 : 0});
+            }
+        }
+    }
+    return rows;
+}
+
+ImU32 placeColor(char kind) {
+    switch (kind) {
+    case 'T': return IM_COL32(255, 214, 92, 255);   // town: gold
+    case 'H': return IM_COL32(90, 230, 110, 255);   // Link's home
+    case 'h': return IM_COL32(240, 150, 70, 255);   // house: orange
+    case 'c': return IM_COL32(185, 140, 255, 255);  // cave: violet
+    case 'd': return IM_COL32(255, 80, 80, 255);    // dungeon: red
+    case 'f': return IM_COL32(255, 140, 210, 255);  // fairy fountain: pink
+    case 'n': return IM_COL32(120, 220, 255, 255);  // NPC: sky blue
+    case 'k': return IM_COL32(230, 70, 50, 255);    // camp
+    case 'w': return IM_COL32(210, 185, 140, 255);  // tower: tan
+    default: return kText;
+    }
+}
+
+const char* placeKindName(char kind) {
+    switch (kind) {
+    case 'T': return "Town";
+    case 'H': return "Home";
+    case 'h': return "House";
+    case 'c': return "Cave";
+    case 'd': return "Dungeon";
+    case 'f': return "Fairy fountain";
+    case 'n': return "Person";
+    case 'k': return "Enemy camp";
+    case 'w': return "Lookout tower";
+    default: return "";
+    }
+}
+
+// A place's mark on the chart at (x, y): its kind's shape and colour, grey once all its checks are done
+void placeMark(const Canvas& c, char kind, float x, float y, bool cleared) {
+    const ImU32 col = cleared ? IM_COL32(150, 150, 150, 230) : placeColor(kind);
+    const ImU32 dark = IM_COL32(0, 0, 0, 220);
+    ImDrawList* dl = c.dl;
+    const float k = c.scale;
+    const ImVec2 m = c.at(x, y);
+    switch (kind) {
+    case 'T': {  // a diamond
+        const float r = 6.5f * k;
+        const ImVec2 pts[4] = {ImVec2(m.x, m.y - r), ImVec2(m.x + r, m.y), ImVec2(m.x, m.y + r), ImVec2(m.x - r, m.y)};
+        dl->AddConvexPolyFilled(pts, 4, col);
+        dl->AddPolyline(pts, 4, dark, ImDrawFlags_Closed, 1.5f * k);
+        break;
+    }
+    case 'c':
+    case 'd': {  // a triangle (a dungeon's bigger)
+        const float r = (kind == 'd' ? 7.0f : 5.0f) * k;
+        const ImVec2 pts[3] = {ImVec2(m.x, m.y - r), ImVec2(m.x + r, m.y + r * 0.8f), ImVec2(m.x - r, m.y + r * 0.8f)};
+        dl->AddConvexPolyFilled(pts, 3, col);
+        dl->AddPolyline(pts, 3, dark, ImDrawFlags_Closed, 1.5f * k);
+        break;
+    }
+    case 'h':
+    case 'H': {  // a square
+        const float r = (kind == 'H' ? 5.0f : 4.0f) * k;
+        dl->AddRectFilled(ImVec2(m.x - r, m.y - r), ImVec2(m.x + r, m.y + r), col);
+        dl->AddRect(ImVec2(m.x - r, m.y - r), ImVec2(m.x + r, m.y + r), dark, 0, 0, 1.5f * k);
+        break;
+    }
+    case 'w': {  // a tall bar
+        dl->AddRectFilled(ImVec2(m.x - 2.5f * k, m.y - 7 * k), ImVec2(m.x + 2.5f * k, m.y + 5 * k), col);
+        dl->AddRect(ImVec2(m.x - 2.5f * k, m.y - 7 * k), ImVec2(m.x + 2.5f * k, m.y + 5 * k), dark, 0, 0, 1.5f * k);
+        break;
+    }
+    case 'k': {  // a cross
+        const float r = 4.5f * k;
+        dl->AddLine(ImVec2(m.x - r, m.y - r), ImVec2(m.x + r, m.y + r), dark, 4.5f * k);
+        dl->AddLine(ImVec2(m.x - r, m.y + r), ImVec2(m.x + r, m.y - r), dark, 4.5f * k);
+        dl->AddLine(ImVec2(m.x - r, m.y - r), ImVec2(m.x + r, m.y + r), col, 2.5f * k);
+        dl->AddLine(ImVec2(m.x - r, m.y + r), ImVec2(m.x + r, m.y - r), col, 2.5f * k);
+        break;
+    }
+    default: {  // a dot (NPCs, fairy fountains)
+        dl->AddCircleFilled(m, 4.0f * k, col, 12);
+        dl->AddCircle(m, 4.0f * k, dark, 12, 1.5f * k);
+        break;
+    }
+    }
+}
+
+// The generated world's land as one picture: each cell its biome's colour (higher a little lighter), the coast
+// smoothed by sampling between cells; water left clear
+ImTextureID sRplusLand{};
+
+void loadRplusLand() {
+    if (sRplusLand != ImTextureID{}) {
+        return;
+    }
+    const int n = pc_rplus_squares() * pc_rplus_cells();
+    if (n <= 0) {
+        return;
+    }
+    constexpr int kUp = 4;
+    const int side = n * kUp;
+    std::vector<uint8_t> px(size_t(side) * side * 4, 0);
+    const auto colorOfCell = [](int cx, int cy, float rgb[3]) {
+        const int h = pc_rplus_cell_height(cx, cy);
+        float r = 90, g = 160, b = 70;
+        switch (pc_rplus_cell_biome(cx, cy)) {
+        case 'f': r = 45, g = 115, b = 55; break;
+        case 'r': r = 135, g = 125, b = 110; break;
+        case 'v': r = 105, g = 70, b = 62; break;
+        case 's': r = 225, g = 230, b = 238; break;
+        case 'd': r = 215, g = 198, b = 140; break;
+        default: break;
+        }
+        const float lit = 0.78f + 0.32f * float(h) / 1000.0f;
+        rgb[0] = std::min(255.0f, r * lit);
+        rgb[1] = std::min(255.0f, g * lit);
+        rgb[2] = std::min(255.0f, b * lit);
+    };
+    for (int y = 0; y < side; y++) {
+        for (int x = 0; x < side; x++) {
+            const float fx = (x + 0.5f) / kUp - 0.5f, fy = (y + 0.5f) / kUp - 0.5f;
+            const int x0 = int(std::floor(fx)), y0 = int(std::floor(fy));
+            const float tx = fx - x0, ty = fy - y0;
+            float land = 0, rgb[3] = {0, 0, 0}, weight = 0;
+            for (int j = 0; j < 2; j++) {
+                for (int i = 0; i < 2; i++) {
+                    const float w = (i ? tx : 1 - tx) * (j ? ty : 1 - ty);
+                    if (pc_rplus_cell_height(x0 + i, y0 + j) > 0) {
+                        float c3[3];
+                        colorOfCell(x0 + i, y0 + j, c3);
+                        land += w;
+                        for (int k = 0; k < 3; k++) {
+                            rgb[k] += c3[k] * w;
+                        }
+                        weight += w;
+                    }
+                }
+            }
+            if (land < 0.45f || weight <= 0) {
+                continue;
+            }
+            uint8_t* o = &px[(size_t(y) * side + x) * 4];
+            for (int k = 0; k < 3; k++) {
+                o[k] = uint8_t(rgb[k] / weight);
+            }
+            o[3] = 255;
+        }
+    }
+    sRplusLand = aurora_imgui_add_texture(side, side, px.data());
+}
+
+void drawRplusChart(const Canvas& c, const Snapshot& s) {
+    const float x0 = kSeaX, y0 = kSeaY, w = kSeaW, h = kSeaH;
+    loadRplusLand();
+    c.rect(x0, y0, w, h, IM_COL32(22, 60, 104, 225), 6);
+    if (sRplusLand != ImTextureID{}) {
+        c.dl->AddImage(sRplusLand, c.at(x0, y0), c.at(x0 + w, y0 + h));
+    }
+    const float cw = w / kSeaSide, ch = h / kSeaSide;
+    // the squares not sailed in yet: dark, their land unknown
+    for (int i = 0; i < kSeaSide * kSeaSide; i++) {
+        if (!pc_rplus_sector_seen(i)) {
+            const float x = x0 + (i % kSeaSide) * cw, y = y0 + (i / kSeaSide) * ch;
+            c.rect(x, y, cw, ch, IM_COL32(8, 16, 30, 235));
+        }
+    }
+    for (int k = 1; k < kSeaSide; k++) {
+        c.line(x0 + k * cw, y0, x0 + k * cw, y0 + h, IM_COL32(255, 255, 255, 40), 1);
+        c.line(x0, y0 + k * ch, x0 + w, y0 + k * ch, IM_COL32(255, 255, 255, 40), 1);
+    }
+    c.frame(x0, y0, w, h, IM_COL32(255, 255, 255, 90), 2, 6);
+    // each square's checks not done at its found places, top left
+    int open[kSeaSide * kSeaSide] = {};
+    for (int i = 0; i < pc_rplus_place_count(); i++) {
+        const PcRplusPlace p = *pc_rplus_place(i);
+        if (!p.found || p.sector < 0) {
+            continue;
+        }
+        int done, total;
+        placeChecks(p, &done, &total);
+        open[p.sector] += total - done;
+        // the towns' names drawn after the marks
+        placeMark(c, p.kind, x0 + p.u * w, y0 + p.v * h, total > 0 && done == total);
+    }
+    for (int i = 0; i < pc_rplus_place_count(); i++) {
+        const PcRplusPlace p = *pc_rplus_place(i);
+        if (p.found && p.kind == 'T') {
+            c.text(p.name, x0 + p.u * w, y0 + p.v * h + 7, kAccent, 11, 0.5f);
+        }
+    }
+    for (int i = 0; i < kSeaSide * kSeaSide; i++) {
+        const float x = x0 + (i % kSeaSide) * cw, y = y0 + (i / kSeaSide) * ch;
+        if (open[i] > 0) {
+            char t[8];
+            snprintf(t, sizeof t, "%d", open[i]);
+            c.text(t, x + 3, y + 3, kText, 12);
+        }
+        if (i == s.where) {
+            c.linkMarker(x + cw * 0.5f, y + ch * 0.5f, 13, s.atSea);
+        }
+        if (i == sCursor && sItem < 0) {
+            c.frame(x + 1, y + 1, cw - 2, ch - 2, kAccent, 3, 4);
+        }
+    }
+}
+
+void drawRplusList(const Canvas& c, float x0, float y0, float w, float h) {
+    c.rect(x0, y0, w, h, kPanel, 8);
+    const std::string title = "Square " + squareName(sCursor);
+    c.text(title.c_str(), x0 + 14, y0 + 12, kAccent, 22);
+    const std::vector<RplusRow> rows = rplusRows(sCursor);
+    int places = 0;
+    for (const RplusRow& r : rows) {
+        places += r.place ? 1 : 0;
+    }
+    char t[64];
+    snprintf(t, sizeof t, places == 1 ? "1 place found" : "%d places found", places);
+    c.text(t, x0 + 14, y0 + 40, kText);
+    float y = y0 + 70;
+    if (rows.empty()) {
+        c.text(pc_rplus_sector_seen(sCursor) ? "Nothing found here yet." : "Not sailed here yet.", x0 + 14, y,
+               kDimText);
+        return;
+    }
+    const int fit = int((h - 70 - 10) / (c.fontSize + 7));
+    const int first = sInList ? std::max(0, std::min(sListCursor - fit / 2, int(rows.size()) - fit)) : 0;
+    for (int i = first; i < int(rows.size()); i++) {
+        const RplusRow& r = rows[i];
+        if (y > y0 + h - 24) {
+            c.text("...", x0 + 14, y, kDimText);
+            break;
+        }
+        if (sInList && i == sListCursor) {
+            c.frame(x0 + 8, y - 3, w - 16, c.fontSize + 6, kAccent, 2, 4);
+        }
+        if (r.place) {
+            placeMark(c, r.kind, x0 + 20, y + c.fontSize * 0.5f, r.state == 0);
+            c.text(r.text.c_str(), x0 + 32, y, r.state == 0 ? kChecked : placeColor(r.kind));
+        } else if (r.state == 1) {
+            c.tick(x0 + 30, y + 2, 13, kAccent);
+            c.text(r.text.c_str(), x0 + 48, y, kChecked, 15);
+            const float tw = std::min(c.textWidth(r.text.c_str(), 15), w - 62);
+            c.line(x0 + 47, y + 15 * 0.55f, x0 + 49 + tw, y + 15 * 0.55f, kChecked, 1.5f);
+        } else {
+            c.rect(x0 + 32, y + 5, 8, 8, kNonProgress, 2);
+            c.text(r.text.c_str(), x0 + 48, y, kNonProgress, 15);
+        }
+        y += c.fontSize + 7;
+    }
+}
+
 // The list of the area under the cursor
 void drawList(const Canvas& c, const LogicResult& logic, float x0, float y0, float w, float h) {
     c.rect(x0, y0, w, h, kPanel, 8);
@@ -722,7 +1042,13 @@ void drawScreen() {
              scale, ImGui::GetFont(), 17.0f};
 
     c.text("Tracker", 40, 18, kAccent, 30);
-    if (logic.ready) {
+    if (rplusMode()) {
+        int found, total;
+        pc_rplus_places_found(&found, &total);
+        char t[128];
+        snprintf(t, sizeof t, "Places found %d / %d", found, total);
+        c.text(t, 1240, 26, kText, 20, 1);
+    } else if (logic.ready) {
         char t[128];
         snprintf(t, sizeof t, "%d in logic   %d not checked   %d checked", logic.available, logic.remaining,
                  logic.checked);
@@ -730,7 +1056,11 @@ void drawScreen() {
     } else if (!s.playing) {
         c.text("Start or load a file.", 1240, 26, kDimText, 20, 1);
     }
-    if (s.playing && s.where >= 0 && s.where < int(logic.areas.size())) {
+    if (rplusMode() && s.playing && s.where >= 0 && s.where < kSeaSide * kSeaSide) {
+        const std::string t = (s.atSea ? "Link: square " : "Link: last at square ") + squareName(s.where);
+        c.linkMarker(184, 36, 8, true);
+        c.text(t.c_str(), 198, 26, kLink, 18);
+    } else if (s.playing && s.where >= 0 && s.where < int(logic.areas.size())) {
         char t[96];
         snprintf(t, sizeof t, s.where < 49 && !s.atSea ? "Link: last at %s" : "Link: %s",
                  logic.areas[s.where].name.c_str());
@@ -745,9 +1075,15 @@ void drawScreen() {
     }
 
     drawItems(c, s, logic);
-    drawSeaChart(c, s, logic);
+    if (rplusMode()) {
+        drawRplusChart(c, s);
+    } else {
+        drawSeaChart(c, s, logic);
+    }
     if (sItem >= 0) {
         drawItemInfo(c, s, logic, 918, 66, 322, 520);
+    } else if (rplusMode() && sCursor < kSeaSide * kSeaSide) {
+        drawRplusList(c, 918, 66, 322, 520);
     } else {
         drawList(c, logic, 918, 66, 322, 520);
     }
@@ -805,6 +1141,13 @@ void notePopups() {
     }
     // a load or a new save slot: a burst of checks at once is no news
     const bool settling = now - sSeen.since < 4.0;
+    // Randomizer+: a place found (taken even with the pop-ups off, so none waits for later)
+    while (const char* found = pc_rplus_places_take_found()) {
+        if (sPage != SCREEN && popupsOn()) {
+            sPopups.push_back({"Discovered!", found, kLink});
+            popupSound(true);
+        }
+    }
 
     if (!logic.ready) {
         int checked = 0;
@@ -861,6 +1204,8 @@ void notePopups() {
         }
         sPopups.push_back({t, detail, kAccent});
     }
+    // Randomizer+: the tracker's logic is the vanilla world's, so "opened up" would mislead
+    opened = rplusMode() ? 0 : opened;
     if (show && opened > 0) {
         char t[64];
         snprintf(t, sizeof t, "%d check%s opened up!", opened, opened == 1 ? "" : "s");
@@ -924,6 +1269,27 @@ void drawPopups() {
 }
 
 void handleScreenKeys(uint32_t pressed) {
+    if (rplusMode() && (sInList || sItem < 0) && sCursor < kSeaSide * kSeaSide) {
+        // a square of the generated world: its found places' list
+        const int n = int(rplusRows(sCursor).size());
+        if (!sInList) {
+            moveCursor(pressed);
+            if (sItem < 0 && sCursor < kSeaSide * kSeaSide && (pressed & kConfirm) != 0 &&
+                !rplusRows(sCursor).empty()) {
+                sInList = true;
+                sListCursor = 0;
+            }
+            return;
+        }
+        if (n == 0) {
+            sInList = false;
+            return;
+        }
+        if (pressed & kUp) sListCursor = (sListCursor + n - 1) % n;
+        if (pressed & kDown) sListCursor = (sListCursor + 1) % n;
+        sListCursor = std::min(sListCursor, n - 1);
+        return;
+    }
     const LogicResult& logic = logicResult();
     const LogicArea* area = logic.ready && sCursor < int(logic.areas.size()) ? &logic.areas[sCursor] : nullptr;
     if (!sInList) {

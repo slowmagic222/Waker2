@@ -610,6 +610,10 @@ def write_rpw(path, world, quick_test=False):
   start <cx> <cy>                       the start cell (Link's house)
   test 1                                a quick-test world: chests, a camp and a tower by the start
   anchor <id> <kind> <stage|-> <cx> <cy> <level>
+  name <id> <words>                     an anchor's name for the tracker (the rest of the line)
+  check <id> <location>                 one of an anchor's wwrando locations ("Island - Check")
+  village <n> <cx> <cy> <words>         a village: its centre cell and name
+  member <n> <id>                       an anchor in village n
   """
   out = ["rplus 1", "seed %d %d" % (world.request_seed, world.seed), "grid %d %d" % (SQUARES, CELLS)]
   for room in sorted(PREFAB_ROOMS):
@@ -629,7 +633,25 @@ def write_rpw(path, world, quick_test=False):
     a = by_id[aid]
     for c in p.get("cells") or [p["cell"]]:
       out.append("anchor %s %s %s %d %d %s" % (aid, a.kind, a.stage or "-", c[0], c[1], world.level[c]))
+  out += place_lines([{"id": aid, "name": by_id[aid].name, "checks": by_id[aid].locations,
+                       "village": p.get("village")} for aid, p in world.place.items()],
+                     [{"id": v["id"], "name": v["name"], "center": v["center"]} for v in world.villages])
   open(path, "w").write("\n".join(out) + "\n")
+
+
+def place_lines(anchors, villages):
+  """The tracker's lines of write_rpw (name, check, village, member) from world.json's anchors and villages."""
+  out = []
+  for a in anchors:
+    out.append("name %s %s" % (a["id"], a["name"]))
+    for loc in a["checks"]:
+      out.append("check %s %s" % (a["id"], loc))
+  for v in villages:
+    out.append("village %d %d %d %s" % (v["id"], v["center"][0], v["center"][1], v["name"]))
+  for a in anchors:
+    if a.get("village") is not None:
+      out.append("member %d %s" % (a["village"], a["id"]))
+  return out
 
 
 def write_spoiler(path, world, logic, assignment, placement):

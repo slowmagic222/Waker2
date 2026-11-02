@@ -610,6 +610,7 @@ int makeCamp(int key, int roomNo, float x, float z, u32 h) {
     if (bk == nullptr) {
         return 0;
     }
+    rplus::notePlace('k', key, x, z);  // the tracker's places (pc_rplus_places.cpp)
     const Entry* mo = findEntry(P.enemies, "mo2");
     const Entry* fire = findEntry(P.campDecor, "Fire");
     const Entry* pot = findEntry(P.campDecor, "kotubo");
@@ -938,6 +939,7 @@ void placeTower(int roomNo, float rx0, float rz0, float sx, float sz, const std:
 // its collision is in. y is not used (the ground at its ladder's foot is).
 void makeTower(int key, int roomNo, float x, float y, float z, u32 h) {
     (void)y;
+    rplus::notePlace('w', key, x, z);
     TowerLive* slot = nullptr;
     for (TowerLive& t : sTowers) {
         if (t.used && t.key == key) {
@@ -1492,6 +1494,15 @@ void placeTestStart(int roomNo) {
 }
 
 } // namespace
+
+bool rplus::anchoredNpc(const char* id) {
+    for (const AnchorNpc& an : kAnchorNpcs) {
+        if (strcmp(an.id, id) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 void pc_rplus_life_room(int roomNo) {
     if (!pc_rplus_active()) {

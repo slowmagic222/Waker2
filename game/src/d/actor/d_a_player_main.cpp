@@ -11627,6 +11627,8 @@ BOOL daPy_lk_c::execute() {
     pc_rplus_decor_frame();
     // Randomizer+: enemy camps beaten get a chest by the fire (pc_rplus_life.cpp)
     pc_rplus_camps_frame();
+    // Randomizer+: places Link comes near are found, for the tracker (pc_rplus_places.cpp)
+    pc_rplus_places_frame();
     
     playTextureAnime();
     cXyz sp14 = current.pos;

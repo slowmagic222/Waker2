@@ -3436,6 +3436,17 @@ std::vector<TownInfo> towns() {
     return out;
 }
 
+std::vector<DoorInfo> doors() {
+    std::vector<DoorInfo> out;
+    if (!pc_rplus_active()) {
+        return out;
+    }
+    for (const GenDoor& d : genDoors()) {
+        out.push_back({d.id, d.stage, d.pos.x, d.pos.z, d.town});
+    }
+    return out;
+}
+
 float groundY(float x, float z) {
     float x0, z0;
     worldOrigin(&x0, &z0);

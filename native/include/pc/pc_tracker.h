@@ -64,8 +64,12 @@ struct Snapshot {
     // or was last in (on an island's own stages, inside), or a dungeon (49-55); -1 not known yet
     int where = -1;
     bool atSea = false; // where is the sector he is in now (not the last one)
+    std::vector<bool> done; // each location of the table checked (pc_tracker.cpp's order; locationDone)
 };
 const Snapshot& snapshot();
+// A location by its full name ("Outset Island - Jabun's Cave"): 1 checked, 0 not, -1 not one the tracker knows
+// (or no state yet)
+int locationDone(const std::string& full);
 
 // The game's own font (the message font, rock_24_20_4i_usa.bfn), for the tracker screen: its glyph pages
 // decoded to RGBA and the printable ASCII characters' cells. pc_tracker.cpp, game thread; false while the

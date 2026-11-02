@@ -214,6 +214,31 @@ world with **Test start (Randomizer+)** on in the Quality of life tab or `COS_RP
 Their opened flags are kept as camps' are (`rplus-camps-<seed>-<slot>.txt`, keys 150-163). The log has a
 `[rplus] test start at ...` line and one per chest. `pc_rplus_life.cpp`, `placeTestStart`.
 
+### Discovery tracker
+
+Asked by Dillon (2026-11-02): with a Randomizer+ world, the tracker screen (L3+R3 / F2) shows the generated world and
+only the places Link has found (`native/src/pc/game_hooks/pc_rplus_places.cpp`, drawn by
+`pc_tracker_overlay.cpp`).
+
+- **Places:** the towns (named after the world file's village most of their doors belong to; the start's is
+  "Home"), every generated door (houses, caves, dungeon entrances, fairy fountains, Link's home), the NPCs standing at
+  anchors of their own (Maggie, Zunari, Tott...), and the enemy camps and lookout towers once their rooms make them.
+- **Found:** Link on the sea within reach of it (a door 2500, an NPC 1800, a camp 3500, a tower 5000, a town its
+  ring + 2000), or in a door's interior. Undiscovered places are not shown at all; the header says
+  "Places found N / M" (camps and towers are not in M). Link's home is known from the start.
+- **The chart:** the world's land in its biomes' colours; squares not sailed in yet (the save's arrive bits, as the
+  sea chart; a found place opens its square too; every square with Reveal chart) stay dark. A mark per found place:
+  town diamond (with its name), house square, cave / dungeon triangle, NPC / fountain dot, camp cross, tower bar;
+  grey once all its checks are done. Each square's top-left number: its found places' checks not done.
+- **The list:** a square's found places, towns first, each with its wwrando checks ticked as the game has them
+  (pc_tracker's location table, `locationDone`); a camp or tower has its chest. The tracker's own logic is the vanilla
+  world's, so "in logic" is left out for Randomizer+ (and the "checks opened up" pop-up).
+- **Pop-up:** "Discovered!" and the place's name, with the chime (the tracker pop-ups' setting).
+- **Saved:** `rplus-places-<seed>-<slot>.txt` next to the saves, with the save (as the camps' file).
+- **World file:** `worldgen.py` writes `name`, `check`, `village` and `member` lines. An older world gets them from
+  its `world.json` with `python3 scripts/rplus/rpw_add_places.py world.json world.rpw`; without them places are
+  named after their anchor ids and have no checks listed.
+
 ### The Randomizer+ tab
 
 The options menu has a **Randomizer+** tab (`native/src/pc/features/pc_rplus_menu.cpp`):

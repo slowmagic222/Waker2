@@ -32,6 +32,20 @@ void roomCorner(int roomNo, float* x, float* z);
 // Too steep to stand a creature on.
 bool steep(float x, float z);
 
+// A generated door (pc_rplus_terrain.cpp's GenDoor): its anchor ("home": Link's home), interior, where it stands and
+// the town it is in (towns()' index, -1 none).
+struct DoorInfo {
+    const char* id;
+    const char* stage;
+    float x, z;
+    int town;
+};
+std::vector<DoorInfo> doors();
+// The anchor's NPC is one the world stands at its anchor (pc_rplus_life.cpp's kAnchorNpcs).
+bool anchoredNpc(const char* id);
+// A camp ('k') or lookout tower ('w') was made at (x, z), with its chest's camp key (pc_rplus_places.cpp).
+void notePlace(char kind, int key, float x, float z);
+
 } // namespace rplus
 
 // The generated world's people and enemies for sea room roomNo (from pc_rplus_room_actors).

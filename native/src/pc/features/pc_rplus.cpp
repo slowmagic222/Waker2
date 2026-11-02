@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <string>
 #include <vector>
 
 namespace {
@@ -28,7 +30,39 @@ struct World {
         int cx, cy;
     };
     std::vector<Anchor> anchors;
+    // The tracker's lines (pc_rplus_anchor_name ...): by anchor id
+    struct Info {
+        std::string name;
+        std::vector<std::string> checks;
+        int village = -1;
+    };
+    std::map<std::string, Info> info;
+    struct Village {
+        int id, cx, cy;
+        std::string name;
+    };
+    std::vector<Village> villages;
 };
+
+// The rest of a line after its first n words, without the newline
+std::string restAfter(const char* p, int words) {
+    for (int w = 0; w < words; w++) {
+        while (*p == ' ') {
+            p++;
+        }
+        while (*p != ' ' && *p != '\0' && *p != '\n') {
+            p++;
+        }
+    }
+    while (*p == ' ') {
+        p++;
+    }
+    std::string s(p);
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r' || s.back() == ' ')) {
+        s.pop_back();
+    }
+    return s;
+}
 
 World& world() {
     static World w;
@@ -100,6 +134,28 @@ World& world() {
                         a.stage[0] = '\0';
                     }
                     w.anchors.push_back(a);
+                }
+            } else if (strncmp(p, "name ", 5) == 0 || strncmp(p, "check ", 6) == 0) {
+                char id[32];
+                if (sscanf(p + (p[0] == 'n' ? 5 : 6), "%31s", id) == 1) {
+                    World::Info& in = w.info[id];
+                    if (p[0] == 'n') {
+                        in.name = restAfter(p, 2);
+                    } else {
+                        in.checks.push_back(restAfter(p, 2));
+                    }
+                }
+            } else if (strncmp(p, "village ", 8) == 0) {
+                World::Village v{};
+                if (sscanf(p + 8, "%d %d %d", &v.id, &v.cx, &v.cy) == 3) {
+                    v.name = restAfter(p, 4);
+                    w.villages.push_back(v);
+                }
+            } else if (strncmp(p, "member ", 7) == 0) {
+                int v;
+                char id[32];
+                if (sscanf(p + 7, "%d %31s", &v, id) == 2) {
+                    w.info[id].village = v;
                 }
             }
         }
@@ -199,5 +255,49 @@ extern "C" int pc_rplus_anchor(int i, const char** id, const char** kind, const 
     *stage = a.stage;
     *cx = a.cx;
     *cy = a.cy;
+    return 1;
+}
+
+extern "C" const char* pc_rplus_anchor_name(const char* id) {
+    const World& w = world();
+    const auto it = w.info.find(id);
+    return w.loaded && it != w.info.end() ? it->second.name.c_str() : "";
+}
+
+extern "C" int pc_rplus_anchor_check_count(const char* id) {
+    const World& w = world();
+    const auto it = w.info.find(id);
+    return w.loaded && it != w.info.end() ? (int)it->second.checks.size() : 0;
+}
+
+extern "C" const char* pc_rplus_anchor_check(const char* id, int i) {
+    const World& w = world();
+    const auto it = w.info.find(id);
+    if (!w.loaded || it == w.info.end() || i < 0 || i >= (int)it->second.checks.size()) {
+        return "";
+    }
+    return it->second.checks[(size_t)i].c_str();
+}
+
+extern "C" int pc_rplus_anchor_village(const char* id) {
+    const World& w = world();
+    const auto it = w.info.find(id);
+    return w.loaded && it != w.info.end() ? it->second.village : -1;
+}
+
+extern "C" int pc_rplus_village_count(void) {
+    return world().loaded ? (int)world().villages.size() : 0;
+}
+
+extern "C" int pc_rplus_village(int i, int* id, const char** name, int* cx, int* cy) {
+    const World& w = world();
+    if (!w.loaded || i < 0 || i >= (int)w.villages.size()) {
+        return 0;
+    }
+    const World::Village& v = w.villages[(size_t)i];
+    *id = v.id;
+    *name = v.name.c_str();
+    *cx = v.cx;
+    *cy = v.cy;
     return 1;
 }

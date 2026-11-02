@@ -1608,6 +1608,7 @@ void dSv_info_c::init() {
     // Randomizer+: a new game's house decor (the starting pieces) and weapons (none), until a file's is read
     pc_rplus_decor_reset();
     pc_rplus_camps_reset();
+    pc_rplus_places_reset();
     pc_rplus_weapon_reset();
 #endif
 }
@@ -2089,6 +2090,7 @@ int dSv_info_c::memory_to_card(char* i_cardPtr, int i_dataNum) {
         // Randomizer+: the house decor's and the weapons' files with the save
         pc_rplus_decor_save(i_dataNum);
         pc_rplus_camps_save(i_dataNum);
+        pc_rplus_places_save(i_dataNum);
         pc_rplus_weapon_save(i_dataNum);
 #endif
         return 0;
@@ -2182,6 +2184,7 @@ int dSv_info_c::card_to_memory(char* i_cardPtr, int i_dataNum) {
         // Randomizer+: the house decor and the weapons the file had
         pc_rplus_decor_load(i_dataNum);
         pc_rplus_camps_load(i_dataNum);
+        pc_rplus_places_load(i_dataNum);
         pc_rplus_weapon_load(i_dataNum);
 #endif
         return 0;

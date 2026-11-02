@@ -545,6 +545,8 @@ void locations(std::string& out) {
                     done = kept;
                     sSnapshot.keptOnly += done && !live ? 1 : 0;
                 }
+                sSnapshot.done.resize(kLocationCount);
+                sSnapshot.done[size_t(&l - kLocations)] = done;
                 inner.key(l.detailed);
                 out += done ? "true" : "false";
                 area.checked += done ? 1 : 0;
@@ -1033,6 +1035,20 @@ bool gameFont(GameFont& out) {
 
 const Snapshot& snapshot() {
     return sSnapshot;
+}
+
+int locationDone(const std::string& full) {
+    static std::map<std::string, size_t> sIndex;
+    if (sIndex.empty()) {
+        for (size_t i = 0; i < kLocationCount; i++) {
+            sIndex[std::string(kLocations[i].general) + " - " + kLocations[i].detailed] = i;
+        }
+    }
+    const auto it = sIndex.find(full);
+    if (it == sIndex.end() || it->second >= sSnapshot.done.size()) {
+        return -1;
+    }
+    return sSnapshot.done[it->second] ? 1 : 0;
 }
 
 } // namespace pc::tracker
