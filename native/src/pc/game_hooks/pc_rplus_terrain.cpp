@@ -2179,15 +2179,19 @@ bool inlandAt(const Layout& L, float x, float z, float r) {
     if (!solidLand(L, x, z)) {
         return false;
     }
+    float ring = 0.0f;
     for (float rr : {r * 0.5f, r}) {
         for (int k = 0; k < 8; k++) {
             const float a = k * 6.2831853f / 8.0f;
-            if (natAt(L, x + sinf(a) * rr, z + cosf(a) * rr) < LAND_BASE + 60.0f) {
+            const float h = natAt(L, x + sinf(a) * rr, z + cosf(a) * rr);
+            if (h < LAND_BASE + 60.0f) {
                 return false;
             }
+            ring += h / 16.0f;
         }
     }
-    return true;
+    // Not perched on a knoll or a ridge above the land round it (the pad would stand it on a mound).
+    return r <= 0.0f || natAt(L, x, z) - ring < 300.0f;
 }
 
 float slopeAt(const Layout& L, float x, float z) {
@@ -2206,7 +2210,7 @@ int roomAtXZ(const Layout& L, float x, float z) {
 // further off, then any land in the room. Never the sea floor (a door there is under water). The first passes
 // want land all round the spot (inlandAt), so the house and its levelled pad stay off the shore.
 void landSpot(const Layout& L, float* x, float* z) {
-    constexpr float INLAND = 1600.0f;
+    constexpr float INLAND = 2400.0f;
     if (inlandAt(L, *x, *z, INLAND) && slopeAt(L, *x, *z) < 0.3f) {
         return;
     }
@@ -2215,7 +2219,7 @@ void landSpot(const Layout& L, float* x, float* z) {
         float reach, slope, inland;
     };
     for (const Pass& ps : {Pass{6000.0f, 0.3f, INLAND}, Pass{24000.0f, 0.3f, INLAND}, Pass{24000.0f, 0.6f, INLAND},
-                           Pass{24000.0f, 0.6f, 800.0f}, Pass{50000.0f, 9.0f, 0.0f}}) {
+                           Pass{24000.0f, 0.6f, 1200.0f}, Pass{50000.0f, 9.0f, 0.0f}}) {
         for (float r = 600.0f; r <= ps.reach; r += 600.0f) {
             for (int k = 0; k < 16; k++) {
                 const float a = k * 6.2831853f / 16.0f;
@@ -2416,7 +2420,7 @@ const Layout& layout() {
         int slots = n;  // the houses on the ring: the doors' and some more (homes without a way in)
         auto fits = [&](float mx, float mz) {
             // The plaza on gentle ground well off the shore (the town is levelled to its middle's height).
-            if (!inlandAt(L, mx, mz, 1600.0f) || slopeAt(L, mx, mz) > 0.35f) {
+            if (!inlandAt(L, mx, mz, 2400.0f) || slopeAt(L, mx, mz) > 0.3f) {
                 return false;
             }
             const float my = natAt(L, mx, mz);
@@ -2430,7 +2434,7 @@ const Layout& layout() {
                         const float a = a0 + k * 6.2831853f / slots;
                         const float hx = mx + sinf(a) * R, hz = mz + cosf(a) * R;
                         // The house behind the door, and the yard in front, on land.
-                        ok = inlandAt(L, hx, hz, 900.0f) && slopeAt(L, hx, hz) < 0.45f &&
+                        ok = inlandAt(L, hx, hz, 1200.0f) && slopeAt(L, hx, hz) < 0.4f &&
                              fabsf(natAt(L, hx, hz) - my) < 450.0f &&
                              solidLand(L, mx + sinf(a) * (R + 500.0f), mz + cosf(a) * (R + 500.0f)) &&
                              lineOnLand(L, mx, mz, hx, hz);
