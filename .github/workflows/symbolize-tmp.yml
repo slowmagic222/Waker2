@@ -1,0 +1,21 @@
+name: symbolize-tmp
+on:
+  push:
+    branches: ['claude/symbolize-tmp']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  sym:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: waker2-steamdeck-179d8e1-debug-symbols
+          run-id: 41580932998
+          github-token: ${{ github.token }}
+          path: sym
+      - run: |
+          ls -la sym
+          for a in 0x694ffd 0x695228 0x69471f 0x695eae 0x696988 0x1f2f9b 0x20a109; do echo "== $a"; addr2line -f -C -i -e sym/switchwaker.debug $a; done
+          objdump -d --no-show-raw-insn -C --start-address=0x694fd0 --stop-address=0x695010 sym/switchwaker.debug | tail -25
