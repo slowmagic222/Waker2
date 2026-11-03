@@ -542,5 +542,22 @@ extern "C" void pc_rplus_boot(void) {
         makeDirs(dir);
         setenv("COS_SAVE_DIR", dir.c_str(), 1);
         pc::writef(STDERR_FILENO, "[rplus] save files of their own: %s\n", dir.c_str());
+        // A world already saved in (the save writes rplus-places-*.txt next to the card): through the title screen,
+        // so the file can be loaded. The Randomizer+ test launcher's COS_BOOT_STAGE / COS_BOOT_PRESET would start a
+        // new file every time (Deck 2026-11-03: saves never loaded).
+        bool saved = false;
+        if (DIR* d = opendir(dir.c_str())) {
+            while (struct dirent* e = readdir(d)) {
+                saved = saved || strncmp(e->d_name, "rplus-places-", 13) == 0;
+            }
+            closedir(d);
+        }
+        const char* boot = getenv("COS_BOOT_STAGE");
+        if (saved && boot != nullptr && boot[0] != '\0') {
+            unsetenv("COS_BOOT_STAGE");
+            unsetenv("COS_BOOT_PRESET");
+            pc::writef(STDERR_FILENO, "[rplus] this world has a save: the title screen instead of a new file at %s\n",
+                       boot);
+        }
     }
 }
