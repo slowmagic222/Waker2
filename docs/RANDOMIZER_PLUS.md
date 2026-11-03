@@ -144,6 +144,14 @@ reads the world at start (`native/src/pc/features/pc_rplus.cpp`). Then, on the G
   `COS_RPLUS_DECOR_FIGURES` (48) figurines stand there at once, the last found. What was found and where it stands
   is kept per save file in `rplus-decor-<seed>-<slot>.txt` next to the memory card, written with the save
   (`dSv_info_c::memory_to_card`) and read with the file (`card_to_memory`).
+- **Fairy springs** (`placeFairies`, `COS_RPLUS_FAIRIES=0` to turn them off): in half the rooms, one glade on flat
+  open grass or forest high ground (away from the start and the towns) with 3 or 4 healing fairies (`Sfairy`, type
+  0) flying round it. Where comes from the seed and the room alone.
+- **Beedle's stands**: 3 to 5 a world, each two or three cells off a house or person's anchor (so often in a town),
+  at least 12 cells apart. A stand is a generated door (house look) into Beedle's shop (`Obshop` room 1, the
+  regular shop, not Rock Spire's). Going in sets the ship id to 0xFE and the ship's room to the stand's, so his
+  shop's way out (exit 0x3D) brings Link back out of the same stand (`pc_rplus_next_stage`; `doorOfStage` prefers
+  the door Link went in by). In by one of his real ships, Link comes back out on its deck as before.
 - **Calling the boat**: the Wind's Requiem played on land also moves the boat to the shore nearest Link
   (`pc_rplus_call_ship`, the same shore search that places the boat when a square loads).
 - The generated rooms load none of their own actors (`dStage_dt_c_roomReLoader`); the far-away island models

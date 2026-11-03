@@ -2049,6 +2049,13 @@ const Interior kInteriors[] = {
     {"TF_06", 0, 0, 1, nullptr},   {"TyuTyu", 0, 0, 1, nullptr},  {"WarpD", 0, 0, 1, nullptr},
 };
 
+// Beedle's stands: small shops on land whose door opens to his shop ship's inside (Obshop room 1, the regular
+// shop; Rock Spire's special shop is not one of them). Kept out of kInteriors so the sea anchors that name Obshop
+// (his ships) do not become doors.
+const Interior kBeedleStand = {"Obshop", 0, 1, 0, nullptr};
+const char* const kBeedleStandIds[] = {"beedle_stand_1", "beedle_stand_2", "beedle_stand_3", "beedle_stand_4",
+                                       "beedle_stand_5"};
+
 constexpr float LINK_HOUSE_EAST = 1400.0f;  // the start cell's own house (Outset's), beside Link's home
 constexpr float DOOR_GAP = 1000.0f;         // doors closer than this to one already placed are left out
 constexpr int DOORS_PER_ROOM = HOME_EXIT - DOOR_EXIT0;
@@ -2244,6 +2251,47 @@ const Layout& layout() {
             continue;
         }
         cands.push_back({in, id, x, z});
+    }
+    // Beedle's stands: 3 to 5, each two or three cells off a house or person's anchor (often joining its town).
+    {
+        std::vector<std::pair<int, int>> homes;
+        for (int i = 0; i < pc_rplus_anchor_count(); i++) {
+            const char *id, *kind, *stage;
+            int cx, cy;
+            if (pc_rplus_anchor(i, &id, &kind, &stage, &cx, &cy) &&
+                (strcmp(kind, "house") == 0 || strcmp(kind, "npc") == 0)) {
+                homes.push_back({cx, cy});
+            }
+        }
+        const u32 seed = pc_rplus_seed() ^ 0xBEED1Eu;
+        const int want = 3 + (int)(seed % 3);
+        int made = 0;
+        for (int t = 0; t < 200 && made < want && !homes.empty(); t++) {
+            const u32 h = hash2((int)(seed & 0x7FFFFFFF), t * 7919 + 13);
+            const auto& home = homes[h % homes.size()];
+            const int dist = 2 + (int)((h >> 8) & 1);
+            static const int kDir[8][2] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+            const int* dir = kDir[(h >> 12) & 7];
+            const int cx = home.first + dir[0] * dist, cy = home.second + dir[1] * dist;
+            if (pc_rplus_cell_height(cx, cy) == 0 || (cx == sx && cy == sy)) {
+                continue;
+            }
+            const float x = L.x0 + (cx + 0.5f) * cs, z = L.z0 + (cy + 0.5f) * cs;
+            const int room = roomAtXZ(L, x, z);
+            if (room == 0 || !pc_rplus_sea_room_generated(room)) {
+                continue;
+            }
+            bool apart = true;
+            for (const Cand& c : cands) {
+                if (c.in == &kBeedleStand && (c.x - x) * (c.x - x) + (c.z - z) * (c.z - z) < 12.0f * cs * 12.0f * cs) {
+                    apart = false;  // spread over the world
+                }
+            }
+            if (!apart) {
+                continue;
+            }
+            cands.push_back({&kBeedleStand, kBeedleStandIds[made++], x, z});
+        }
     }
 
     // On land first (the coasts wander off the cells the anchors were put on).
@@ -2741,8 +2789,20 @@ int startSpot(float* x, float* z) {
     return roomAtXZ(L, *x, *z);
 }
 
-// The door whose interior is stage (or whose also is), else nullptr.
+constexpr u8 STAND_SHIP_ID = 0xFE;  // the ship id a stand's way in sets (a moored ship sets its own)
+
+// The door Link last went in by (its anchor id): several doors open to one interior (Beedle's stands to Obshop).
+const char* sEnteredId = nullptr;
+
+// The door whose interior is stage (or whose also is), else nullptr: the one Link went in by when it is one of them.
 const GenDoor* doorOfStage(const char* stage) {
+    if (sEnteredId != nullptr) {
+        for (const GenDoor& d : genDoors()) {
+            if (strcmp(d.id, sEnteredId) == 0 && strcmp(d.stage, stage) == 0) {
+                return &d;
+            }
+        }
+    }
     for (const GenDoor& d : genDoors()) {
         if (strcmp(d.stage, stage) == 0) {
             return &d;
@@ -2792,6 +2852,13 @@ int pc_rplus_exit(int exitId, f32 speed, u32 mode) {
     }
     fprintf(stderr, "[rplus] through door %s into %s (point %d, room %d)\n", door->id, door->stage, door->spawn,
             door->room);
+    sEnteredId = door->id;
+    if (strcmp(door->stage, "Obshop") == 0) {
+        // Its way out (exit 0x3D, dStage_changeSceneExitId) goes back to the ship's room; pc_rplus_next_stage then
+        // brings Link out of this stand's door.
+        dComIfGp_setIkadaShipBeforeRoomId(door->seaRoom);
+        dComIfGp_setIkadaShipId(STAND_SHIP_ID);
+    }
     dComIfGp_setNextStage(door->stage, door->spawn, door->room, -1, speed, mode, TRUE, 0);
     return 1;
 }
@@ -2803,6 +2870,9 @@ int pc_rplus_next_stage(const char** stage, s16* point, s8* room) {
     // Out of an interior with a generated door, back to its island's room: out of that door instead. Whatever
     // sends Link out (an exit floor, a cave mouth's actor, a warp, an event), so this sits on the next stage itself.
     const char* stageName = dComIfGp_getStartStageName();
+    if (strcmp(stageName, "Obshop") == 0 && dComIfGp_getIkadaShipId() != STAND_SHIP_ID) {
+        return 0;  // in by one of Beedle's own ships: back out on its deck
+    }
     const GenDoor* door = doorOfStage(stageName);
     if (door == nullptr || (door->exitId != HOME_EXIT && !pc_rplus_sea_room_generated(*room)) ||
         (door->exitId == HOME_EXIT && (*room != CABANA_ROOM || *point != CABANA_OUT_POINT))) {
