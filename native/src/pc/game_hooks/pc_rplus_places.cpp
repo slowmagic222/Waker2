@@ -33,7 +33,7 @@ struct Place {
     std::string key, name, anchor, stage;
     char kind;
     float x, z;
-    float reach;  // found within this of Link
+    float reach;  // found within this of Link (0: only by going in its door)
     int camp = -1;
     bool world;   // one of the world's own (counted in the total), not a camp or tower
 };
@@ -192,7 +192,7 @@ void build() {
         p.kind = home ? 'H' : kindOfAnchor(d.id);
         p.x = d.x;
         p.z = d.z;
-        p.reach = 2500.0f;
+        p.reach = 0.0f;  // a door is found by going through it, not by walking past (Dillon, 2026-11-03)
         p.world = true;
         sPlaces.push_back(p);
         if (home) {
@@ -329,7 +329,7 @@ void pc_rplus_places_frame(void) {
     }
     const float lx = link->current.pos.x, lz = link->current.pos.z;
     for (const Place& p : sPlaces) {
-        if ((lx - p.x) * (lx - p.x) + (lz - p.z) * (lz - p.z) < p.reach * p.reach) {
+        if (p.reach > 0.0f && (lx - p.x) * (lx - p.x) + (lz - p.z) * (lz - p.z) < p.reach * p.reach) {
             markFound(p, true);
         }
     }

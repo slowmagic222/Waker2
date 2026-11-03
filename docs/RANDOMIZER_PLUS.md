@@ -223,8 +223,8 @@ only the places Link has found (`native/src/pc/game_hooks/pc_rplus_places.cpp`, 
 - **Places:** the towns (named after the world file's village most of their doors belong to; the start's is
   "Home"), every generated door (houses, caves, dungeon entrances, fairy fountains, Link's home), the NPCs standing at
   anchors of their own (Maggie, Zunari, Tott...), and the enemy camps and lookout towers once their rooms make them.
-- **Found:** Link on the sea within reach of it (a door 2500, an NPC 1800, a camp 3500, a tower 5000, a town its
-  ring + 2000), or in a door's interior. Undiscovered places are not shown at all; the header says
+- **Found:** a door (house, cave, dungeon, fountain) only once Link goes through it (in its interior); the rest
+  when Link on the sea comes within reach of it (an NPC 1800, a camp 3500, a tower 5000, a town its ring + 2000). Undiscovered places are not shown at all; the header says
   "Places found N / M" (camps and towers are not in M). Link's home is known from the start.
 - **The chart:** the world's land in its biomes' colours; squares not sailed in yet (the save's arrive bits, as the
   sea chart; a found place opens its square too; every square with Reveal chart) stay dark. A mark per found place:
