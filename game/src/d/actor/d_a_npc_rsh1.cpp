@@ -1226,6 +1226,13 @@ BOOL daNpc_Rsh1_c::shopPosMove() {
 /* 00002C2C-00002E00       .text pathMove__12daNpc_Rsh1_cFPi */
 BOOL daNpc_Rsh1_c::pathMove(int* param_1) {
     dPnt* point;
+#if TARGET_PC
+    if (mpPath == NULL) {
+        // Randomizer+ stands Zunari in a generated room, which has no shop path (Deck crash 2026-11-03, addr 0x8):
+        // he stays where he is, as if at his spot.
+        return TRUE;
+    }
+#endif
     
     s8 temp;
     int temp2;
