@@ -9,6 +9,7 @@
 // Kept per seed and file in rplus-places-<seed>-<slot>.txt next to the saves (one found place a line: its key, where
 // it is and its kind, so a camp found once shows even while its room is not loaded), read and written with the save
 // as the camps' file is.
+// Each world also keeps its own tracker progress (pc_tracker.cpp progressKey).
 // Log lines: "[rplus] places: ..." once the places are made, "[rplus] found <name> (<key>) at x z" per place found.
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
