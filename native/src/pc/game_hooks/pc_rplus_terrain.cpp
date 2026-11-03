@@ -3685,23 +3685,28 @@ bool pc_rplus_call_ship(const cXyz& from) {
 namespace {
 
 // What the world's logic starts with (scripts/rplus/wwlogic.py DEFAULT_START, wwrando's defaults with "Start with
-// Hero's Sword"): given at sea to a file that has no sword yet, as a new file in Randomizer+ is.
+// Hero's Sword"): given at sea to a file that has neither a sword nor Wind's Requiem yet, as a new file in
+// Randomizer+ is. The Randomizer+ tab's "Starting sword: off" (Dillon, 2026-11-03) leaves the sword out.
 void giveStartGear() {
     if (dComIfGs_isCollect(0, 0) || dComIfGs_isCollect(0, 1) || dComIfGs_isCollect(0, 2) ||
-        dComIfGs_isCollect(0, 3)) {
+        dComIfGs_isCollect(0, 3) || dComIfGs_checkGetItem(dItemNo_WINDS_REQUIEM_e)) {
         return;
     }
+    const bool sword = pc_rplus_start_sword() != 0;
     static const u8 kGear[] = {dItemNo_SWORD_e,         dItemNo_SHIELD_e,          dItemNo_WIND_WAKER_e,
                                dItemNo_WINDS_REQUIEM_e, dItemNo_BALLAD_OF_GALES_e, dItemNo_SONG_OF_PASSING_e,
                                dItemNo_SAIL_e,          dItemNo_MAGIC_POWER_e};
     for (u8 item : kGear) {
-        execItemGet(item);
+        if (item != dItemNo_SWORD_e || sword) {
+            execItemGet(item);
+        }
     }
     if (dComIfGs_getMaxMagic() == 0) {
         dComIfGp_setItemMaxMagicCount(16);
         dComIfGp_setItemMagicCount(16);
     }
-    fprintf(stderr, "[rplus] new file: gave the start gear (sword, shield, Wind Waker, 3 songs, sail, magic)\n");
+    fprintf(stderr, "[rplus] new file: gave the start gear (%sshield, Wind Waker, 3 songs, sail, magic)\n",
+            sword ? "sword, " : "no sword, ");
 }
 
 } // namespace

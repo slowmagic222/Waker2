@@ -278,7 +278,7 @@ void startGenerateLocked() {
 
 // ---- rows ----------------------------------------------------------------------------------------
 
-enum class RowType { Header, Generate, World, Seed, Saves, Restart };
+enum class RowType { Header, Generate, World, Sword, Seed, Saves, Restart };
 struct Row {
     RowType type;
     const char* es;
@@ -288,6 +288,7 @@ const Row kRows[] = {
     {RowType::Header, "Mundo", "World"},
     {RowType::Generate, "Crear mundo", "Make a world"},
     {RowType::World, "Mundo a jugar", "World to play"},
+    {RowType::Sword, "Espada al empezar", "Starting sword"},
     {RowType::Header, "Semilla y partidas", "Seed and saves"},
     {RowType::Seed, "Semilla a jugar", "Seed to play"},
     {RowType::Saves, "Partidas", "Save files"},
@@ -350,6 +351,9 @@ std::string rowValue(int row) {
         const std::string world = valueOf("world");
         return worldText(world) + (world != sBootWorld ? T("  (al reiniciar)", "  (on restart)") : "");
     }
+    case RowType::Sword:
+        return valueOf("sword") == "off" ? T("No (se encuentra en un premio)", "Off (found in a check)")
+                                         : T("Sí", "On");
     case RowType::Saves: {
         const std::string saves = valueOf("saves");
         return std::string(saves == "own" ? T("Propias de cada semilla", "Own for each seed")
@@ -385,6 +389,13 @@ std::string rowHelp(int row) {
         return T("Izquierda/derecha: el mundo que carga el juego (se guarda). Desactivado: el mar de siempre. "
                  "Se aplica al reiniciar.",
                  "Left/right: the world the game loads (kept). Off: the usual Great Sea. Applies on restart.");
+    case RowType::Sword:
+        return T("Sí: una partida nueva empieza con la Espada del Héroe. No: Link empieza sin espada y la encuentra "
+                 "en un premio. Para que la semilla lo tenga en cuenta, créala con el modo de espada \"No Starting "
+                 "Sword\" en la pestaña Randomizer. Se aplica a partidas nuevas.",
+                 "On: a new file starts with the Hero's Sword. Off: Link starts without a sword and finds it in a "
+                 "check. For the seed's logic to match, make it with Sword Mode \"No Starting Sword\" on the "
+                 "Randomizer tab. Applies to new files.");
     case RowType::Seed: return seedgen::rowHelp(seedgen::playRow());
     case RowType::Saves:
         return T("Compartidas: una sola tarjeta de memoria para todo. Propias: cada semilla (y cada mundo) tiene "
@@ -438,6 +449,14 @@ void activate(int row, int dir) {
         saveLocked();
         break;
     }
+    case RowType::Sword:
+        if (valueOf("sword") == "off") {
+            sValues.erase("sword");
+        } else {
+            sValues["sword"] = "off";
+        }
+        saveLocked();
+        break;
     case RowType::Saves:
         if (valueOf("saves") == "own") {
             sValues.erase("saves");
@@ -465,6 +484,13 @@ bool takeWorldReady() {
 }
 
 } // namespace pc::rplus_menu
+
+extern "C" int pc_rplus_start_sword(void) {
+    using namespace pc::rplus_menu;
+    std::lock_guard<std::mutex> lock(sMu);
+    loadLocked();
+    return valueOf("sword") == "off" ? 0 : 1;
+}
 
 extern "C" void pc_rplus_boot(void) {
     using namespace pc::rplus_menu;

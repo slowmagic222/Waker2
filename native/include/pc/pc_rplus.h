@@ -54,6 +54,9 @@ int pc_rplus_test_start(void);
  * "Save files: own for each seed" sets COS_SAVE_DIR (<user dir>/saves/<seed>[+<world>]/), the memory
  * card's folder pc_aurora_init gives Aurora. */
 void pc_rplus_boot(void);
+/* The Randomizer+ tab's "Starting sword" (Dillon, 2026-11-03): 1 (the default) when a new file's start gear has the
+ * Hero's Sword, 0 when Link starts without one. */
+int pc_rplus_start_sword(void);
 
 #ifdef __cplusplus
 }

@@ -223,6 +223,9 @@ The options menu has a **Randomizer+** tab (`native/src/pc/features/pc_rplus_men
   the world to play. At the title screen the game restarts into it at once. Not on the Switch (no Python): there,
   copy worlds to `user/rando/rplus/<name>/world.rpw`.
 - **World to play**: the launcher's (`COS_RPLUS_WORLD`), off, or any world in `user/rando/rplus/`.
+- **Starting sword**: on (a new file starts with the Hero's Sword, as wwrando's default) or off (Link starts
+  without one and finds it in a check; make the seed with Sword Mode "No Starting Sword" on the Randomizer tab so its
+  logic and item pool match). Applies to new files (`giveStartGear`, `pc_rplus_start_sword`).
 - **Seed to play**: the Randomizer tab's row, here too.
 - **Save files**: shared (one memory card) or own for each seed: a card per randomizer seed and world in
   `user/saves/<seed>[+<world>]/`, with its 3 files.
