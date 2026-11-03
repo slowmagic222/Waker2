@@ -42,6 +42,8 @@
 #if TARGET_PC
 #include "pc/pc_controls.h"
 #include "pc/pc_rando.h"
+#include "pc/pc_settings.h"
+#include <string.h>
 
 // The C stick as the camera reads it (mStickCPos*Last; nothing else in the camera reads the C
 // stick's position). On PC the options can invert either axis (pc_controls.h); only the camera:
@@ -4698,6 +4700,14 @@ bool dCamera_c::CalcSubjectAngle(s16* param_1, s16* param_2) {
     
     fVar6 = CPad_GET_STICK_POS_X(mPadId);
     fVar5 = CPad_GET_STICK_POS_Y(mPadId);
+#if TARGET_PC
+    // QoL COS_QOL_TELESCOPE_INVERT_Y: looking through the telescope, up on the stick looks down (as a flight
+    // stick); the camera and the other first-person views keep their directions
+    if (check_owner_action(mPadId, daPyStts0_TELESCOPE_LOOK_e) &&
+        strcmp(pc_settings_get("COS_QOL_TELESCOPE_INVERT_Y"), "1") == 0) {
+        fVar5 = -fVar5;
+    }
+#endif
 
     if (is_player(mpPlayerActor)) {
         mWork.subject.m3B8 = ((daPy_py_c*)mpPlayerActor)->getBodyAngleX();
