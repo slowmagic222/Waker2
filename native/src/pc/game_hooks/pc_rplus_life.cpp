@@ -172,6 +172,7 @@ struct Pools {
     std::vector<Entry> enemies;            // one entry per (kind, params) seen
     std::vector<Entry> campDecor;          // a camp's fire and pots, as the disc has them (first seen of each)
     std::vector<Entry> chests;             // the chests of the generated sea rooms, in disc order
+    float towerDeck = -1e9f;               // a lookout platform's deck over its origin, from the sea's (-1e9: none)
 };
 const char* const kCampDecor[] = {"Fire", "kotubo", "ootubo1"};
 
@@ -210,6 +211,21 @@ Pools& pools() {
             }
         }
     }
+    // The sea's lookout platforms: how high over a platform's origin its Bokoblins and chests stand (its deck,
+    // under its roof).
+    for (const Entry& tw : all) {
+        if (strcmp(tw.name, "Aygr") != 0 || tw.room < 0) {
+            continue;
+        }
+        for (const Entry& e : all) {
+            const float up = e.y - tw.y;
+            if (e.room == tw.room && (e.proc == fpcNm_TBOX_e || strcmp(e.name, "Bk") == 0) && up > 200.0f &&
+                up < 5000.0f && fabsf(e.x - tw.x) < 500.0f && fabsf(e.z - tw.z) < 500.0f) {
+                p.towerDeck = p.towerDeck < -1e8f ? up : std::min(p.towerDeck, up);
+            }
+        }
+    }
+    fprintf(stderr, "[rplus] lookout platforms' deck: %.0f over the water\n", p.towerDeck);
     for (const Entry& e : all) {
         for (const char* dn : kCampDecor) {
             bool seen = false;
@@ -690,21 +706,38 @@ bool towerChestFromStart(int key) {
 }
 
 // The deck under (x, z): the first ground from high above, if it is well over the land (the tower's, not the land's).
-bool deckAt(float x, float z, float* y) {
-    const float land = rplus::groundY(x, z);
+bool groundFrom(float x, float fromY, float z, float* h) {
     dBgS_ObjGndChk gnd;
-    cXyz top(x, land + 12000.0f, z);
+    cXyz top(x, fromY, z);
     gnd.SetPos(&top);
-    const f32 h = dComIfG_Bgsp()->GroundCross(&gnd);
-    if (h < land + 300.0f || h > land + 11900.0f) {
+    *h = dComIfG_Bgsp()->GroundCross(&gnd);
+    return *h > -1e8f;
+}
+
+// The tower's deck at (x, z), under its roof. From the sea's platforms (how high their Bokoblins and chests stand)
+// when the disc has them: the floor found just over that height. Else the second floor down from high above (the
+// first is the roof's), or the first if there is only one.
+bool deckAt(float x, float z, float originY, float* y) {
+    const float land = rplus::groundY(x, z);
+    const float deck = pools().towerDeck;
+    float h;
+    if (deck > -1e8f) {
+        if (groundFrom(x, originY + deck + 150.0f, z, &h) && h > land + 150.0f && h > originY + deck - 200.0f) {
+            *y = h;
+            return true;
+        }
         return false;
     }
-    *y = h;
+    float roof;
+    if (!groundFrom(x, land + 12000.0f, z, &roof) || roof < land + 300.0f) {
+        return false;
+    }
+    *y = groundFrom(x, roof - 40.0f, z, &h) && h > land + 300.0f ? h : roof;
     return true;
 }
 
 // The deck's enemies and its chest.
-void fillTower(TowerLive& t, float deckY) {
+void fillTower(TowerLive& t, float deckY, float originY) {
     Pools& P = pools();
     struct Pick {
         const char* name;
@@ -725,7 +758,7 @@ void fillTower(TowerLive& t, float deckY) {
         const float a = ((h >> 8) & 0xFF) / 256.0f * 6.2831853f + 3.14159f;
         const float ex = t.x + sinf(a) * 220.0f, ez = t.z + cosf(a) * 220.0f;
         float ey;
-        if (!deckAt(ex, ez, &ey)) {
+        if (!deckAt(ex, ez, originY, &ey) || fabsf(ey - deckY) > 120.0f) {
             ey = deckY;
         }
         const fpc_ProcID id = spawnAt(dn, ex, ey + 5.0f, ez, cM_atan2s(ex - t.x, ez - t.z), t.room, dn.params);
@@ -757,7 +790,7 @@ void fillTower(TowerLive& t, float deckY) {
             const float a = (k + ((h >> 8) & 0xFF) / 256.0f) * 6.2831853f / n;
             const float ex = t.x + sinf(a) * 180.0f, ez = t.z + cosf(a) * 180.0f;
             float ey;
-            if (!deckAt(ex, ez, &ey)) {
+            if (!deckAt(ex, ez, originY, &ey) || fabsf(ey - deckY) > 120.0f) {
                 ey = deckY;
             }
             const fpc_ProcID id = spawnAt(*e, ex, ey + 5.0f, ez, cM_atan2s(ex - t.x, ez - t.z), t.room,
@@ -773,7 +806,7 @@ void fillTower(TowerLive& t, float deckY) {
     if (keese != nullptr) {
         for (int k = 0; k < (int)((h >> 4) % 3); k++) {
             const float a = (h >> (12 + k * 4) & 15) * 0.3927f;
-            spawnAt(*keese, t.x + sinf(a) * 600.0f, deckY + 400.0f, t.z + cosf(a) * 600.0f, 0, t.room,
+            spawnAt(*keese, t.x + sinf(a) * 600.0f, deckY + 200.0f, t.z + cosf(a) * 600.0f, 0, t.room,
                     keese->params | 0x00FF0000u);
         }
     }
@@ -783,7 +816,8 @@ void fillTower(TowerLive& t, float deckY) {
     } else {
         watchCamp(t.key, t.room, t.x, t.z, deckY, ids, nIds);
     }
-    fprintf(stderr, "[rplus] room %d: tower %d's deck at %.0f (%d enemies%s)\n", t.room, t.key, deckY, nIds,
+    fprintf(stderr, "[rplus] room %d: tower %d's deck at %.0f, %.0f over its foot (%d enemies%s)\n", t.room, t.key,
+            deckY, deckY - originY, nIds,
             state == CAMP_NEW && !towerChestFromStart(t.key) ? ", chest when beaten" : "");
 }
 
@@ -887,9 +921,9 @@ void towersFrame() {
             continue;  // still being made
         }
         float deckY;
-        if (deckAt(t.x, t.z, &deckY)) {
+        if (deckAt(t.x, t.z, a->home.pos.y, &deckY)) {
             t.used = false;
-            fillTower(t, deckY);
+            fillTower(t, deckY, a->home.pos.y);
         } else if (++t.frames > TOWER_WAIT_FRAMES) {
             t.used = false;
             fprintf(stderr, "[rplus] room %d: tower %d has no deck to stand on, left empty\n", t.room, t.key);
