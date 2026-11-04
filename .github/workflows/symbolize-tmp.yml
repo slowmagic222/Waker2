@@ -11,11 +11,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: waker2-steamdeck-179d8e1-debug-symbols
-          run-id: 41580932998
+          name: waker2-steamdeck-7fe39bb-debug-symbols
+          run-id: 41584046473
           github-token: ${{ github.token }}
           path: sym
       - run: |
           ls -la sym
-          for a in 0x694ffd 0x695228 0x69471f 0x695eae 0x696988 0x1f2f9b 0x20a109; do echo "== $a"; addr2line -f -C -i -e sym/switchwaker.debug $a; done
-          objdump -d --no-show-raw-insn -C --start-address=0x694fd0 --stop-address=0x695010 sym/switchwaker.debug | tail -25
+          for a in 0x7f0ccb 0x8a884b 0x8a6939 0x42a497 0x430098 0x1f2f9b 0x20a109 0x20bae3 0x1792d9; do echo "== $a"; addr2line -f -C -i -e sym/switchwaker.debug $a; done
+          echo "== crash disasm"
+          objdump -d --no-show-raw-insn -C --start-address=0x8a8800 --stop-address=0x8a8860 sym/switchwaker.debug | tail -30
+          echo "== caller disasm"
+          objdump -d --no-show-raw-insn -C --start-address=0x42a460 --stop-address=0x42a4a0 sym/switchwaker.debug | tail -20
+          echo "== nan caller disasm"
+          objdump -d --no-show-raw-insn -C --start-address=0x7f0c90 --stop-address=0x7f0cd0 sym/switchwaker.debug | tail -20
