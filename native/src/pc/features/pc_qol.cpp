@@ -23,7 +23,8 @@ Option sOptions[PC_QOLS] = {
     {"COS_QOL_SAIL", -1},          {"COS_QOL_SWING_TURN", -1},    {"COS_QOL_NO_SONG_REPLAY", -1},
     {"COS_QOL_FREE_BOAT", -1},     {"COS_QOL_SKIP_INTRO", -1},    {"COS_QOL_FIX_BUGS", -1},
     {"COS_QOL_HUD_BUTTON", -1},    {"COS_QOL_ITEMS_STAY", -1},    {"COS_QOL_ITEM_SETS", -1},
-    {"COS_QOL_SEA_MAP", -1},       {"COS_QOL_AUTOSAVE", -1},
+    {"COS_QOL_SEA_MAP", -1},       {"COS_QOL_AUTOSAVE", -1},      {"COS_QOL_JUMP_BUTTON", -1},
+    {"COS_QOL_CLIMB", -1},
 };
 
 // PC_QOL_BUTTON_*'s COS_PAD_* values, by number (0: off)
@@ -51,7 +52,7 @@ int parse(int which, const char* v) {
                : strcmp(v, "items10") == 0 ? PC_QOL_AUTOSAVE_ITEMS | PC_QOL_AUTOSAVE_TIMER
                                         : 0;
     }
-    if (which == PC_QOL_HUD_BUTTON || which == PC_QOL_ITEM_SETS) {
+    if (which == PC_QOL_HUD_BUTTON || which == PC_QOL_ITEM_SETS || which == PC_QOL_JUMP_BUTTON) {
         for (int i = 1; i < (int)(sizeof(kButtons) / sizeof(kButtons[0])); i++) {
             if (strcmp(v, kButtons[i]) == 0) {
                 return i;

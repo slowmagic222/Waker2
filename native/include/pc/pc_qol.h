@@ -32,6 +32,14 @@
  * COS_QOL_AUTOSAVE=items|10|items10  the game saves to its file on its own (as the save screen does): after
  *                            a new item or upgrade, every 10 minutes of play, or both; only once the
  *                            file was saved by hand on this card, and only when the Start menu could open
+ * COS_QOL_JUMP_BUTTON=<input> a press of that physical button makes Link jump while he stands, walks or
+ *                            runs on the ground (the game's own jump off a ledge, procAutoJump_init:
+ *                            its animation, voice, arc, ledge grabs and glides); <input> as for
+ *                            COS_QOL_HUD_BUTTON (pc_qol_hooks.cpp, d_a_player_main.cpp)
+ * COS_QOL_CLIMB=1            Link climbs any plain wall as he climbs ivy, Breath of the Wild style, on
+ *                            a stamina wheel drawn beside him (COS_QOL_CLIMB_STAMINA seconds of
+ *                            climbing, 12 by default); out of stamina he lets go, and grabs again once
+ *                            it has refilled on the ground
  *
  * All off by default (0: the original game). Each value is read from the environment (the settings
  * file's value, pc_settings.h) the first time the game asks; the menu's apply function sets it
@@ -64,6 +72,8 @@ typedef enum PcQol {
     PC_QOL_ITEM_SETS,
     PC_QOL_SEA_MAP,
     PC_QOL_AUTOSAVE,
+    PC_QOL_JUMP_BUTTON,
+    PC_QOL_CLIMB,
     PC_QOLS
 } PcQol;
 
@@ -83,7 +93,7 @@ typedef enum PcQol {
 #define PC_QOL_AUTOSAVE_TIMER 2 /* "10": every 10 minutes of play */
 
 /* The option's value: 0 off (the original game), else on (PC_QOL_SAIL: PC_QOL_SAIL_SWIFT/BRISK;
-   PC_QOL_HUD_BUTTON, PC_QOL_ITEM_SETS: PC_QOL_BUTTON_*). */
+   PC_QOL_HUD_BUTTON, PC_QOL_ITEM_SETS, PC_QOL_JUMP_BUTTON: PC_QOL_BUTTON_*). */
 int pc_qol(PcQol which);
 /* PC_QOL_SAIL's speed part: PC_QOL_SAIL_SWIFT or PC_QOL_SAIL_BRISK, else 0 (off or the wind only). */
 int pc_qol_fast_sail(void);
@@ -101,6 +111,18 @@ int pc_qol_hud_hidden(void);
 /* The game thread, once per frame after the options menu (pc_frame.cpp): the HUD and item set buttons
    (pc_qol_hooks.cpp). */
 void pc_qol_frame(void);
+/* COS_QOL_JUMP_BUTTON (pc_qol_hooks.cpp): 1 once for a press of the jump button, which daPy_lk_c::execute
+   spends on Link's next frame, jump or not; a press it does not take within two frames lapses. */
+int pc_qol_jump_take(void);
+/* COS_QOL_CLIMB (pc_climb.cpp), from the player's code: 1 if Link may hold on to a plain wall now (the
+   option is on and the stamina wheel is not empty or refilling after running out). */
+int pc_qol_climb_can_grab(void);
+/* Link held on to a plain wall in this frame's climbing (setMoveBGCorrectClimb). */
+void pc_qol_climb_plain(void);
+/* Once per player frame (daPy_lk_c::execute): `climbing` Link is in a climbing proc, `ground` he stands
+   on the ground (not in the air or swimming), `still` the stick is let go; `shoulder` where the wheel
+   goes, in the world. Drains and refills the wheel. */
+void pc_qol_climb_frame(int climbing, int ground, int still, const float shoulder[3]);
 /* A short line for the corner of the screen ("Guardado", an autosave just finished), NULL if none now. */
 const char* pc_qol_notice(void);
 
