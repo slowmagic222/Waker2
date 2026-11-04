@@ -3,6 +3,7 @@
 // game_hooks/pc_rplus_terrain.cpp.
 #include "pc_internal.h"
 #include "pc/pc_rplus.h"
+#include "JSystem/JKernel/JKRHeap.h"
 #include "pc/pc_settings.h"
 #include <cstdio>
 #include <cstdlib>
@@ -69,6 +70,7 @@ World& world() {
     static bool tried = false;
     if (!tried) {
         tried = true;
+        JKRPcHostAllocScope host;  // the world lasts the whole run, not in the current game heap
         const char* path = getenv("COS_RPLUS_WORLD");
         if (path == nullptr || path[0] == '\0') {
             return w;
