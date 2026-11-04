@@ -835,8 +835,8 @@ fpc_ProcID fopAcM_createItemForTrBoxDemo(cXyz* pos, int i_itemNo, int roomNo, in
 
 #if TARGET_PC
     // Randomizer+: a check of filler also gives a weapon (pc_weapon_unlocks.cpp) or else a house decor piece
-    // (pc_rplus_decor.cpp).
-    if (!pc_rplus_weapon_check(i_itemNo)) {
+    // (pc_rplus_decor.cpp). Not a plain camp chest's (pc_rplus_life.cpp campUnlock): it gives its own item.
+    if (!pc_rplus_camp_chest_plain_take() && !pc_rplus_weapon_check(i_itemNo)) {
         pc_rplus_decor_check(i_itemNo);
     }
 #endif

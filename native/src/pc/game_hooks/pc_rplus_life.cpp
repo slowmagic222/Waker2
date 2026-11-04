@@ -19,6 +19,7 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_stage.h"
 #include "d/d_camera.h"
+#include "d/actor/d_a_tn.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_pc/f_pc_name.h"
 #include "m_Do/m_Do_audio.h"
@@ -503,41 +504,121 @@ struct CampLive {
     int n;
     fpc_ProcID ids[CAMP_ENEMIES];
     bool seen[CAMP_ENEMIES];  // made: one that never was (its spot failed) doesn't count
+    s16 deadFrames[CAMP_ENEMIES];  // frames it has been alive with no health left
+    int clearFrames;               // a tower's: frames with Link on its deck and none of its enemies left there
+    int logFrames;                 // frames since its enemies left were last logged
 };
 CampLive sCamps[CAMPS_LIVE];
 
-// The camp's filler: rupees mostly, now and then a silver rupee or three hearts.
-u8 campItem(int key) {
-    if (key == PG_KEY) {
-        return dItemNo_SILVER_RUPEE_e;  // Phantom Ganon's
+// Enemies of ours that died but are still there (health gone, the actor not), or a Darknut thrown down that never
+// gets up: after this long they are taken away as if they had died, so a camp or a tower can still be beaten
+// (Dillon, 2026-11-04: "I found a darknut that won't ever die", and a tower's deck beaten with no chest).
+constexpr int STUCK_DEAD_FRAMES = 240;
+constexpr int STUCK_DOWN_FRAMES = 450;
+// Link on a tower's deck and none of its enemies on it (fallen off, stuck in its roof or legs) this long: beaten.
+constexpr int TOWER_CLEAR_FRAMES = 150;
+
+// Our Darknuts (darknut()), watched for being stuck and logged now and then with Link near.
+constexpr int DARKNUTS_LIVE = 16;
+struct DarknutLive {
+    bool used;
+    fpc_ProcID id;
+    int deadFrames, downFrames, logFrames;
+};
+DarknutLive sDarknuts[DARKNUTS_LIVE];
+
+void noteDarknut(fpc_ProcID id) {
+    if (id == fpcM_ERROR_PROCESS_ID_e) {
+        return;
     }
-    static const struct { u8 item, weight; } kItems[] = {
+    DarknutLive* slot = &sDarknuts[0];  // all taken: the oldest slot
+    for (DarknutLive& d : sDarknuts) {
+        if (!d.used) {
+            slot = &d;
+            break;
+        }
+    }
+    *slot = DarknutLive{true, id, 0, 0, 0};
+}
+
+// What a camp's chest brings (Dillon, 2026-11-04: "Are camp chests only decor? It shouldn't just be those."). Every
+// filler chest brought the next house decor piece (or a weapon) in place of its filler, so camps were all decor. Now
+// two camps in five bring that unlock; the rest a reward of their own, which is given as it is (pc_rplus_camp_chest_open
+// tells fopAcM_createItemForTrBoxDemo to leave the weapon and decor checks out). The quick-test chests and Phantom
+// Ganon's always bring an unlock.
+bool campUnlock(int key) {
+    if ((key >= TEST_KEY0 && key < TEST_KEY0 + TEST_CHESTS) || key == PG_KEY) {
+        return true;
+    }
+    return mix((u32)key, pc_rplus_seed() ^ 0x0D1Cu) % 5 < 2;
+}
+
+// The camp's item. An unlock's: rupees (the filler the decor and weapon checks look for, not given). A plain one's:
+// rupees, hearts, a fairy, and bombs, arrows or magic when Link has the bag, the bow or the magic meter for them.
+u8 campItem(int key) {
+    struct Pick {
+        u8 item, weight;
+    };
+    static const Pick kFiller[] = {
         {dItemNo_BLUE_RUPEE_e, 10},  {dItemNo_RED_RUPEE_e, 30},    {dItemNo_PURPLE_RUPEE_e, 30},
         {dItemNo_ORANGE_RUPEE_e, 18}, {dItemNo_SILVER_RUPEE_e, 4}, {dItemNo_TRIPLE_HEART_e, 8},
     };
+    static const Pick kPlain[] = {
+        {dItemNo_RED_RUPEE_e, 12},   {dItemNo_PURPLE_RUPEE_e, 16}, {dItemNo_ORANGE_RUPEE_e, 12},
+        {dItemNo_SILVER_RUPEE_e, 4}, {dItemNo_TRIPLE_HEART_e, 12}, {dItemNo_RECOVER_FAIRY_e, 8},
+        {dItemNo_BOMB_10_e, 8},      {dItemNo_BOMB_20_e, 6},       {dItemNo_ARROW_20_e, 8},
+        {dItemNo_ARROW_30_e, 6},     {dItemNo_LARGE_MAGIC_e, 6},
+    };
+    if (key == PG_KEY) {
+        return dItemNo_SILVER_RUPEE_e;  // Phantom Ganon's
+    }
+    const bool unlock = campUnlock(key);
+    const Pick* items = unlock ? kFiller : kPlain;
+    const int count = unlock ? (int)(sizeof(kFiller) / sizeof(kFiller[0])) : (int)(sizeof(kPlain) / sizeof(kPlain[0]));
+    auto usable = [](u8 item) {
+        switch (item) {
+        case dItemNo_BOMB_10_e:
+        case dItemNo_BOMB_20_e:
+            return dComIfGs_getBombMax() > 0;
+        case dItemNo_ARROW_20_e:
+        case dItemNo_ARROW_30_e:
+            return dComIfGs_getArrowMax() > 0;
+        case dItemNo_LARGE_MAGIC_e:
+            return dComIfGs_getMaxMagic() > 0;
+        default:
+            return true;
+        }
+    };
     int total = 0;
-    for (const auto& it : kItems) {
-        total += it.weight;
+    for (int i = 0; i < count; i++) {
+        total += usable(items[i].item) ? items[i].weight : 0;
     }
     int pick = (int)(mix((u32)key, pc_rplus_seed() ^ 0xC4E5u) % (u32)total);
-    for (const auto& it : kItems) {
-        if (pick < it.weight) {
-            return it.item;
+    for (int i = 0; i < count; i++) {
+        if (!usable(items[i].item)) {
+            continue;
         }
-        pick -= it.weight;
+        if (pick < items[i].weight) {
+            return items[i].item;
+        }
+        pick -= items[i].weight;
     }
     return dItemNo_RED_RUPEE_e;
 }
+
+// Set when a plain camp chest opens; its item, made next, skips the weapon and decor checks.
+bool sCampPlainNext = false;
 
 void spawnCampChest(int key, int roomNo, float fx, float fz, float deckY) {
     const u32 h = mix((u32)key, pc_rplus_seed() ^ 0x7B0Fu);
     if (deckY > -1e8f) {
         // A tower's: in the deck's middle.
         cXyz pos(fx, deckY, fz);
-        csXyz angle((s16)(0x4000 | key << 6 | roomNo), (s16)(h >> 8), (s16)(campItem(key) << 8 | 0xFF));
+        const u8 item = campItem(key);
+        csXyz angle((s16)(0x4000 | key << 6 | roomNo), (s16)(h >> 8), (s16)(item << 8 | 0xFF));
         fopAcM_create((char*)"takara", CAMP_CHEST_PARAMS, &pos, roomNo, &angle, nullptr);
-        fprintf(stderr, "[rplus] room %d: tower %d's chest (item 0x%02X%s)\n", roomNo, key, campItem(key),
-                sCampState[key] == CAMP_OPENED ? ", opened" : "");
+        fprintf(stderr, "[rplus] room %d: tower %d's chest (item 0x%02X%s%s)\n", roomNo, key, item,
+                campUnlock(key) ? ", unlock" : "", sCampState[key] == CAMP_OPENED ? ", opened" : "");
         return;
     }
     // Beside the fire, facing away from it (Link opens it coming from outside the camp).
@@ -551,10 +632,11 @@ void spawnCampChest(int key, int roomNo, float fx, float fz, float deckY) {
         }
     }
     cXyz pos(x, rplus::groundY(x, z), z);
-    csXyz angle((s16)(0x4000 | key << 6 | roomNo), cM_atan2s(x - fx, z - fz), (s16)(campItem(key) << 8 | 0xFF));
+    const u8 item = campItem(key);
+    csXyz angle((s16)(0x4000 | key << 6 | roomNo), cM_atan2s(x - fx, z - fz), (s16)(item << 8 | 0xFF));
     fopAcM_create((char*)"takara", CAMP_CHEST_PARAMS, &pos, roomNo, &angle, nullptr);
-    fprintf(stderr, "[rplus] room %d: camp %d's chest (item 0x%02X%s)\n", roomNo, key, campItem(key),
-            sCampState[key] == CAMP_OPENED ? ", opened" : "");
+    fprintf(stderr, "[rplus] room %d: camp %d's chest (item 0x%02X%s%s)\n", roomNo, key, item,
+            campUnlock(key) ? ", unlock" : "", sCampState[key] == CAMP_OPENED ? ", opened" : "");
 }
 
 void watchCamp(int key, int roomNo, float x, float z, float deckY, const fpc_ProcID* ids, int n) {
@@ -764,6 +846,7 @@ void fillTower(TowerLive& t, float deckY, float originY) {
             ey = deckY;
         }
         const fpc_ProcID id = spawnAt(dn, ex, ey + 5.0f, ez, cM_atan2s(ex - t.x, ez - t.z), t.room, dn.params);
+        noteDarknut(id);
         if (id != fpcM_ERROR_PROCESS_ID_e) {
             ids[nIds++] = id;
         }
@@ -1030,7 +1113,7 @@ void placeDarknuts(int roomNo, float rx0, float rz0, float sx, float sz, const s
             const u32 g = mix(h, (u32)k + 31u);
             const float ex = x + k * 450.0f, ez = z + k * 200.0f;
             const Entry dn = darknut(g, false);
-            spawn(dn, ex, ez, (s16)(g >> 8), roomNo, dn.params);
+            noteDarknut(spawn(dn, ex, ez, (s16)(g >> 8), roomNo, dn.params));
         }
         fprintf(stderr, "[rplus] room %d: %d Darknut%s at %.0f %.0f\n", roomNo, n, n > 1 ? "s" : "", x, z);
         return;
@@ -1521,7 +1604,7 @@ void placeTestStart(int roomNo) {
     if (T.hasFoes && rplus::roomAt(T.foes.x, T.foes.z) == roomNo) {
         const u32 h = mix(0xF0E5u, pc_rplus_seed());
         const Entry dn = darknut(h, false);
-        spawn(dn, T.foes.x, T.foes.z, cM_atan2s(T.sx - T.foes.x, T.sz - T.foes.z), roomNo, dn.params);
+        noteDarknut(spawn(dn, T.foes.x, T.foes.z, cM_atan2s(T.sx - T.foes.x, T.sz - T.foes.z), roomNo, dn.params));
         fprintf(stderr, "[rplus] room %d: test Darknut at %.0f %.0f\n", roomNo, T.foes.x, T.foes.z);
         // The gang off to one side, between the Darknut and the start.
         const float a = cM_atan2s(T.sx - T.foes.x, T.sz - T.foes.z) * (3.14159265f / 32768.0f) + 1.2f;
@@ -1680,35 +1763,120 @@ void pc_rplus_camps_room_gone(int roomNo) {
     }
 }
 
+// Our Darknuts: one that died and stays (its health gone), or was thrown down and never gets up, is taken away as if
+// it had died. With Link near, each one's state now and then, for the log.
+void darknutsFrame(fopAc_ac_c* link) {
+    for (DarknutLive& d : sDarknuts) {
+        if (!d.used) {
+            continue;
+        }
+        fopAc_ac_c* a = nullptr;
+        if (!fopAcM_SearchByID(d.id, &a)) {
+            d.used = false;  // dead, or its room gone
+            continue;
+        }
+        if (a == nullptr) {
+            continue;  // being made
+        }
+        tn_class* tn = (tn_class*)a;
+        d.deadFrames = a->health <= 0 ? d.deadFrames + 1 : 0;
+        d.downFrames = tn->mDamageReaction.mMode <= -100 ? d.downFrames + 1 : 0;
+        const float dx = link != nullptr ? link->current.pos.x - a->current.pos.x : 1e9f;
+        const float dz = link != nullptr ? link->current.pos.z - a->current.pos.z : 1e9f;
+        const bool near = dx * dx + dz * dz < 2500.0f * 2500.0f;
+        if (near && ++d.logFrames >= 150) {
+            d.logFrames = 0;
+            fprintf(stderr,
+                    "[rplus] Darknut %u at %.0f %.0f %.0f: health %d/%d, action %d mode %d, armour 0x%X, scale %.2f\n",
+                    (unsigned)d.id, a->current.pos.x, a->current.pos.y, a->current.pos.z, (int)a->health,
+                    (int)a->max_health, (int)tn->mDamageReaction.mAction, (int)tn->mDamageReaction.mMode,
+                    (unsigned)(u8)tn->mRemainingEquipmentPieces, a->scale.x);
+        }
+        if (d.deadFrames > STUCK_DEAD_FRAMES || d.downFrames > STUCK_DOWN_FRAMES) {
+            fprintf(stderr, "[rplus] Darknut %u stuck %s at %.0f %.0f %.0f (action %d mode %d), taken away\n",
+                    (unsigned)d.id, d.deadFrames > STUCK_DEAD_FRAMES ? "dead" : "down", a->current.pos.x,
+                    a->current.pos.y, a->current.pos.z, (int)tn->mDamageReaction.mAction,
+                    (int)tn->mDamageReaction.mMode);
+            fopAcM_createDisappear(a, &a->current.pos, 10, daDisItem_IBALL_e);
+            fopAcM_delete(a);
+            d.used = false;
+        }
+    }
+}
+
 void pc_rplus_camps_frame(void) {
     if (!pc_rplus_active()) {
         return;
     }
     if (strcmp(dComIfGp_getStartStageName(), "sea") != 0) {
         memset(sCamps, 0, sizeof(sCamps));  // left the sea: its rooms' enemies are gone
+        memset(sDarknuts, 0, sizeof(sDarknuts));
         memset(sTowers, 0, sizeof(sTowers));
         releaseAygr();
         return;
     }
+    fopAc_ac_c* link = dComIfGp_getPlayer(0);
     for (CampLive& c : sCamps) {
         if (!c.used) {
             continue;
         }
-        bool left = false, any = false;
+        const bool tower = c.y > -1e8f;
+        // Link on the tower's deck (or just over it, jumping), near its middle.
+        const bool linkOnDeck = tower && link != nullptr && fabsf(link->current.pos.y - c.y) < 250.0f &&
+                                (link->current.pos.x - c.x) * (link->current.pos.x - c.x) +
+                                        (link->current.pos.z - c.z) * (link->current.pos.z - c.z) <
+                                    1000.0f * 1000.0f;
+        bool left = false, any = false, onDeck = false;
         for (int i = 0; i < c.n; i++) {
             fopAc_ac_c* a = nullptr;
-            const BOOL alive = fopAcM_SearchByID(c.ids[i], &a);  // TRUE while being made too
+            BOOL alive = fopAcM_SearchByID(c.ids[i], &a);  // TRUE while being made too
             if (alive && a != nullptr) {
                 c.seen[i] = true;
+                // Dead but never gone (its death never finished): take it away as if it had died.
+                c.deadFrames[i] = a->health <= 0 ? c.deadFrames[i] + 1 : 0;
+                if (c.deadFrames[i] > STUCK_DEAD_FRAMES) {
+                    fprintf(stderr, "[rplus] room %d: camp %d's actor %d stuck dead at %.0f %.0f %.0f, taken away\n",
+                            c.room, c.key, (int)fopAcM_GetName(a), a->current.pos.x, a->current.pos.y,
+                            a->current.pos.z);
+                    fopAcM_createDisappear(a, &a->current.pos, 10, daDisItem_IBALL_e);
+                    fopAcM_delete(a);
+                    c.ids[i] = fpcM_ERROR_PROCESS_ID_e;
+                    alive = FALSE;
+                } else if (tower) {
+                    const float dx = a->current.pos.x - c.x, dz = a->current.pos.z - c.z;
+                    onDeck = onDeck || (fabsf(a->current.pos.y - c.y) < 250.0f && dx * dx + dz * dz < 1100.0f * 1100.0f);
+                }
             }
             left = left || alive;
             any = any || c.seen[i];
         }
-        if (left || !any) {
+        // A tower whose enemies are all off its deck (knocked down, or stuck in its roof or legs) with Link on it.
+        c.clearFrames = left && any && linkOnDeck && !onDeck ? c.clearFrames + 1 : 0;
+        if (left && c.clearFrames <= TOWER_CLEAR_FRAMES) {
+            // Now and then with Link near, the ones left (for the log, if one can't be beaten).
+            if (any && link != nullptr && ++c.logFrames >= 300 &&
+                (link->current.pos.x - c.x) * (link->current.pos.x - c.x) +
+                        (link->current.pos.z - c.z) * (link->current.pos.z - c.z) <
+                    3000.0f * 3000.0f) {
+                c.logFrames = 0;
+                for (int i = 0; i < c.n; i++) {
+                    fopAc_ac_c* a = nullptr;
+                    if (fopAcM_SearchByID(c.ids[i], &a) && a != nullptr) {
+                        fprintf(stderr, "[rplus] room %d: camp %d still has its actor %d at %.0f %.0f %.0f (health %d)\n",
+                                c.room, c.key, (int)fopAcM_GetName(a), a->current.pos.x, a->current.pos.y,
+                                a->current.pos.z, (int)a->health);
+                    }
+                }
+            }
             continue;
         }
+        if (!any) {
+            continue;
+        }
+        if (left) {
+            fprintf(stderr, "[rplus] room %d: tower %d's deck clear (its enemies left are off it)\n", c.room, c.key);
+        }
         // Only with Link near: a room going away (far from him) takes its enemies before it is gone itself.
-        fopAc_ac_c* link = dComIfGp_getPlayer(0);
         if (link == nullptr || (link->current.pos.x - c.x) * (link->current.pos.x - c.x) +
                                        (link->current.pos.z - c.z) * (link->current.pos.z - c.z) >
                                    12000.0f * 12000.0f) {
@@ -1726,6 +1894,7 @@ void pc_rplus_camps_frame(void) {
         mDoAud_seStart(JA_SE_READ_RIDDLE_1, NULL, 0, 0);  // the puzzle-solved jingle
         spawnCampChest(c.key, c.room, c.x, c.z, c.y);
     }
+    darknutsFrame(link);
     towersFrame();
 }
 
@@ -1747,6 +1916,19 @@ void pc_rplus_camp_chest_open(int key) {
         sCampState[key] = CAMP_OPENED;
         fprintf(stderr, "[rplus] camp %d's chest opened\n", key);
     }
+}
+
+void pc_rplus_camp_chest_item_next(int key) {
+    sCampPlainNext = key >= 0 && key < CAMP_KEYS && !campUnlock(key);
+    if (key >= 0) {
+        fprintf(stderr, "[rplus] camp %d's chest gives %s\n", key, sCampPlainNext ? "its own item" : "an unlock");
+    }
+}
+
+int pc_rplus_camp_chest_plain_take(void) {
+    const bool plain = sCampPlainNext;
+    sCampPlainNext = false;
+    return plain ? 1 : 0;
 }
 
 void pc_rplus_init_story_events() {

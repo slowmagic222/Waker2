@@ -1053,6 +1053,7 @@ BOOL daTbox_c::actionOpenWait() {
 
 #if TARGET_PC
         if (!daTbox_randoIsTrap(this)) {
+        pc_rplus_camp_chest_item_next(pc_rplus_camp_chest_key(fopAcM_GetParam(this), home.angle.x));
 #endif
         u8 itemNo = getItemNo();
         fpc_ProcID itemPID = fopAcM_createItemForTrBoxDemo(&current.pos, itemNo);

@@ -388,6 +388,9 @@ void pc_rplus_camps_frame(void);
 int pc_rplus_camp_chest_key(unsigned int params, int angleX);
 int pc_rplus_camp_chest_opened(int key);
 void pc_rplus_camp_chest_open(int key);
+// The chest about to give its item (daTbox_c::actionOpenWait): a plain camp chest's skips the weapon and decor checks.
+void pc_rplus_camp_chest_item_next(int key);
+int pc_rplus_camp_chest_plain_take(void);
 // Randomizer+ places found (pc_rplus_places.cpp, the tracker's): reset / load / save as the camps'; once a frame from
 // daPy_lk_c::execute (Link near a place, or in its interior, finds it).
 void pc_rplus_places_reset(void);
