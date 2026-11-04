@@ -6,7 +6,7 @@
 // anchor; the rest of the townsfolk go to the generated towns. Enemies are spread over open land by biome, from
 // the kinds and params the islands and some dungeons have.
 //
-// COS_RPLUS_NPCS=0 or COS_RPLUS_ENEMIES=0 leaves them out.
+// COS_RPLUS_NPCS=0 or COS_RPLUS_ENEMIES=0 leaves them out; COS_RPLUS_FAIRIES=0 the fairy springs.
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
 #include "pc/pc_seedgen.h"
@@ -1529,6 +1529,48 @@ void placeTestStart(int roomNo) {
     }
 }
 
+// ---- Fairy springs ------------------------------------------------------------------------------------------------
+
+// Fairy springs: a few healing fairies (d_a_npc_fa1 "Sfairy", type 0: they fly round where they were made) over a
+// small flat glade on grass or forest high ground, away from the start and the towns. At most one a
+// room, in half of the rooms.
+void placeFairies(int roomNo) {
+    const u32 h0 = mix((u32)roomNo * 3571u, pc_rplus_seed() ^ 0xFA1Fu);
+    if ((h0 & 1) != 0) {
+        return;
+    }
+    float rx0, rz0, sx, sz;
+    rplus::roomCorner(roomNo, &rx0, &rz0);
+    rplus::startXZ(&sx, &sz);
+    const std::vector<rplus::TownInfo> towns = rplus::towns();
+    for (int tries = 0; tries < 300; tries++) {
+        const u32 h = mix(h0, (u32)tries + 17u);
+        const float x = rx0 + (0.05f + (h & 0xFFFF) / 65536.0f * 0.9f) * 100000.0f;
+        const float z = rz0 + (0.05f + ((h >> 16) & 0xFFFF) / 65536.0f * 0.9f) * 100000.0f;
+        const char b = rplus::biomeAt(x, z);
+        if (strchr("gf", b) == nullptr || rplus::groundY(x, z) < 400.0f || rplus::steep(x, z) ||
+            !rplus::openGround(x, z, 600.0f) || !gentle(x, z, 500.0f, 80.0f) || rplus::roomAt(x, z) != roomNo) {
+            continue;
+        }
+        bool near = (x - sx) * (x - sx) + (z - sz) * (z - sz) < 3000.0f * 3000.0f;
+        for (const rplus::TownInfo& t : towns) {
+            near = near || (x - t.x) * (x - t.x) + (z - t.z) * (z - t.z) < (t.r + 1500.0f) * (t.r + 1500.0f);
+        }
+        if (near) {
+            continue;
+        }
+        const int n = 3 + (int)((h >> 3) & 1);
+        for (int k = 0; k < n; k++) {
+            const float a = k * 6.2831853f / n;
+            cXyz pos(x + sinf(a) * 120.0f, rplus::groundY(x, z) + 60.0f, z + cosf(a) * 120.0f);
+            csXyz angle(0, (s16)(a * 10430.378f), 0);
+            fopAcM_create((char*)"Sfairy", 0, &pos, roomNo, &angle, nullptr);
+        }
+        fprintf(stderr, "[rplus] room %d: a fairy spring (%d fairies) at %.0f %.0f\n", roomNo, n, x, z);
+        return;
+    }
+}
+
 } // namespace
 
 bool rplus::anchoredNpc(const char* id) {
@@ -1563,6 +1605,9 @@ void pc_rplus_life_room(int roomNo) {
     }
     if (enabled("COS_RPLUS_WEATHER")) {
         placeWeather(roomNo);
+    }
+    if (enabled("COS_RPLUS_FAIRIES")) {
+        placeFairies(roomNo);
     }
 }
 
