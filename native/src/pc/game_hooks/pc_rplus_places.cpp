@@ -17,6 +17,7 @@
 #include "pc/pc_seedgen.h"
 #include "pc_rplus_world.h"
 #include "pc_internal.h"
+#include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_com_inf_game.h"
 #include <cctype>
 #include <cmath>
@@ -28,6 +29,12 @@
 #include <vector>
 
 namespace {
+
+// Every list, map and string here lives for the whole file, and the game's global operator new takes a block of
+// whatever JKR heap is current (pc_jkr_heap.cpp; a room's or an actor's while they are made or run), which the game
+// frees wholesale. So every entry point allocates in host memory (as pc_rplus_decor.cpp does). Deck crash on
+// 7fe39bb (2026-11-04): a node of sFound with a stomped child pointer, in markFound from Link's execute.
+using Host = JKRPcHostAllocScope;
 
 struct Place {
     std::string key, name, anchor, stage;
@@ -262,10 +269,12 @@ int sectorAt(float x, float z) {
 } // namespace
 
 void rplus::notePlace(char kind, int key, float x, float z) {
+    Host host;
     addCamp(kind, std::string(kind == 'k' ? "camp:" : "tower:") + std::to_string(key), x, z);
 }
 
 void pc_rplus_places_reset(void) {
+    Host host;
     sFound.clear();
     sNews.clear();
     sSlot = -1;
@@ -274,6 +283,7 @@ void pc_rplus_places_reset(void) {
 }
 
 void pc_rplus_places_load(int slot) {
+    Host host;
     pc_rplus_places_reset();
     sSlot = slot;
     if (!pc_rplus_active()) {
@@ -293,6 +303,7 @@ void pc_rplus_places_load(int slot) {
 }
 
 void pc_rplus_places_save(int slot) {
+    Host host;
     if (!pc_rplus_active()) {
         return;
     }
@@ -316,6 +327,7 @@ void pc_rplus_places_frame(void) {
     if (link == nullptr) {
         return;
     }
+    Host host;
     build();
     const char* stage = dComIfGp_getStartStageName();
     if (strcmp(stage, "sea") != 0) {
@@ -336,6 +348,7 @@ void pc_rplus_places_frame(void) {
 }
 
 extern "C" int pc_rplus_place_count(void) {
+    Host host;
     build();
     return (int)sPlaces.size();
 }
@@ -363,6 +376,7 @@ extern "C" const PcRplusPlace* pc_rplus_place(int i) {
 }
 
 extern "C" void pc_rplus_places_found(int* found, int* total) {
+    Host host;
     build();
     *found = *total = 0;
     for (const Place& p : sPlaces) {
@@ -374,6 +388,7 @@ extern "C" void pc_rplus_places_found(int* found, int* total) {
 }
 
 extern "C" const char* pc_rplus_places_take_found(void) {
+    Host host;
     if (sNews.empty()) {
         return nullptr;
     }

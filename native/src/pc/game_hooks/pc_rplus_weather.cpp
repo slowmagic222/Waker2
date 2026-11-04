@@ -12,6 +12,7 @@
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
 #include "pc_rplus_world.h"
+#include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_kankyo.h"
 #include "d/d_kankyo_wether.h"
@@ -77,6 +78,7 @@ Zones& zones() {
         return Z;
     }
     Z.built = true;
+    JKRPcHostAllocScope host;  // kept for the whole run, not in the current game heap
     Z.n = pc_rplus_squares() * pc_rplus_cells();
     Z.cell = ROOM_UNITS / pc_rplus_cells();
     rplus::roomCorner(1, &Z.x0, &Z.z0);

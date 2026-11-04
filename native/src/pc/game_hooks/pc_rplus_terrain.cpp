@@ -15,6 +15,7 @@
 #include "pc/game_hooks.h"
 #include "pc/pc_rplus.h"
 #include "pc_rplus_world.h"
+#include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_bg_w.h"
 #include "d/d_kankyo.h"
@@ -246,6 +247,7 @@ float gridE(int i, int j) {
         return eAt((float)i / SUB, (float)j / SUB);
     }
     if (sGridN != n || sGridE.empty()) {
+        JKRPcHostAllocScope host;  // kept past this room (pc_rplus_places.cpp: the game frees its heaps wholesale)
         sGridE.assign((size_t)n * n, NAN);
         sGridN = n;
     }
@@ -2300,6 +2302,7 @@ const Layout& layout() {
     }
     made = true;
     atSeaMade = atSea;
+    JKRPcHostAllocScope host;  // the layout outlives the room or actor that first asks for it
     L = Layout();
     clearGridE();
     worldOrigin(&L.x0, &L.z0);

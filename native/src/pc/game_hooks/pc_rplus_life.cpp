@@ -12,6 +12,7 @@
 #include "pc/pc_seedgen.h"
 #include "pc_rplus_world.h"
 #include "pc_internal.h"
+#include "JSystem/JKernel/JKRHeap.h"
 #include "d/d_item_data.h"
 #include "d/d_bg_s_gnd_chk.h"
 #include "res/Object/Aygr.h"
@@ -182,6 +183,7 @@ Pools& pools() {
         return p;
     }
     p.read = true;
+    JKRPcHostAllocScope host;  // the pools last the whole run: not in the room heap that first asks
     std::vector<uint8_t> dzr;
     std::vector<Entry> all;
     int rooms = 0;
